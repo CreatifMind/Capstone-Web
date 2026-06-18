@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>PurityLoop AI | Verification Logs</title>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body data-page="ledger">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="assets/logo.png" alt="PurityLoop AI Smart Waste, Clean Future" class="brand-logo" />
+      </div>
+
+      <nav class="side-nav">
+        <a href="upload.html">Mixed Image Upload</a>
+        <a href="live-camera.html">Classification Result</a>
+        <a href="alerts.html" class="active">Verification Logs</a>
+        <a href="analytics.html">Operations Dashboard</a>
+      </nav>
+
+      <div class="sidebar-note">
+        <strong>QA Audit</strong>
+        <p>Audit sorting history ledger logs and confirm overrides for low-confidence scans.</p>
+      </div>
+
+      <a href="login.html" class="logout-btn">Logout</a>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Recycling Audit Trail Logs</p>
+          <h1>AI Classification Audit Ledger</h1>
+          <p>Verify low-confidence waste uploads and override sorting classifications to maintain clean recycling loops.</p>
+        </div>
+
+        <div class="user-badge review-badge">8 Reviews Pending</div>
+      </header>
+
+      <section class="ledger-summary">
+        <div class="summary-card cleared">
+          <span>Verified Scans</span>
+          <strong>142</strong>
+          <p>Audited and verified clean recyclable batches.</p>
+        </div>
+        <div class="summary-card review">
+          <span>Pending Reviews</span>
+          <strong>8</strong>
+          <p>Scans awaiting human QA verification.</p>
+        </div>
+        <div class="summary-card quarantine">
+          <span>Quarantined Scans</span>
+          <strong>3</strong>
+          <p>Lithium hazards or high-organic contaminants isolated.</p>
+        </div>
+      </section>
+
+      <section class="panel ledger-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">QA Audit Verification</p>
+            <h2>AI Classification Audit Ledger</h2>
+          </div>
+          <a href="live-camera.html" class="secondary-btn">Back to Results View</a>
+        </div>
+
+        <div class="table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Scanner Station</th>
+                <th>Material</th>
+                <th>Weight</th>
+                <th>AI Confidence</th>
+                <th>Status / Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Populated dynamically by js/script.js -->
+              <tr>
+                <td colspan="6" style="text-align: center; color: var(--muted);">Loading audit trail ledger records...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="detail-dock" id="ledgerDrillDetails">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Ledger Drill-through</p>
+            <h2>Station, Material, and Calibration Diagnostics</h2>
+          </div>
+          <p class="detail-hint">Click any Scanner Station ID or Material type in the ledger above to inspect diagnostic performance indicators.</p>
+        </div>
+
+        <!-- AI STATION DIAGNOSTICS (Replaces Conveyor Details) -->
+        <article class="panel detail-panel active belt-detail-output" id="detail-belt">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">AI Station Diagnostics</p>
+              <h2>Scanning Device: <span data-belt-id>STATION-A01</span></h2>
+              <p class="detail-copy" data-belt-insight>Optical lens is calibrated and rate response query parameters are nominal.</p>
+            </div>
+          </div>
+
+          <div class="detail-grid three">
+            <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
+            <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4 Active</strong><small data-belt-max-speed>Core Model</small></div>
+            <div class="metric-tile static"><span>Scanner Diagnostic</span><strong data-belt-action>Operational</strong><small>No recalibration required</small></div>
+          </div>
+
+          <div class="detail-grid two">
+            <div class="detail-card">
+              <h3>Sensor & Camera Diagnostics</h3>
+              <dl class="detail-list">
+                <div><dt>Camera Lens Status</dt><dd data-belt-scanner>Clean</dd></div>
+                <div><dt>Compute Core Temp</dt><dd data-belt-motor>42°C</dd></div>
+                <div><dt>Recalibration Delta</dt><dd data-belt-air>0.05 px</dd></div>
+              </dl>
+            </div>
+            <div class="detail-card">
+              <h3>Model Reliability & Sorting Mix</h3>
+              <div class="bar-list compact" data-belt-uptime></div>
+              <div class="bar-list compact" data-belt-composition></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- MATERIAL DEEP DIVE -->
+        <article class="panel detail-panel material-detail-output" id="detail-material">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Material Deep Dive</p>
+              <h2><span data-material-title>Material</span> Details</h2>
+              <p data-material-subtitle class="detail-copy">Review the volume metrics, impurity incidents, and historical trend maps for the selected item.</p>
+            </div>
+          </div>
+          <div class="detail-grid three">
+            <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
+            <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
+            <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong data-material-purity>0%</strong><small data-material-status>AI-verified sorting score</small></div>
+          </div>
+          <div class="detail-grid two">
+            <div><h3 data-material-trend-title>30-Day Recovery Trend</h3><div class="spark-bars" data-material-trend></div></div>
+            <div><h3 data-material-zone-title>Distribution by Scanner Station</h3><div class="bar-list compact" data-material-zones></div></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <!-- Manual Review Override Modal -->
+  <div class="modal-overlay" id="reviewModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+      <button type="button" class="modal-close" id="closeReviewModal" aria-label="Close review modal">×</button>
+      <p class="eyebrow" style="color: var(--green);">AI Audit Review</p>
+      <h2 id="reviewTitle">AI Classification Review</h2>
+      <p id="reviewDescription">Confirm whether this classification is correct or manually override the waste category.</p>
+
+      <div class="review-snapshot">
+        <div class="snapshot-feed">
+          <span class="snapshot-live"></span>
+          <strong>AI FLAG - LOW CONFIDENCE</strong>
+        </div>
+        <div class="snapshot-items">
+          <!-- Filled dynamically by js/script.js -->
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="primary-btn" id="clearSegment">Verify & Approve Result</button>
+        <button type="button" class="danger-btn" id="quarantineSegment">Flag as Contaminated / Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>

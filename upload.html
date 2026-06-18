@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>PurityLoop AI | Mixed Image Upload</title>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img
+          src="assets/logo.png"
+          alt="PurityLoop AI Smart Waste, Clean Future"
+          class="brand-logo"
+        />
+      </div>
+
+      <nav class="side-nav">
+        <a href="upload.html" class="active">Mixed Image Upload</a>
+        <a href="live-camera.html">Classification Result</a>
+        <a href="alerts.html">Verification Logs</a>
+        <a href="analytics.html">Operations Dashboard</a>
+      </nav>
+
+      <div class="sidebar-note">
+        <strong>AI Sorting Terminal</strong>
+        <p>
+          Upload waste images, datasets, or capture real-time snapshots to run purity classification.
+        </p>
+      </div>
+
+      <a href="login.html" class="logout-btn">Logout</a>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AI Sorting Terminal</p>
+          <h1>Mixed Waste Upload</h1>
+          <p>
+            Upload batch waste photographs, zip files, or capture real-time webcam frame snapshots to audit sorting purity.
+          </p>
+        </div>
+
+        <div class="user-badge">Admin Mode</div>
+      </header>
+
+      <section class="page-grid">
+        <!-- LEFT SIDE: Upload box + Webcam -->
+        <div class="panel upload-panel">
+          <div class="upload-box" style="border: 2px dashed var(--line); padding: 50px 30px;">
+            <div class="upload-icon" style="background: var(--green);">↑</div>
+
+            <h2 style="font-size: 26px; margin-bottom: 10px;">Select Sorting Files</h2>
+
+            <p style="margin-bottom: 25px;">
+              Drag and drop mixed waste images here, or choose files from your local system.
+            </p>
+
+            <label for="fileUpload" class="upload-label">
+              Choose Files
+            </label>
+
+            <input
+              type="file"
+              id="fileUpload"
+              accept="image/*,.zip,application/zip,application/x-zip-compressed"
+              multiple
+            />
+
+            <p id="fileName" class="file-name">No file selected</p>
+          </div>
+        </div>
+
+        <!-- RIGHT SIDE: Requirements & Instructions -->
+        <div class="panel upload-info-panel">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Device Guidelines</p>
+              <h2>Upload Requirements</h2>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 20px;">
+            <div class="result-item">
+              <span>Supported Upload</span>
+              <strong>Single, Batch, ZIP</strong>
+            </div>
+
+            <div class="result-item">
+              <span>Allowed Formats</span>
+              <strong>JPG, PNG, WEBP, ZIP</strong>
+            </div>
+
+            <div class="result-item">
+              <span>Image Limit</span>
+              <strong>10 MB per file</strong>
+            </div>
+
+            <div class="result-item">
+              <span>ZIP Dataset Limit</span>
+              <strong>100 MB per ZIP</strong>
+            </div>
+          </div>
+
+          <div class="instruction-box" style="background: var(--green-dark); padding: 18px; border-radius: var(--radius);">
+            <h3>Automatic AI Audit Handoff</h3>
+            <p style="font-size: 13px; margin-top: 6px;">
+              Once a file is selected or camera snapshot is captured, the compute engine immediately runs classification audits and redirects you to the detailed bounding box view.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>

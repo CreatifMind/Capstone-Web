@@ -1,0 +1,2113 @@
+/* PurityLoop AI - Smart Waste Sorting & Contamination Detection */
+
+/* RELIABLE prototype limits */
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB per image
+const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100 MB per ZIP file
+const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100 MB total upload
+const MAX_TOTAL_FILES = 50;
+
+/* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
+const detectionResults = {
+  battery: {
+    title: "Battery Hazard Detected",
+    confidence: "99%",
+    category: "Battery",
+    bin: "Hazardous Battery Bin",
+    weight: "0.045 kg",
+    statusClass: "danger",
+    status: "Hazardous item detected. Fire risk.",
+    instruction: "Divert battery immediately to a fire-safe hazardous waste storage bin.",
+    color: "#b42318",
+    imageSrc: "assets/items/battery.png"
+  },
+  food_organics: {
+    title: "Food Organics Contamination",
+    confidence: "87%",
+    category: "Food Organics",
+    bin: "Organic Waste / Reject",
+    weight: "0.120 kg",
+    statusClass: "warning",
+    status: "Contamination risk. Rinse or reject.",
+    instruction: "Separate organic waste from recyclable batches to prevent bale rejection.",
+    color: "#27ae60",
+    imageSrc: "assets/items/food-waste.png"
+  },
+  general_trash: {
+    title: "General Trash Detected",
+    confidence: "78%",
+    category: "General Trash",
+    bin: "Landfill Bin",
+    weight: "0.085 kg",
+    statusClass: "warning",
+    status: "Non-recyclable material detected.",
+    instruction: "Divert to general landfill waste. Check if clean packaging can be salvaged.",
+    color: "#7f8c8d",
+    imageSrc: "assets/items/coffee-cup.png"
+  },
+  plastic: {
+    title: "Plastic Bottle Detected",
+    confidence: "95%",
+    category: "Plastic",
+    bin: "Plastic Sorting Bin",
+    weight: "0.025 kg",
+    statusClass: "safe",
+    status: "Clean recyclable plastic detected.",
+    instruction: "Ensure container is empty. Compress and place in plastic bale sorting queue.",
+    color: "#2f6f8f",
+    imageSrc: "assets/items/plastic-bottle.png"
+  },
+  metal: {
+    title: "Aluminium Can Detected",
+    confidence: "94%",
+    category: "Metal",
+    bin: "Metal Sorting Bin",
+    weight: "0.015 kg",
+    statusClass: "safe",
+    status: "High-value recyclable metal detected.",
+    instruction: "Verify metal container is empty. Place in magnetic sorting line.",
+    color: "#b7791f",
+    imageSrc: "assets/items/aluminum-can.png"
+  },
+  paper: {
+    title: "Crumpled Paper Detected",
+    confidence: "89%",
+    category: "Paper",
+    bin: "Paper Sorting Bin",
+    weight: "0.030 kg",
+    statusClass: "safe",
+    status: "Recyclable paper material detected.",
+    instruction: "Ensure paper is dry and clean of organic grease before packing.",
+    color: "#8aa0a8",
+    imageSrc: "assets/items/crumpled-paper.png"
+  },
+  cardboard: {
+    title: "Cardboard Packaging Detected",
+    confidence: "92%",
+    category: "Cardboard",
+    bin: "Cardboard Sorting Bin",
+    weight: "0.220 kg",
+    statusClass: "safe",
+    status: "High-grade cardboard material detected.",
+    instruction: "Flatten cardboard package to save sorting dock volume. Keep dry.",
+    color: "#e67e22",
+    imageSrc: "assets/items/cardboard.png"
+  },
+  glass: {
+    title: "Glass Container Detected",
+    confidence: "91%",
+    category: "Glass",
+    bin: "Glass Sorting Bin",
+    weight: "0.180 kg",
+    statusClass: "safe",
+    status: "Recyclable glass material detected.",
+    instruction: "Rinse container. Avoid glass breakage. Segregate in sorting bay.",
+    color: "#8b5cf6",
+    imageSrc: "assets/items/glass-jar.png"
+  },
+  textile: {
+    title: "Textile Scrap Detected",
+    confidence: "83%",
+    category: "Textile",
+    bin: "Fabric Recovery / Landfill",
+    weight: "0.140 kg",
+    statusClass: "warning",
+    status: "Textile contaminant detected.",
+    instruction: "Fabric ruins optical gear sorting blades. Segregate manually.",
+    color: "#1abc9c",
+    imageSrc: "assets/items/textile.png"
+  },
+  unknown: {
+    title: "Unclassified Waste Detected",
+    confidence: "60%",
+    category: "General Trash",
+    bin: "Manual Audit Queue",
+    weight: "0.000 kg",
+    statusClass: "warning",
+    status: "AI confidence rating too low.",
+    instruction: "Perform manual audit to inspect the material category.",
+    color: "#a16207",
+    imageSrc: "assets/items/coffee-cup.png"
+  },
+  mixed_batch: {
+    title: "Mixed Batch Scan Detected",
+    confidence: "98%",
+    category: "Paper",
+    bin: "Paper Sorting Bin",
+    weight: "0.485 kg",
+    statusClass: "warning",
+    status: "Contaminant detected in batch.",
+    instruction: "Divert Glass Bottle contaminant to Glass Bin. Recyclable Paper packaging/cups cleared.",
+    color: "#ff8000",
+    imageSrc: "assets/items/mixed-waste.jpg"
+  }
+};
+
+/* Maps a filename to multiple bounding boxes (Simulating Mixed Waste Detection) */
+function getDetectedObjectsForFile(name) {
+  const fileLower = name.toLowerCase();
+
+  // New default viewport image from user screenshot
+  if (fileLower.includes("viewport") || fileLower.includes("mixed-waste") || fileLower.includes("active_scan")) {
+    return [
+      { label: "PAPER_PACKAGING", confidence: "98%", color: "#27c93f", x: 0.21, y: 0.012, w: 0.28, h: 0.36 },
+      { label: "PAPER_PACKAGING", confidence: "80%", color: "#27c93f", x: 0.10, y: 0.20, w: 0.42, h: 0.38 },
+      { label: "GLASS_BOTTLE ⚠️", confidence: "99%", color: "#e63030", x: 0.31, y: 0.24, w: 0.395, h: 0.41 },
+      { label: "PAPER_CUP", confidence: "100%", color: "#27c93f", x: 0.32, y: 0.50, w: 0.435, h: 0.40 }
+    ];
+  }
+
+  // 1. Soda Can image gets the exact 6 bounding boxes from the attached camera stream image
+  if (fileLower.includes("can") || fileLower.includes("metal") || fileLower.includes("sodacan")) {
+    return [
+      { label: "PET Bottle", confidence: "97%", color: "#27c93f", x: 0.18, y: 0.25, w: 0.20, h: 0.25 },
+      { label: "PET Bottle", confidence: "96%", color: "#27c93f", x: 0.28, y: 0.55, w: 0.16, h: 0.22 },
+      { label: "Aluminum Can", confidence: "94%", color: "#0080ff", x: 0.42, y: 0.36, w: 0.18, h: 0.20 },
+      { label: "Food Waste ⚠️", confidence: "85%", color: "#ff8000", x: 0.50, y: 0.59, w: 0.22, h: 0.18 },
+      { label: "Plastic Film ⚠️", confidence: "89%", color: "#ff8000", x: 0.65, y: 0.21, w: 0.20, h: 0.26 },
+      { label: "Aluminum Can", confidence: "91%", color: "#0080ff", x: 0.72, y: 0.49, w: 0.14, h: 0.18 }
+    ];
+  }
+
+  // 2. Plastic bottle mapping
+  if (fileLower.includes("plastic") || fileLower.includes("bottle") || fileLower.includes("pet")) {
+    return [
+      { label: "PET Bottle", confidence: "95%", color: "#27c93f", x: 0.25, y: 0.20, w: 0.30, h: 0.50 },
+      { label: "Plastic Film ⚠️", confidence: "88%", color: "#ff8000", x: 0.60, y: 0.30, w: 0.20, h: 0.35 },
+      { label: "General Trash", confidence: "75%", color: "#7f8c8d", x: 0.45, y: 0.60, w: 0.15, h: 0.20 }
+    ];
+  }
+
+  // 3. Battery mapping
+  if (fileLower.includes("battery") || fileLower.includes("lithium")) {
+    return [
+      { label: "Battery Hazard ⚠️", confidence: "99%", color: "#b42318", x: 0.35, y: 0.30, w: 0.25, h: 0.35 },
+      { label: "Plastic Film ⚠️", confidence: "84%", color: "#ff8000", x: 0.15, y: 0.50, w: 0.20, h: 0.30 },
+      { label: "Paper Crumpled", confidence: "79%", color: "#8aa0a8", x: 0.65, y: 0.25, w: 0.20, h: 0.25 }
+    ];
+  }
+
+  // 4. Cardboard mapping
+  if (fileLower.includes("cardboard") || fileLower.includes("box") || fileLower.includes("package")) {
+    return [
+      { label: "Cardboard", confidence: "92%", color: "#e67e22", x: 0.15, y: 0.15, w: 0.50, h: 0.60 },
+      { label: "PET Bottle", confidence: "90%", color: "#27c93f", x: 0.70, y: 0.40, w: 0.18, h: 0.35 }
+    ];
+  }
+
+  // 5. Food organics mapping
+  if (fileLower.includes("food") || fileLower.includes("organic") || fileLower.includes("peel")) {
+    return [
+      { label: "Food Waste ⚠️", confidence: "87%", color: "#ff8000", x: 0.25, y: 0.25, w: 0.40, h: 0.45 },
+      { label: "Paper Crumpled", confidence: "81%", color: "#8aa0a8", x: 0.70, y: 0.50, w: 0.15, h: 0.25 },
+      { label: "Textile Scrap ⚠️", confidence: "76%", color: "#1abc9c", x: 0.10, y: 0.60, w: 0.18, h: 0.22 }
+    ];
+  }
+
+  // 6. Paper mapping
+  if (fileLower.includes("paper") || fileLower.includes("newspaper") || fileLower.includes("sheet")) {
+    return [
+      { label: "Paper Crumpled", confidence: "89%", color: "#8aa0a8", x: 0.20, y: 0.20, w: 0.45, h: 0.45 },
+      { label: "Plastic Film ⚠️", confidence: "82%", color: "#ff8000", x: 0.60, y: 0.40, w: 0.25, h: 0.35 }
+    ];
+  }
+
+  // 7. Glass mapping
+  if (fileLower.includes("glass") || fileLower.includes("jar")) {
+    return [
+      { label: "Glass Container", confidence: "91%", color: "#8b5cf6", x: 0.30, y: 0.20, w: 0.35, h: 0.55 },
+      { label: "General Trash", confidence: "78%", color: "#7f8c8d", x: 0.10, y: 0.45, w: 0.18, h: 0.25 }
+    ];
+  }
+
+  // 8. Textile mapping
+  if (fileLower.includes("textile") || fileLower.includes("cloth") || fileLower.includes("fabric")) {
+    return [
+      { label: "Textile Scrap ⚠️", confidence: "83%", color: "#1abc9c", x: 0.25, y: 0.25, w: 0.45, h: 0.45 },
+      { label: "General Trash", confidence: "70%", color: "#7f8c8d", x: 0.60, y: 0.50, w: 0.20, h: 0.30 }
+    ];
+  }
+
+  // 9. General Trash mapping
+  if (fileLower.includes("cup") || fileLower.includes("mug") || fileLower.includes("trash")) {
+    return [
+      { label: "General Trash", confidence: "78%", color: "#7f8c8d", x: 0.25, y: 0.25, w: 0.40, h: 0.50 },
+      { label: "Plastic Film ⚠️", confidence: "80%", color: "#ff8000", x: 0.55, y: 0.35, w: 0.25, h: 0.35 }
+    ];
+  }
+
+  // Dynamic fallback for custom uploaded files
+  const matched = detectWasteTypeFromFileName(name);
+  const primaryColor = matched.color;
+  const primaryCat = matched.category;
+  const primaryConf = matched.confidence;
+
+  const boxes = [
+    { label: primaryCat, confidence: primaryConf, color: primaryColor, x: 0.20 + Math.random() * 0.1, y: 0.20 + Math.random() * 0.1, w: 0.30 + Math.random() * 0.15, h: 0.40 + Math.random() * 0.15 }
+  ];
+
+  if (Math.random() > 0.4) {
+    const contaminants = [
+      { label: "Plastic Film ⚠️", color: "#ff8000" },
+      { label: "Food Waste ⚠️", color: "#ff8000" },
+      { label: "General Trash", color: "#7f8c8d" }
+    ];
+    const secondary = contaminants[Math.floor(Math.random() * contaminants.length)];
+    boxes.push({
+      label: secondary.label,
+      confidence: `${Math.floor(70 + Math.random() * 19)}%`,
+      color: secondary.color,
+      x: 0.55 + Math.random() * 0.1,
+      y: 0.35 + Math.random() * 0.1,
+      w: 0.20 + Math.random() * 0.1,
+      h: 0.25 + Math.random() * 0.1
+    });
+  }
+
+  return boxes;
+}
+
+/* Format file size helper */
+function formatFileSize(bytes) {
+  const kb = bytes / 1024;
+  const mb = kb / 1024;
+  if (mb >= 1) return mb.toFixed(2) + " MB";
+  return kb.toFixed(1) + " KB";
+}
+
+/* Match category from name */
+function detectWasteTypeFromFileName(name) {
+  const fileLower = name.toLowerCase();
+  if (fileLower.includes("viewport") || fileLower.includes("mixed")) return detectionResults.mixed_batch;
+  if (fileLower.includes("battery") || fileLower.includes("lithium")) return detectionResults.battery;
+  if (fileLower.includes("food") || fileLower.includes("organic") || fileLower.includes("apple") || fileLower.includes("banana")) return detectionResults.food_organics;
+  if (fileLower.includes("trash") || fileLower.includes("waste") || fileLower.includes("cup") || fileLower.includes("mug")) return detectionResults.general_trash;
+  if (fileLower.includes("plastic") || fileLower.includes("bottle") || fileLower.includes("pet")) return detectionResults.plastic;
+  if (fileLower.includes("metal") || fileLower.includes("can") || fileLower.includes("aluminium") || fileLower.includes("steel")) return detectionResults.metal;
+  if (fileLower.includes("paper") || fileLower.includes("newspaper") || fileLower.includes("sheet")) return detectionResults.paper;
+  if (fileLower.includes("cardboard") || fileLower.includes("box") || fileLower.includes("package")) return detectionResults.cardboard;
+  if (fileLower.includes("glass") || fileLower.includes("jar") || fileLower.includes("bottle_g")) return detectionResults.glass;
+  if (fileLower.includes("textile") || fileLower.includes("cloth") || fileLower.includes("shirt") || fileLower.includes("fabric")) return detectionResults.textile;
+  
+  // Random fallback for simulated variety
+  const keys = Object.keys(detectionResults);
+  const randomKey = keys[Math.floor(Math.random() * (keys.length - 1))];
+  return detectionResults[randomKey];
+}
+
+/* Local storage initialization for ledger records */
+function getAuditLedger() {
+  const localLedger = localStorage.getItem("purityloop_audit_ledger");
+  if (localLedger) {
+    return JSON.parse(localLedger);
+  }
+  // Default mock ledger
+  const mockLedger = [
+    { id: "LOG-9821", time: "10:42 AM", station: "STATION-A01", category: "Metal", weight: "18.4 kg", confidence: "98.7%", status: "Cleared" },
+    { id: "LOG-9820", time: "10:30 AM", station: "STATION-C03", category: "Glass", weight: "14.5 kg", confidence: "82.0%", status: "Review Needed" },
+    { id: "LOG-9819", time: "10:25 AM", station: "MOBILE-APP", category: "General Trash", weight: "12.0 kg", confidence: "42.1%", status: "Quarantined" },
+    { id: "LOG-9818", time: "10:14 AM", station: "STATION-A01", category: "Metal", weight: "19.2 kg", confidence: "99.2%", status: "Cleared" },
+    { id: "LOG-9817", time: "10:05 AM", station: "STATION-B02", category: "Plastic", weight: "15.1 kg", confidence: "98.1%", status: "Cleared" },
+    { id: "LOG-9816", time: "09:58 AM", station: "STATION-D04", category: "Battery", weight: "8.0 kg", confidence: "54.1%", status: "Quarantined" },
+    { id: "LOG-9815", time: "09:42 AM", station: "STATION-C03", category: "Glass", weight: "11.3 kg", confidence: "96.7%", status: "Cleared" }
+  ];
+  localStorage.setItem("purityloop_audit_ledger", JSON.stringify(mockLedger));
+  return mockLedger;
+}
+
+function saveAuditLedger(ledger) {
+  localStorage.setItem("purityloop_audit_ledger", JSON.stringify(ledger));
+}
+
+/*****************************************
+ * 1. IMAGE UPLOAD & WEBCAM CAPTURE PAGE *
+ *****************************************/
+function initUploadPage() {
+  const fileUpload = document.getElementById("fileUpload");
+  if (!fileUpload) return; // Not on upload page
+
+  const fileName = document.getElementById("fileName");
+  const fileList = document.getElementById("fileList");
+  const fileCountText = document.getElementById("fileCountText");
+  const uploadSummary = document.getElementById("uploadSummary");
+  
+  // Set up webcam modal
+  createWebcamModalElements();
+
+  const startWebcamBtn = document.getElementById("startWebcamBtn");
+  const captureWebcamBtn = document.getElementById("captureWebcamBtn");
+  const closeWebcamBtn = document.getElementById("closeWebcamModal");
+  const webcamModal = document.getElementById("webcamModal");
+  const webcamVideo = document.getElementById("webcamVideo");
+  let webcamStream = null;
+
+  // Drag and drop events
+  const uploadBox = document.querySelector(".upload-box");
+  if (uploadBox) {
+    ["dragenter", "dragover"].forEach(evt => {
+      uploadBox.addEventListener(evt, (e) => {
+        e.preventDefault();
+        uploadBox.style.borderColor = "var(--green)";
+        uploadBox.style.background = "var(--green-soft)";
+      }, false);
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+      uploadBox.addEventListener(evt, (e) => {
+        e.preventDefault();
+        uploadBox.style.borderColor = "#a9cdbb";
+        uploadBox.style.background = "";
+      }, false);
+    });
+
+    uploadBox.addEventListener("drop", (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files.length > 0) {
+        processSelectedFiles(files);
+      }
+    });
+  }
+
+  fileUpload.addEventListener("change", function () {
+    if (fileUpload.files.length > 0) {
+      processSelectedFiles(fileUpload.files);
+    }
+  });
+
+  // Open Webcam Modal
+  const cameraLauncher = document.createElement("button");
+  cameraLauncher.type = "button";
+  cameraLauncher.className = "secondary-btn full-btn";
+  cameraLauncher.id = "launchCameraBtn";
+  cameraLauncher.innerHTML = "📷 Open Live Camera Scanner";
+  cameraLauncher.style.marginTop = "10px";
+  uploadBox.appendChild(cameraLauncher);
+
+  cameraLauncher.addEventListener("click", () => {
+    webcamModal.classList.add("active");
+    webcamModal.setAttribute("aria-hidden", "false");
+    startWebcam();
+  });
+
+  if (closeWebcamBtn) {
+    closeWebcamBtn.addEventListener("click", stopWebcam);
+  }
+
+  if (startWebcamBtn) {
+    startWebcamBtn.addEventListener("click", startWebcam);
+  }
+
+  if (captureWebcamBtn) {
+    captureWebcamBtn.addEventListener("click", captureSnapshot);
+  }
+
+  function startWebcam() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          webcamStream = stream;
+          webcamVideo.srcObject = stream;
+          captureWebcamBtn.disabled = false;
+          startWebcamBtn.style.display = "none";
+        })
+        .catch(err => {
+          console.error("Camera access error:", err);
+          alert("Webcam access not allowed or unavailable. Loading simulation scanning mode instead.");
+          stopWebcam();
+          loadSimulatedUpload();
+        });
+    } else {
+      alert("Browser camera api not supported. Triggering file simulation.");
+      loadSimulatedUpload();
+    }
+  }
+
+  function stopWebcam() {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      webcamStream = null;
+    }
+    webcamVideo.srcObject = null;
+    webcamModal.classList.remove("active");
+    webcamModal.setAttribute("aria-hidden", "true");
+    startWebcamBtn.style.display = "inline-flex";
+    captureWebcamBtn.disabled = true;
+  }
+
+  function captureSnapshot() {
+    if (!webcamStream) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext("2d");
+    
+    // Draw mirrored if front facing, but environment usually is fine
+    ctx.drawImage(webcamVideo, 0, 0, 640, 480);
+    
+    // Compress to small JPEG dataURL (approx 25KB) to fit localStorage
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    
+    const captures = [{
+      name: "Camera_Snapshot_" + Date.now().toString().slice(-4) + ".jpg",
+      size: Math.round(dataUrl.length * 0.75), // approximate byte size
+      dataUrl: dataUrl
+    }];
+    
+    localStorage.setItem("purityloop_uploads", JSON.stringify(captures));
+    stopWebcam();
+    window.location.href = "live-camera.html";
+  }
+
+  function loadSimulatedUpload() {
+    // Falls back to camera demo by simulating snapshot
+    const names = ["aluminum-can.png", "plastic-bottle.png", "glass-jar.png", "battery.png"];
+    const randomName = names[Math.floor(Math.random() * names.length)];
+    const simulatedFiles = [{
+      name: "Simulation_" + randomName,
+      size: 52000,
+      isSimulation: true,
+      assetPath: "assets/items/" + randomName
+    }];
+    localStorage.setItem("purityloop_uploads", JSON.stringify(simulatedFiles));
+    window.location.href = "live-camera.html";
+  }
+
+  function processSelectedFiles(files) {
+    const list = Array.from(files);
+    
+    // Validate sizes and types
+    let totalSize = list.reduce((s, f) => s + f.size, 0);
+    if (list.length > MAX_TOTAL_FILES) {
+      alert(`Too many files selected. Maximum is ${MAX_TOTAL_FILES} files.`);
+      return;
+    }
+    if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
+      alert("Total files size exceeds 100MB threshold.");
+      return;
+    }
+
+    fileName.textContent = `Processing ${list.length} selected files...`;
+
+    // Compress images asynchronously using canvas to fit localStorage limits
+    let loadedCount = 0;
+    const compressedList = [];
+    const imageFiles = list.filter(f => f.type.startsWith("image/"));
+    
+    if (imageFiles.length === 0) {
+      // Just zip/other files
+      const simpleMetadata = list.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.name.endsWith(".zip") ? "ZIP" : "File"
+      }));
+      localStorage.setItem("purityloop_uploads", JSON.stringify(simpleMetadata));
+      window.location.href = "live-camera.html";
+      return;
+    }
+
+    imageFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.createElement("canvas");
+          const max_size = 400; // Low resolution resize (approx 15-20KB JPEGs)
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            if (w > max_size) {
+              h *= max_size / w;
+              w = max_size;
+            }
+          } else {
+            if (h > max_size) {
+              w *= max_size / h;
+              h = max_size;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+
+          compressedList.push({
+            name: file.name,
+            size: file.size,
+            dataUrl: dataUrl
+          });
+
+          loadedCount++;
+          if (loadedCount === imageFiles.length) {
+            localStorage.setItem("purityloop_uploads", JSON.stringify(compressedList));
+            window.location.href = "live-camera.html";
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function createWebcamModalElements() {
+    if (document.getElementById("webcamModal")) return;
+    const modal = document.createElement("div");
+    modal.className = "modal-overlay";
+    modal.id = "webcamModal";
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width: 600px;">
+        <button type="button" class="modal-close" id="closeWebcamModal" aria-label="Close webcam">×</button>
+        <p class="eyebrow" style="color: var(--green);">AI Camera Scanner</p>
+        <h2 style="font-size: 24px; margin-bottom: 8px;">Webcam Object Capture</h2>
+        <p style="color: var(--muted); margin-bottom: 12px;">Position the waste object in front of the lens. The AI will segment and audit the material.</p>
+        
+        <div class="webcam-stream-wrap">
+          <video id="webcamVideo" autoplay playsinline muted></video>
+          <div class="scanner-laser"></div>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 18px;">
+          <button type="button" class="secondary-btn" id="startWebcamBtn" style="display: none;">Re-enable Camera</button>
+          <button type="button" class="primary-btn" id="captureWebcamBtn" disabled style="width: 100%;">Capture & Run AI Classification</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Inject styles for webcam modal dynamically
+    const style = document.createElement("style");
+    style.textContent = `
+      .webcam-stream-wrap {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        background: #111e18;
+        border-radius: var(--radius);
+        overflow: hidden;
+        border: 2px solid var(--line);
+      }
+      #webcamVideo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .scanner-laser {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+        background: linear-gradient(180deg, rgba(32, 178, 107, 0), #20b26b, rgba(32, 178, 107, 0));
+        box-shadow: 0 0 10px rgba(32, 178, 107, 0.8);
+        animation: scanAnim 3s infinite linear;
+        pointer-events: none;
+      }
+      @keyframes scanAnim {
+        0% { top: 0%; }
+        50% { top: 100%; }
+        100% { top: 0%; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+/******************************************
+ * 2. CLASSIFICATION RESULT VIEWER PAGE *
+ ******************************************/
+function initResultPage() {
+  const canvas = document.getElementById("liveInferenceCanvas");
+  if (!canvas) return; // Not on the live-camera.html page
+
+  const ctx2d = canvas.getContext("2d");
+  const itemsScannedEl = document.getElementById("liveScanned");
+  const itemsPurityEl = document.getElementById("livePurity");
+  const liveFeed = document.getElementById("liveFeed");
+  const actionText = document.getElementById("liveActionText");
+  const activeBeltTitle = document.getElementById("liveStreamTitle");
+  
+  // Replace buttons
+  const activeBeltDetailBtn = document.getElementById("activeBeltDetailBtn");
+  const reviewLogsBtn = document.querySelector(".action-panel a");
+
+  // Load uploads from storage
+  let uploads = [];
+  const rawUploads = localStorage.getItem("purityloop_uploads");
+  
+  if (rawUploads) {
+    uploads = JSON.parse(rawUploads);
+  }
+
+  // Ensure "Active_Scan_Viewport.jpg" is always at the top of the list so it is the default loaded scan!
+  const hasViewportItem = uploads.some(item => item.name === "Active_Scan_Viewport.jpg");
+  if (!hasViewportItem) {
+    uploads.unshift({
+      name: "Active_Scan_Viewport.jpg",
+      size: 145000,
+      assetPath: "assets/items/mixed-waste.jpg"
+    });
+    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+  } else {
+    // If it exists but isn't index 0, move it to index 0
+    const idx = uploads.findIndex(item => item.name === "Active_Scan_Viewport.jpg");
+    if (idx > 0) {
+      const item = uploads.splice(idx, 1)[0];
+      uploads.unshift(item);
+      localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+    }
+  }
+
+  // Fallback default simulation list if nothing else is left
+  if (uploads.length <= 1) {
+    uploads = [
+      { name: "Active_Scan_Viewport.jpg", size: 145000, assetPath: "assets/items/mixed-waste.jpg" },
+      { name: "Recycled_PET_PlasticBottle.jpg", size: 45000, assetPath: "assets/items/plastic-bottle.png" },
+      { name: "Crushed_SodaCan_Metal.png", size: 34000, assetPath: "assets/items/aluminum-can.png" },
+      { name: "Waste_Battery_Hazard.jpg", size: 28000, assetPath: "assets/items/battery.png" },
+      { name: "Cardboard_Box_Package.jpg", size: 89000, assetPath: "assets/items/cardboard.png" },
+      { name: "Organics_BananaPeel_Contaminant.png", size: 52000, assetPath: "assets/items/food-waste.png" }
+    ];
+    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+  }
+
+  let activeIndex = 0;
+  let activeImageObj = null;
+
+  // Change heading labels to reflect "AI Classification Result"
+  const eyebrowEl = document.querySelector(".main-content .eyebrow");
+  if (eyebrowEl) eyebrowEl.textContent = "AI Classification Hub";
+  
+  const headingEl = document.querySelector(".main-content h1");
+  if (headingEl) headingEl.textContent = "Classification Results Viewer";
+  
+  const descEl = document.querySelector(".main-content header p");
+  if (descEl) descEl.textContent = "Review high-resolution camera analysis, confidence intervals, and automated quarantine audits.";
+
+  // Rename sidebar menu
+  const sidebarNote = document.querySelector(".sidebar-note");
+  if (sidebarNote) {
+    sidebarNote.innerHTML = `
+      <strong>Classification Hub</strong>
+      <p>Audit uploaded datasets and webcam frame results before database ledger logging.</p>
+    `;
+  }
+
+  // Change VIEW DETAILED BUTTON action to Approve and Log
+  if (activeBeltDetailBtn) {
+    activeBeltDetailBtn.textContent = "Verify & Approve Scan Result";
+    activeBeltDetailBtn.className = "primary-btn full-btn";
+    activeBeltDetailBtn.id = "verifyApproveBtn";
+  }
+
+  // Redesign "Review Logs" link button
+  if (reviewLogsBtn) {
+    reviewLogsBtn.textContent = "Go to Verification Logs";
+    reviewLogsBtn.href = "alerts.html";
+  }
+
+  // Render Finder Grid and Load Active image
+  renderFinderGrid();
+  loadActiveImage();
+
+  // Redraw canvas on window resize to stay responsive
+  window.addEventListener('resize', () => {
+    if (activeImageObj) drawCanvasFrame();
+  });
+
+  // Handle Verify & Approve Action
+  const approveBtn = document.getElementById("verifyApproveBtn");
+  if (approveBtn) {
+    approveBtn.addEventListener("click", () => {
+      const activeFile = uploads[activeIndex];
+      if (!activeFile) return;
+      const result = detectWasteTypeFromFileName(activeFile.name);
+
+      // Save to audit log ledger
+      const currentLedger = getAuditLedger();
+      const newLog = {
+        id: "LOG-" + Math.floor(1000 + Math.random() * 9000),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        station: "UPLOAD-HUB",
+        category: result.category,
+        weight: result.weight,
+        confidence: result.confidence,
+        status: result.statusClass === "safe" ? "Cleared" : result.statusClass === "danger" ? "Quarantined" : "Review Needed"
+      };
+
+      currentLedger.unshift(newLog);
+      saveAuditLedger(currentLedger);
+
+      // Audit verified verification logs confirmation banner
+      triggerAuditLoggedNotification();
+
+      // Mark row in queue as processed
+      activeFile.processed = true;
+      renderFinderGrid();
+    });
+  }
+
+  // Live Auto-Scan simulation
+  const autoScanCheckbox = document.getElementById("autoScanCheckbox");
+  let autoScanInterval = null;
+
+  function startAutoScanSimulation() {
+    if (autoScanInterval) clearInterval(autoScanInterval);
+    autoScanInterval = setInterval(() => {
+      const itemsList = [
+        { prefix: "SCAN_PlasticBottle_", names: ["plastic-bottle.png"] },
+        { prefix: "SCAN_AluminiumCan_", names: ["aluminum-can.png"] },
+        { prefix: "SCAN_GlassJar_", names: ["glass-jar.png"] },
+        { prefix: "SCAN_BatteryHazard_", names: ["battery.png"] },
+        { prefix: "SCAN_OrganicPeel_", names: ["food-waste.png"] },
+        { prefix: "SCAN_TextileScrap_", names: ["textile.png"] },
+        { prefix: "SCAN_CardboardBox_", names: ["cardboard.png"] },
+        { prefix: "SCAN_PaperCrumpled_", names: ["crumpled-paper.png"] },
+        { prefix: "SCAN_CoffeeCup_", names: ["coffee-cup.png"] }
+      ];
+      const choice = itemsList[Math.floor(Math.random() * itemsList.length)];
+      const randomId = Math.floor(1000 + Math.random() * 9000);
+      const filename = `${choice.prefix}${randomId}.jpg`;
+      
+      const newScan = {
+        name: filename,
+        size: Math.floor(12000 + Math.random() * 45000),
+        assetPath: `assets/items/${choice.names[0]}`,
+        isNewGlow: true
+      };
+
+      uploads.push(newScan);
+      
+      // Keep max 24 items in queue folder to prevent memory bloat
+      if (uploads.length > 24) {
+        uploads.shift();
+        // Clamp activeIndex but DON'T change the active view
+        if (activeIndex >= uploads.length) activeIndex = uploads.length - 1;
+      }
+
+      localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+
+      // Re-render the grid WITHOUT switching the active image
+      renderFinderGrid();
+
+      // Scroll content pane to bottom to reveal new scan
+      const contentPane = document.querySelector(".finder-content-pane");
+      if (contentPane) {
+        contentPane.scrollTop = contentPane.scrollHeight;
+      }
+    }, 4000);
+  }
+
+  function stopAutoScanSimulation() {
+    if (autoScanInterval) {
+      clearInterval(autoScanInterval);
+      autoScanInterval = null;
+    }
+  }
+
+  if (autoScanCheckbox) {
+    autoScanCheckbox.addEventListener("change", () => {
+      if (autoScanCheckbox.checked) {
+        startAutoScanSimulation();
+      } else {
+        stopAutoScanSimulation();
+      }
+    });
+  }
+
+  function renderFinderGrid() {
+    const grid = document.getElementById("finderGrid");
+    const countText = document.getElementById("finderCountText");
+    if (!grid) return;
+    grid.innerHTML = "";
+    if (countText) countText.textContent = `${uploads.length} item(s)`;
+
+    uploads.forEach((file, index) => {
+      const fileResult = detectWasteTypeFromFileName(file.name);
+      let tagColor = "green";
+      if (fileResult.statusClass === "danger") tagColor = "red";
+      if (fileResult.statusClass === "warning") tagColor = "yellow";
+
+      const card = document.createElement("div");
+      card.className = `finder-file-card ${index === activeIndex ? "active" : ""}`;
+      if (file.isNewGlow) {
+        card.classList.add("new-file-glow");
+        setTimeout(() => {
+          card.classList.remove("new-file-glow");
+          delete file.isNewGlow;
+        }, 3000);
+      }
+
+      const imgSrc = file.dataUrl || file.assetPath || "assets/items/plastic-bottle.png";
+
+      card.innerHTML = `
+        <span class="finder-tag-dot ${tagColor}"></span>
+        <div class="finder-thumbnail-wrap">
+          <img src="${imgSrc}" alt="${file.name}">
+        </div>
+        <div class="finder-filename" title="${file.name}">${file.name}</div>
+      `;
+
+      card.addEventListener("click", () => {
+        activeIndex = index;
+        const cards = grid.querySelectorAll(".finder-file-card");
+        cards.forEach(c => c.classList.remove("active"));
+        card.classList.add("active");
+        loadActiveImage();
+      });
+
+      grid.appendChild(card);
+    });
+  }
+
+  function loadActiveImage() {
+    const activeFile = uploads[activeIndex];
+    if (activeBeltTitle) activeBeltTitle.textContent = activeFile.name;
+
+    activeImageObj = new Image();
+    if (activeFile.dataUrl) {
+      activeImageObj.src = activeFile.dataUrl;
+    } else {
+      activeImageObj.src = activeFile.assetPath || "assets/items/plastic-bottle.png";
+    }
+
+    activeImageObj.onload = function () {
+      drawCanvasFrame();
+    };
+
+    const result = detectWasteTypeFromFileName(activeFile.name);
+    updateResultDetails(result, activeFile);
+  }
+
+  function updateResultDetails(result, file) {
+    const scannedVal = document.getElementById("liveScanned");
+    const purityVal = document.getElementById("livePurity");
+    const actionPanel = document.getElementById("liveActionPanel");
+    
+    const boxes = getDetectedObjectsForFile(file.name);
+    
+    // Calculate overall purity (percentage of recyclables)
+    let recyclableCount = 0;
+    boxes.forEach(box => {
+      if (box.label.includes("⚠️")) {
+        return; // Contaminants do not count toward recyclable purity
+      }
+      const labelLower = box.label.toLowerCase();
+      if (labelLower.includes("pet bottle") || 
+          labelLower.includes("plastic") || 
+          labelLower.includes("metal") || 
+          labelLower.includes("can") || 
+          labelLower.includes("aluminum") ||
+          labelLower.includes("glass") || 
+          labelLower.includes("paper") || 
+          labelLower.includes("cardboard")) {
+        recyclableCount++;
+      }
+    });
+    
+    const purityPct = Math.round((recyclableCount / boxes.length) * 100);
+
+    if (scannedVal) scannedVal.textContent = `${boxes.length} objects`;
+    if (purityVal) {
+      purityVal.textContent = `${purityPct}%`;
+      // Color-code the purity value
+      if (purityPct === 100) {
+        purityVal.style.color = "var(--green)";
+      } else if (purityPct >= 70) {
+        purityVal.style.color = "var(--warning)";
+      } else {
+        purityVal.style.color = "var(--danger)";
+      }
+    }
+
+    // Next Steps Action Guide Generator
+    if (actionText) {
+      const hasBattery = boxes.some(b => b.label.toLowerCase().includes("battery"));
+      const hasContaminant = purityPct < 100;
+      
+      let badgeHtml = "";
+      if (hasBattery) {
+        if (actionPanel) {
+          actionPanel.style.background = "#fff0ed";
+          actionPanel.style.borderColor = "var(--danger)";
+        }
+        badgeHtml = `
+          <strong style="color: var(--danger); display: block; font-size: 14px; margin-bottom: 6px;">🚨 CRITICAL HAZARD: ISOLATE IMMEDIATELY</strong>
+          <p style="color: #7f1d1d; font-weight: 700; line-height: 1.4; margin: 0;">
+            Lithium battery detected in batch! Manually extract the battery and place in fire-safe quarantine container immediately. Reject the rest of the batch. Click 'Verify & Approve' to log this hazard.
+          </p>
+        `;
+      } else if (hasContaminant) {
+        if (actionPanel) {
+          actionPanel.style.background = "#fff7e6";
+          actionPanel.style.borderColor = "var(--warning)";
+        }
+        const contaminantsList = [];
+        boxes.forEach(b => {
+          if (b.label.includes("⚠️") || b.label.includes("Trash") || b.label.includes("Textile")) {
+            contaminantsList.push(b.label.replace(" ⚠️", ""));
+          }
+        });
+        const uniqContaminants = [...new Set(contaminantsList)];
+        badgeHtml = `
+          <strong style="color: #b7791f; display: block; font-size: 14px; margin-bottom: 6px;">⚠️ MANUAL SORT REQUIRED</strong>
+          <p style="color: #78350f; font-weight: 700; line-height: 1.4; margin: 0;">
+            Contamination rate is ${100 - purityPct}%. Manually remove the highlighted contaminants (<strong>${uniqContaminants.join(", ")}</strong>) from the sorting table before baling. Click 'Verify & Approve' to log.
+          </p>
+        `;
+      } else {
+        if (actionPanel) {
+          actionPanel.style.background = "var(--green-soft)";
+          actionPanel.style.borderColor = "#a9cdbb";
+        }
+        badgeHtml = `
+          <strong style="color: var(--green); display: block; font-size: 14px; margin-bottom: 6px;">✅ CLEAR FOR BALING</strong>
+          <p style="color: var(--green-dark); font-weight: 700; line-height: 1.4; margin: 0;">
+            100% recyclable purity. No contaminants or hazards detected in this batch. Click 'Verify & Approve Scan Result' to approve batch into sorting lines.
+          </p>
+        `;
+      }
+      actionText.innerHTML = badgeHtml;
+    }
+
+    if (liveFeed) {
+      liveFeed.innerHTML = "";
+      
+      const listContainer = document.createElement("div");
+      listContainer.style.display = "flex";
+      listContainer.style.flexDirection = "column";
+      listContainer.style.gap = "6px";
+      listContainer.style.marginBottom = "10px";
+
+      boxes.forEach(box => {
+        const itemDiv = document.createElement("div");
+        itemDiv.style.display = "flex";
+        itemDiv.style.alignItems = "center";
+        itemDiv.style.justifyContent = "space-between";
+        itemDiv.style.padding = "6px 10px";
+        itemDiv.style.borderRadius = "6px";
+        itemDiv.style.background = "#f4f8f5";
+        itemDiv.style.borderLeft = `4px solid ${box.color}`;
+        itemDiv.style.fontSize = "12.5px";
+        
+        itemDiv.innerHTML = `
+          <span style="font-weight: 700; color: var(--text);">${box.label}</span>
+          <span style="font-weight: 800; color: var(--muted);">${box.confidence}</span>
+        `;
+        listContainer.appendChild(itemDiv);
+      });
+      liveFeed.appendChild(listContainer);
+
+      const infoDiv = document.createElement("div");
+      infoDiv.style.fontSize = "11.5px";
+      infoDiv.style.color = "var(--muted)";
+      infoDiv.style.borderTop = "1px solid var(--line)";
+      infoDiv.style.paddingTop = "8px";
+      infoDiv.style.display = "flex";
+      infoDiv.style.flexDirection = "column";
+      infoDiv.style.gap = "4px";
+      infoDiv.innerHTML = `
+        <div><strong>Disposal Bin:</strong> ${result.bin}</div>
+        <div><strong>Object Weight:</strong> ${file.size ? formatFileSize(file.size) : result.weight}</div>
+      `;
+      liveFeed.appendChild(infoDiv);
+    }
+
+    renderStationDetail("STATION-A01", { activate: false });
+    renderMaterialDetail(result.category, { activate: false });
+  }
+
+  // Helper to draw rounded rectangle pills
+  function drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawCanvasFrame() {
+    if (!canvas || !activeImageObj) return;
+
+    const parent = canvas.parentElement;
+    const rect = parent.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height || Math.round(rect.width * (9 / 16));
+
+    // ── 1. Draw image filling the entire canvas (object-fit: cover style) ──
+    const imgW = activeImageObj.width;
+    const imgH = activeImageObj.height;
+    const scale = Math.max(canvas.width / imgW, canvas.height / imgH);
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    const drawX = (canvas.width - drawW) / 2;
+    const drawY = (canvas.height - drawH) / 2;
+
+    ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
+
+    // ── 2. Subtle dark vignette overlay (like NANDO AI dims the image slightly) ──
+    ctx2d.fillStyle = "rgba(0, 0, 0, 0.28)";
+    ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+
+    // ── 3. Redraw image at 88% brightness on top (creates the "dim background" look) ──
+    ctx2d.globalAlpha = 0.88;
+    ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
+    ctx2d.globalAlpha = 1.0;
+
+    // ── 4. Draw all bounding boxes (NANDO AI static style) ──
+    const activeFile = uploads[activeIndex];
+    const boxes = getDetectedObjectsForFile(activeFile.name);
+
+    boxes.forEach(box => {
+      const boxX = drawX + drawW * box.x;
+      const boxY = drawY + drawH * box.y;
+      const boxW = drawW * box.w;
+      const boxH = drawH * box.h;
+
+      // Determine if this is a hazard/contaminant (red) vs recyclable (green/other)
+      const isHazard = box.color === "#b42318" || box.color === "#ff8000" ||
+                       box.label.includes("⚠️") || box.label.includes("Hazard") ||
+                       box.label.includes("Trash") || box.label.includes("Textile") ||
+                       box.label.includes("Film");
+      const borderColor = isHazard ? "#e63030" : box.color;
+
+      // Semi-transparent colored fill inside box (NANDO AI signature look)
+      ctx2d.fillStyle = isHazard
+        ? "rgba(230, 48, 48, 0.13)"
+        : hexToRgba(borderColor, 0.13);
+      ctx2d.fillRect(boxX, boxY, boxW, boxH);
+
+      // Solid border — 2px, matches NANDO AI
+      ctx2d.strokeStyle = borderColor;
+      ctx2d.lineWidth = 2;
+      ctx2d.strokeRect(boxX, boxY, boxW, boxH);
+
+      // ── Label tag at top-left of box (NANDO AI flat dark chip style) ──
+      ctx2d.font = "bold 11.5px 'Courier New', monospace";
+      const rawLabel = box.label.replace(" ⚠️", "").toUpperCase().replace(/ /g, "_");
+      const labelText = `${rawLabel} ${box.confidence}`;
+      const textW = ctx2d.measureText(labelText).width;
+      const tagW = textW + 14;
+      const tagH = 21;
+      const tagX = boxX;
+      const tagY = boxY;
+
+      // Dark chip background (exactly like NANDO AI — very dark, slight transparency)
+      ctx2d.fillStyle = "rgba(4, 8, 6, 0.88)";
+      ctx2d.fillRect(tagX, tagY, tagW, tagH);
+
+      // Thin colored top border on tag (category color accent)
+      ctx2d.fillStyle = borderColor;
+      ctx2d.fillRect(tagX, tagY, tagW, 2);
+
+      // White label text
+      ctx2d.fillStyle = "#ffffff";
+      ctx2d.fillText(labelText, tagX + 7, tagY + 15);
+    });
+
+    // ── 5. Bottom telemetry bar (subtle, minimal — doesn't distract from image) ──
+    const hudY = canvas.height - 30;
+    ctx2d.fillStyle = "rgba(4, 8, 6, 0.70)";
+    ctx2d.fillRect(0, hudY, canvas.width, 30);
+    ctx2d.fillStyle = "rgba(46, 204, 113, 0.85)";
+    ctx2d.font = "10px 'Courier New', monospace";
+    const now = new Date();
+    const tsStr = now.toISOString().replace("T", "  ").substring(0, 19) + " UTC";
+    ctx2d.fillText(`YOLOv8x  |  ${boxes.length} objects detected  |  ${tsStr}`, 14, hudY + 19);
+  }
+
+  // Utility: convert hex colour to rgba string
+  function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+
+  function triggerAuditLoggedNotification() {
+    const badge = document.createElement("div");
+    badge.className = "audit-badge-animation";
+    badge.innerHTML = `✅ Audit Verified!<br><strong>Logged to Ledger</strong>`;
+    
+    document.body.appendChild(badge);
+    
+    setTimeout(() => {
+      badge.remove();
+    }, 2800);
+
+    if (!document.getElementById("badgeAnimStyles")) {
+      const styles = document.createElement("style");
+      styles.id = "badgeAnimStyles";
+      styles.textContent = `
+        .audit-badge-animation {
+          position: fixed;
+          top: 30%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: var(--green-dark);
+          color: #ffffff;
+          border: 2px solid #20b26b;
+          border-radius: var(--radius);
+          padding: 20px 40px;
+          text-align: center;
+          font-size: 18px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          z-index: 9999;
+          animation: floatUpBadge 2.8s ease-out;
+        }
+        @keyframes floatUpBadge {
+          0% { opacity: 0; transform: translate(-50%, -30%); }
+          15% { opacity: 1; transform: translate(-50%, -50%); }
+          80% { opacity: 1; transform: translate(-50%, -50%); }
+          100% { opacity: 0; transform: translate(-50%, -70%); }
+        }
+      `;
+      document.head.appendChild(styles);
+    }
+  }
+}
+
+/**************************************
+ * 3. VERIFICATION LEDGER AUDIT PAGE  *
+ **************************************/
+function initReviewModal() {
+  const modal = document.getElementById("reviewModal");
+  if (!modal) return; // Not on verification ledger page
+
+  const tableBody = document.querySelector(".ledger-table tbody");
+  const reviewTitle = document.getElementById("reviewTitle");
+  const reviewDescription = document.getElementById("reviewDescription");
+  const closeButton = document.getElementById("closeReviewModal");
+  const clearButton = document.getElementById("clearSegment");
+  const quarantineButton = document.getElementById("quarantineSegment");
+  
+  let activeLogId = null;
+  let activeRow = null;
+
+  // Change heading titles to match "Audit Logs"
+  const sectionKicker = document.querySelector(".ledger-panel .eyebrow");
+  if (sectionKicker) sectionKicker.textContent = "QA Audit Verification";
+  
+  const sectionTitle = document.querySelector(".ledger-panel h2");
+  if (sectionTitle) sectionTitle.textContent = "AI Classification Audit Ledger";
+
+  const mainHeaderTitle = document.querySelector(".main-content h1");
+  if (mainHeaderTitle) mainHeaderTitle.textContent = "Recycling Audit Trail Logs";
+
+  const mainHeaderDesc = document.querySelector(".main-content header p");
+  if (mainHeaderDesc) mainHeaderDesc.textContent = "Verify low-confidence waste uploads and override sorting classifications.";
+
+  const ledgerSidebarNote = document.querySelector(".sidebar-note");
+  if (ledgerSidebarNote) {
+    ledgerSidebarNote.innerHTML = `
+      <strong>QA Audit</strong>
+      <p>Click 'Review Needed' to override categories or approve sorting records.</p>
+    `;
+  }
+
+  // Adjust table columns: Segment ID -> Source Station
+  const tableHeaders = document.querySelectorAll(".ledger-table th");
+  if (tableHeaders[1]) tableHeaders[1].textContent = "Scanner Station";
+  if (tableHeaders[4]) tableHeaders[4].textContent = "AI Confidence";
+
+  // Pre-load reclassification controls inside the modal
+  const snapshotItems = document.querySelector(".review-snapshot .snapshot-items");
+  const modalActions = document.querySelector(".modal-actions");
+  
+  if (modalActions && !document.getElementById("reclassifySelect")) {
+    // Inject custom reclassificaton dropdown
+    const reclassifyDiv = document.createElement("div");
+    reclassifyDiv.style.gridColumn = "span 2";
+    reclassifyDiv.style.marginTop = "10px";
+    reclassifyDiv.innerHTML = `
+      <label for="reclassifySelect" style="display:block; font-weight:800; margin-bottom:6px; font-size:13px;">Manual Reclassification Category:</label>
+      <select id="reclassifySelect" style="width:100%; height:42px; border:1px solid var(--line); border-radius:var(--radius); padding:0 10px; background:#fff; font-weight:700;">
+        <option value="Plastic">Plastic</option>
+        <option value="Metal">Metal</option>
+        <option value="Glass">Glass</option>
+        <option value="Paper">Paper</option>
+        <option value="Cardboard">Cardboard</option>
+        <option value="Food Organics">Food Organics</option>
+        <option value="General Trash">General Trash</option>
+        <option value="Textile">Textile</option>
+        <option value="Battery">Battery</option>
+      </select>
+    `;
+    modalActions.parentNode.insertBefore(reclassifyDiv, modalActions);
+  }
+
+  // Adjust button text
+  if (clearButton) clearButton.textContent = "Verify & Approve Result";
+  if (quarantineButton) quarantineButton.textContent = "Flag as Contaminated / Reject";
+
+  // Build Table from LocalStorage state
+  buildLedgerTable();
+
+  function buildLedgerTable() {
+    if (!tableBody) return;
+    const ledger = getAuditLedger();
+    tableBody.innerHTML = "";
+
+    ledger.forEach(log => {
+      const tr = document.createElement("tr");
+      tr.id = `row-${log.id}`;
+
+      let confidenceClass = "positive";
+      const numConf = parseFloat(log.confidence);
+      if (numConf < 60) confidenceClass = "danger-text";
+      else if (numConf < 85) confidenceClass = "warning-text";
+
+      let statusPillClass = "cleared";
+      let statusText = log.status;
+      if (log.status === "Quarantined" || log.status === "Quarantine Active" || log.status === "Quarantine") {
+        statusPillClass = "quarantine";
+        statusText = "Quarantined";
+      } else if (log.status === "Review Needed") {
+        statusPillClass = "review review-action";
+      } else if (log.status.includes("Corrected") || log.status.includes("Verified")) {
+        statusPillClass = "cleared";
+      }
+
+      tr.innerHTML = `
+        <td>${log.time}</td>
+        <td><button type="button" class="text-drill" data-station-detail="${log.station}">${log.station}</button></td>
+        <td><button type="button" class="text-drill" data-material-detail="${log.category}">${log.category}</button></td>
+        <td>${log.weight}</td>
+        <td class="${confidenceClass}">${log.confidence}</td>
+        <td>
+          ${log.status === "Review Needed" 
+            ? `<button type="button" class="status-pill review review-action" data-logid="${log.id}">${log.status}</button>` 
+            : `<span class="status-pill ${statusPillClass}">${statusText}</span>`
+          }
+        </td>
+      `;
+
+      // Set up drill event listeners inside the rows
+      const drills = tr.querySelectorAll(".text-drill");
+      drills.forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (btn.dataset.materialDetail) {
+            renderMaterialDetail(btn.dataset.materialDetail);
+          } else if (btn.dataset.stationDetail) {
+            renderStationDetail(btn.dataset.stationDetail);
+          }
+        });
+      });
+
+      tableBody.appendChild(tr);
+    });
+
+    // Attach click listeners for "Review Needed" buttons
+    document.querySelectorAll(".review-action").forEach(button => {
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        activeLogId = button.dataset.logid;
+        activeRow = button.closest("tr");
+        
+        const ledger = getAuditLedger();
+        const activeLog = ledger.find(l => l.id === activeLogId);
+        
+        if (reviewTitle) reviewTitle.textContent = "Audit Record: " + activeLog.id;
+        if (reviewDescription) {
+          reviewDescription.textContent = `Review AI sorting parameters. Overrides directly reclassify sorted bales and statistics.`;
+        }
+
+        // Load correct mock image asset into snapshot box
+        const snapshotFeed = document.querySelector(".review-snapshot .snapshot-feed");
+        if (snapshotFeed) {
+          snapshotFeed.innerHTML = `
+            <span class="snapshot-live"></span>
+            <strong>LOW AI CONFIDENCE - HUMAN AUDIT REQUIRED</strong>
+          `;
+        }
+
+        // Set matching sample item in review window
+        if (snapshotItems) {
+          let categoryKey = activeLog.category.toLowerCase().replace(" ", "_");
+          if (categoryKey === "food_organics" || categoryKey === "food") categoryKey = "food_organics";
+          const itemMeta = detectionResults[categoryKey] || detectionResults.unknown;
+          
+          snapshotItems.innerHTML = `
+            <img src="${itemMeta.imageSrc}" alt="${activeLog.category}" style="max-height:90px; object-fit:contain;" />
+            <div style="display:flex; flex-direction:column; gap:4px; font-size:13px; text-align:left;">
+              <div><strong>Initial Prediction:</strong> ${activeLog.category}</div>
+              <div><strong>Weight:</strong> ${activeLog.weight}</div>
+              <div><strong>Confidence:</strong> ${activeLog.confidence}</div>
+            </div>
+          `;
+
+          // Select matching item in dropdown
+          const reclassifySelect = document.getElementById("reclassifySelect");
+          if (reclassifySelect) {
+            reclassifySelect.value = activeLog.category;
+          }
+        }
+
+        modal.classList.add("active");
+        modal.setAttribute("aria-hidden", "false");
+      });
+    });
+  }
+
+  function closeModal() {
+    modal.classList.remove("active");
+    modal.setAttribute("aria-hidden", "true");
+    activeLogId = null;
+    activeRow = null;
+  }
+
+  if (closeButton) closeButton.addEventListener("click", closeModal);
+  modal.addEventListener("click", function (event) {
+    if (event.target === modal) closeModal();
+  });
+
+  if (clearButton) {
+    clearButton.addEventListener("click", function () {
+      if (activeLogId) {
+        const ledger = getAuditLedger();
+        const activeLog = ledger.find(l => l.id === activeLogId);
+        
+        const reclassifySelect = document.getElementById("reclassifySelect");
+        const chosenCategory = reclassifySelect ? reclassifySelect.value : activeLog.category;
+
+        if (chosenCategory !== activeLog.category) {
+          activeLog.category = chosenCategory;
+          activeLog.status = "Verified (Reclassified)";
+        } else {
+          activeLog.status = "Verified (Cleared)";
+        }
+        
+        saveAuditLedger(ledger);
+        buildLedgerTable();
+      }
+      closeModal();
+    });
+  }
+
+  if (quarantineButton) {
+    quarantineButton.addEventListener("click", function () {
+      if (activeLogId) {
+        const ledger = getAuditLedger();
+        const activeLog = ledger.find(l => l.id === activeLogId);
+        activeLog.status = "Quarantined";
+        saveAuditLedger(ledger);
+        buildLedgerTable();
+      }
+      closeModal();
+    });
+  }
+}
+
+/******************************************
+ * 4. OPERATIONS DASHBOARD PAGE           *
+ ******************************************/
+function initAnalyticsCharts() {
+  const palette = {
+    green: "#167647",
+    blue: "#2f6f8f",
+    amber: "#b7791f",
+    purple: "#8b5cf6",
+    slate: "#8aa0a8",
+    red: "#b42318",
+    orange: "#e67e22",
+    teal: "#1abc9c",
+    darkGreen: "#0d4f35"
+  };
+
+  const compositionCanvas = document.getElementById("compositionChart");
+  if (!compositionCanvas) return; // Not on analytics page
+
+  // Live clock ticking in topbar
+  const clockEl = document.getElementById("liveClock");
+  function updateClock() {
+    if (!clockEl) return;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const dateStr = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    clockEl.textContent = `${dateStr} · ${timeStr}`;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+
+  // Update recent activity ledger preview list from localStorage
+  const recentList = document.getElementById("dashLedgerList");
+  if (recentList) {
+    const ledger = getAuditLedger().slice(0, 3);
+    recentList.innerHTML = "";
+    
+    ledger.forEach(log => {
+      const itemDiv = document.createElement("div");
+      itemDiv.className = "drill-trigger";
+      itemDiv.tabIndex = 0;
+      
+      let statusClass = "cleared";
+      if (log.status === "Review Needed") statusClass = "review";
+      if (log.status === "Quarantined" || log.status === "Quarantine") statusClass = "quarantine";
+
+      itemDiv.innerHTML = `
+        <span class="status-pill ${statusClass}">${log.status}</span>
+        <strong>Scan Verification</strong>
+        <p>${log.time} · ${log.station} · ${log.category} (${log.confidence})</p>
+      `;
+
+      itemDiv.addEventListener("click", () => {
+        renderMaterialDetail(log.category);
+      });
+
+      recentList.appendChild(itemDiv);
+    });
+  }
+
+  // Draw chart views
+  if (!window.Chart) {
+    drawFallbackAnalyticsCharts(palette);
+    window.addEventListener("resize", function () {
+      drawFallbackAnalyticsCharts(palette);
+    });
+    return;
+  }
+
+  // Register datalabels plugin
+  if (window.ChartDataLabels) {
+    Chart.register(ChartDataLabels);
+  }
+
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          boxWidth: 12,
+          color: "#66756f"
+        }
+      }
+    }
+  };
+
+  // 1. COMPOSITION CHART (Updated to the new 9 categories)
+  new Chart(compositionCanvas, {
+    type: "doughnut",
+    data: {
+      labels: ["Metal", "Plastic", "Glass", "Paper", "Cardboard", "Food Organics", "General Trash", "Textile", "Battery"],
+      datasets: [{
+        data: [25, 20, 15, 10, 10, 8, 5, 5, 2],
+        backgroundColor: [
+          palette.amber,
+          palette.blue,
+          palette.purple,
+          palette.slate,
+          palette.orange,
+          palette.green,
+          "#7f8c8d",
+          palette.teal,
+          palette.red
+        ],
+        borderColor: "#ffffff",
+        borderWidth: 2
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      cutout: "68%",
+      plugins: {
+        ...chartDefaults.plugins,
+        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 }, color: "#66756f" } },
+        datalabels: {
+          color: "#ffffff",
+          font: { weight: "bold", size: 10 },
+          formatter: (value) => value >= 5 ? value + "%" : "",
+          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 5,
+          textShadowColor: "rgba(0,0,0,0.4)",
+          textShadowBlur: 3
+        }
+      }
+    }
+  });
+
+  // 2. RESALE CHART
+  const resaleCanvas = document.getElementById("resaleChart");
+  if (resaleCanvas) {
+    new Chart(resaleCanvas, {
+      type: "bar",
+      data: {
+        labels: ["Metal", "Plastic", "Glass", "Paper", "Cardboard"],
+        datasets: [{
+          label: "Resale Value",
+          data: [540000, 152000, 107051, 15000, 21000],
+          backgroundColor: [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            anchor: "end",
+            align: "top",
+            color: "#14221b",
+            font: { weight: "bold", size: 10.5 },
+            formatter: (value) => "$" + (value / 1000).toFixed(0) + "k",
+            padding: { bottom: 4 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: (value) => "$" + value / 1000 + "k", color: "#66756f" },
+            grid: { color: "#d9e6df" }
+          },
+          x: { ticks: { color: "#66756f" }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // 3. YIELD CHART
+  const yieldCanvas = document.getElementById("yieldChart");
+  if (yieldCanvas) {
+    new Chart(yieldCanvas, {
+      type: "line",
+      data: {
+        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        datasets: [
+          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.amber, backgroundColor: "rgba(183, 121, 31, 0.08)", tension: 0.32, fill: true },
+          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.blue, backgroundColor: "rgba(47, 111, 143, 0.08)", tension: 0.32, fill: true },
+          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.slate, backgroundColor: "rgba(138, 160, 168, 0.08)", tension: 0.32, fill: true },
+          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.orange, backgroundColor: "rgba(230, 126, 34, 0.08)", tension: 0.32, fill: true },
+          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.purple, backgroundColor: "rgba(139, 92, 246, 0.08)", tension: 0.32, fill: true }
+        ]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: {
+          datalabels: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { color: "#66756f" }, grid: { color: "#d9e6df" } },
+          x: { ticks: { color: "#66756f" }, grid: { display: false } }
+        }
+      }
+    });
+  }
+}
+
+/* Fallback chart drawings inside plain canvas context */
+function prepareCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.max(240, Math.floor(rect.width * ratio));
+  canvas.height = Math.max(180, Math.floor(rect.height * ratio));
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  return { ctx, width: rect.width, height: rect.height };
+}
+
+function drawFallbackAnalyticsCharts(palette) {
+  const composition = document.getElementById("compositionChart");
+  if (composition) {
+    const { ctx, width, height } = prepareCanvas(composition);
+    const labels = ["Metal", "Plastic", "Glass", "Paper", "Cardboard", "Food Organics", "General Trash", "Textile", "Battery"];
+    const values = [25, 20, 15, 10, 10, 8, 5, 5, 2];
+    const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange, palette.green, "#7f8c8d", palette.teal, palette.red];
+    const total = values.reduce((sum, value) => sum + value, 0);
+    const radius = Math.min(width, height) * 0.28;
+    const centerX = width * 0.5;
+    const centerY = height * 0.43;
+    let start = -Math.PI / 2;
+
+    values.forEach((value, index) => {
+      const angle = (value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius, start, start + angle);
+      ctx.closePath();
+      ctx.fillStyle = colors[index];
+      ctx.fill();
+      start += angle;
+    });
+
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+
+    ctx.fillStyle = "#14221b";
+    ctx.font = "bold 15px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Material Mix", centerX, centerY + 6);
+  }
+
+  const resale = document.getElementById("resaleChart");
+  if (resale) {
+    const { ctx, width, height } = prepareCanvas(resale);
+    const labels = ["Metal", "Plastic", "Glass", "Paper", "Cardboard"];
+    const values = [540, 152, 107, 15, 21];
+    const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange];
+    drawFallbackBars(ctx, width, height, labels, values, colors, "$", "k");
+  }
+
+  const yieldCanvas = document.getElementById("yieldChart");
+  if (yieldCanvas) {
+    const { ctx, width, height } = prepareCanvas(yieldCanvas);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+    const series = [
+      { label: "Metal", data: [350, 360, 380, 400, 420, 450], color: palette.amber },
+      { label: "Plastic", data: [280, 290, 310, 330, 350, 380], color: palette.blue },
+      { label: "Paper", data: [110, 115, 120, 130, 140, 150], color: palette.slate },
+      { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], color: palette.orange },
+      { label: "Glass", data: [90, 95, 105, 110, 120, 127], color: palette.purple }
+    ];
+    drawFallbackLines(ctx, width, height, months, series);
+  }
+}
+
+function drawFallbackBars(ctx, width, height, labels, values, colors, prefix, suffix) {
+  const max = Math.max(...values) * 1.15;
+  const left = 48;
+  const right = 18;
+  const top = 20;
+  const bottom = 46;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+  const barGap = 14;
+  const barWidth = Math.max(20, (chartWidth - barGap * (labels.length - 1)) / labels.length);
+
+  ctx.strokeStyle = "#d9e6df";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, top + chartHeight);
+  ctx.lineTo(left + chartWidth, top + chartHeight);
+  ctx.stroke();
+
+  ctx.font = "11px Arial";
+  ctx.textAlign = "center";
+  labels.forEach((label, index) => {
+    const barHeight = (values[index] / max) * chartHeight;
+    const x = left + index * (barWidth + barGap);
+    const y = top + chartHeight - barHeight;
+    ctx.fillStyle = colors[index];
+    ctx.fillRect(x, y, barWidth, barHeight);
+    ctx.fillStyle = "#66756f";
+    ctx.fillText(label, x + barWidth / 2, height - 20);
+    ctx.fillStyle = "#14221b";
+    ctx.font = "bold 11px Arial";
+    ctx.fillText(prefix + values[index] + suffix, x + barWidth / 2, y - 6);
+    ctx.font = "11px Arial";
+  });
+}
+
+function drawFallbackLines(ctx, width, height, months, series) {
+  const allValues = series.flatMap(item => item.data);
+  const max = Math.max(...allValues) * 1.15;
+  const left = 44;
+  const right = 18;
+  const top = 18;
+  const bottom = 52;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+
+  ctx.strokeStyle = "#d9e6df";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = top + (chartHeight / 4) * i;
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + chartWidth, y); ctx.stroke();
+  }
+
+  ctx.font = "11px Arial";
+  ctx.fillStyle = "#66756f";
+  ctx.textAlign = "center";
+  months.forEach((label, index) => {
+    const x = left + (chartWidth / (months.length - 1)) * index;
+    ctx.fillText(label, x, top + chartHeight + 24);
+  });
+
+  series.forEach(item => {
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    item.data.forEach((value, index) => {
+      const x = left + (chartWidth / (item.data.length - 1)) * index;
+      const y = top + chartHeight - (value / max) * chartHeight;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+/******************************************
+ * 5. SIDEBAR DRILL-DOWN INTERACTIONS     *
+ ******************************************/
+const drillMaterialData = {
+  Metal: {
+    color: "#b7791f",
+    isContaminant: false,
+    tonnage: "450 tons",
+    value: "$540,000",
+    rate: "@ $1,200/ton market rate",
+    purity: "99.1%",
+    status: "Clean recyclable metal grade",
+    subtitle: "30-day recovery trend, purity grade, and source stations for audited metals.",
+    trend: [12, 14, 15, 13, 16, 18, 17, 15, 14, 15, 16, 14, 13, 15, 17, 19, 18, 16, 15, 14],
+    zones: [["Station A01", 180], ["Mobile Scanner", 150], ["Station C03", 120]]
+  },
+  Plastic: {
+    color: "#2f6f8f",
+    isContaminant: false,
+    tonnage: "380 tons",
+    value: "$152,000",
+    rate: "@ $400/ton market rate",
+    purity: "97.4%",
+    status: "Bale-ready recyclables",
+    subtitle: "Plastic recovery trend, resale value, and optical-line scan station logs.",
+    trend: [10, 11, 12, 11, 13, 14, 13, 12, 11, 12, 13, 11, 10, 12, 14, 15, 14, 12, 11, 10],
+    zones: [["Station A01", 150], ["Mobile Scanner", 130], ["Station C03", 100]]
+  },
+  Glass: {
+    color: "#8b5cf6",
+    isContaminant: false,
+    tonnage: "127 tons",
+    value: "$107,051",
+    rate: "@ $843/ton market rate",
+    purity: "91.8%",
+    status: "Recalibration recommended",
+    subtitle: "Glass recovery is stable, but audit reviews suggest color segregation holds potential value.",
+    trend: [2, 3, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 3],
+    zones: [["Station A01", 60], ["Mobile Scanner", 40], ["Station C03", 27]]
+  },
+  Paper: {
+    color: "#8aa0a8",
+    isContaminant: false,
+    tonnage: "150 tons",
+    value: "$15,000",
+    rate: "@ $100/ton market rate",
+    purity: "93.2%",
+    status: "Clean recyclable paper grade",
+    subtitle: "Paper recovery logs showing dry-fiber bale consistency.",
+    trend: [4, 5, 4, 6, 5, 4, 5, 6, 4, 5, 4, 6, 7, 5, 4, 5, 6, 4, 5, 6],
+    zones: [["Station A01", 40], ["Mobile Scanner", 80], ["Station C03", 30]]
+  },
+  Cardboard: {
+    color: "#e67e22",
+    isContaminant: false,
+    tonnage: "140 tons",
+    value: "$21,000",
+    rate: "@ $150/ton market rate",
+    purity: "95.4%",
+    status: "Bale-ready high-grade fibers",
+    subtitle: "Cardboard recovery, fiber purity, and sorting source distribution.",
+    trend: [3, 4, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 4],
+    zones: [["Station A01", 30], ["Mobile Scanner", 90], ["Station C03", 20]]
+  },
+  "Food Organics": {
+    color: "#27ae60",
+    isContaminant: true,
+    tonnage: "1,420 incidents",
+    value: "-$12,000",
+    rate: "Estimated washing / bale sorting overhead",
+    purity: "Medium",
+    status: "High residue hazard",
+    subtitle: "Organic contamination flags, cleaning costs, and incident hotspots.",
+    trend: [50, 48, 52, 45, 60, 55, 49, 45, 42, 50, 48, 44, 46, 52, 55, 60, 58, 45, 40, 38],
+    zones: [["Station A01", 600], ["Mobile Scanner", 500], ["Station C03", 320]]
+  },
+  "General Trash": {
+    color: "#7f8c8d",
+    isContaminant: true,
+    tonnage: "950 incidents",
+    value: "-$14,200",
+    rate: "Estimated landfill disposal fees",
+    purity: "Low",
+    status: "Unrecoverable waste logs",
+    subtitle: "General trash contamination patterns and landfill diversion rates.",
+    trend: [30, 32, 28, 35, 30, 29, 31, 33, 30, 28, 35, 34, 32, 30, 29, 31, 33, 35, 30, 28],
+    zones: [["Station A01", 400], ["Mobile Scanner", 350], ["Station C03", 200]]
+  },
+  Textile: {
+    color: "#1abc9c",
+    isContaminant: true,
+    tonnage: "780 incidents",
+    value: "-$8,500",
+    rate: "Estimated machine downtime cost",
+    purity: "High",
+    status: "Tangling / Jamming risk",
+    subtitle: "Fabric logs showing machine safety overrides and manual redirects.",
+    trend: [25, 24, 26, 28, 25, 24, 27, 26, 25, 23, 28, 29, 25, 24, 26, 27, 25, 24, 23, 25],
+    zones: [["Station A01", 300], ["Mobile Scanner", 280], ["Station C03", 200]]
+  },
+  Battery: {
+    color: "#b42318",
+    isContaminant: true,
+    tonnage: "210 incidents",
+    value: "-$28,000",
+    rate: "Estimated fire safety containment risk",
+    purity: "Critical",
+    status: "Fire risk - immediate quarantine",
+    subtitle: "Quarantined lithium battery incidents and station safety alarms.",
+    trend: [8, 6, 9, 7, 5, 8, 10, 6, 7, 5, 9, 8, 6, 7, 5, 8, 9, 6, 7, 5],
+    zones: [["Station A01", 100], ["Mobile Scanner", 70], ["Station C03", 40]]
+  }
+};
+
+const drillStationData = {
+  "STATION-A01": {
+    load: "8.5 t/h equivalent",
+    capacity: "/ 10 t/h capacity",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Optical Lens Clean",
+    motor: "42°C",
+    air: "Normal calibration",
+    action: "Operational",
+    insight: "Main Sorting Lobby Station. Object classification is optimal, no anomalies reported.",
+    uptime: [["Active Scanning Uptime", 98], ["Diagnostic Downtime", 2]],
+    composition: [["Plastic", 50], ["Metal", 30], ["Paper", 20]]
+  },
+  "STATION-B02": {
+    load: "4.2 t/h equivalent",
+    capacity: "/ 8 t/h capacity",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Optical Lens Clean",
+    motor: "39°C",
+    air: "Normal calibration",
+    action: "Operational",
+    insight: "Loading Dock AI Scanner. Calibrated for high-glare exterior cargo lighting.",
+    uptime: [["Active Scanning Uptime", 95], ["Diagnostic Downtime", 5]],
+    composition: [["Glass", 60], ["Cardboard", 30], ["Textiles", 10]]
+  },
+  "STATION-C03": {
+    load: "6.8 t/h equivalent",
+    capacity: "/ 8 t/h capacity",
+    speed: "AI-Model active",
+    maxSpeed: "v2.1 Light Precision",
+    scanner: "Lens Obscured (10%)",
+    motor: "45°C",
+    air: "Clean Lens recommended",
+    action: "Clean Lens Alert",
+    insight: "Glass Sorting Bay. High humidity causing dust buildup on sorting lens mirror.",
+    uptime: [["Active Scanning Uptime", 90], ["Maintenance Calibration", 10]],
+    composition: [["Glass", 80], ["General Trash", 15], ["Batteries", 5]]
+  },
+  "STATION-D04": {
+    load: "1.5 t/h equivalent",
+    capacity: "/ 5 t/h capacity",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Optical Lens Clean",
+    motor: "35°C",
+    air: "Normal calibration",
+    action: "Quarantine Safe",
+    insight: "Contaminant Recovery Bin. Keeps track of textiles, organic waste, and battery quarantine cycles.",
+    uptime: [["Active Scanning Uptime", 99], ["Diagnostic Downtime", 1]],
+    composition: [["General Trash", 60], ["Food Organics", 25], ["Batteries", 15]]
+  },
+  "MOBILE-APP": {
+    load: "User-sourced upload",
+    capacity: "On-demand api queue",
+    speed: "Mobile API active",
+    maxSpeed: "v1.0 Lightweight",
+    scanner: "User device cameras",
+    motor: "API online",
+    air: "Rate limit: 120 req/min",
+    action: "Operational",
+    insight: "Station for facility operators to upload real-time waste sorting photos.",
+    uptime: [["API Service Uptime", 99.9], ["API Downtime", 0.1]],
+    composition: [["Plastic Bottles", 40], ["Aluminium Cans", 30], ["Cardboard", 20], ["Contaminants", 10]]
+  },
+  "UPLOAD-HUB": {
+    load: "Mixed file interface",
+    capacity: "On-demand api queue",
+    speed: "Web UI upload active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "User Web uploads",
+    motor: "Web app online",
+    air: "File size limit: 100MB",
+    action: "Operational",
+    insight: "Manual batch file uploader and Webcam capture terminal interface for sorting verification.",
+    uptime: [["Web UI Service Uptime", 99.8], ["Web UI Downtime", 0.2]],
+    composition: [["Metal", 30], ["Plastic", 30], ["Glass", 20], ["Paper", 10], ["Contaminants", 10]]
+  }
+};
+
+function activateDetailPanel(targetId) {
+  const panel = document.getElementById(targetId);
+  if (!panel) return;
+
+  const dock = panel.closest(".detail-dock");
+  if (dock) {
+    dock.querySelectorAll(".detail-panel").forEach(item => item.classList.remove("active"));
+  }
+  panel.classList.add("active");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderSparkBars(container, values, color) {
+  if (!container) return;
+  const max = Math.max(...values);
+  container.innerHTML = values
+    .map(value => `<span style="height:${Math.max(12, (value / max) * 100)}%; background:${color}" title="${value}"></span>`)
+    .join("");
+}
+
+function renderBarRows(container, rows, color, suffix = "") {
+  if (!container) return;
+  const max = Math.max(...rows.map(row => row[1]));
+  container.innerHTML = rows
+    .map(([label, value]) => `
+      <div>
+        <span>${label}</span>
+        <strong>${value}${suffix}</strong>
+        <i style="width:${Math.max(4, (value / max) * 100)}%; background:${color}"></i>
+      </div>
+    `)
+    .join("");
+}
+
+function renderMaterialDetail(materialName, options = {}) {
+  const activate = options.activate !== false;
+  
+  // Normalization
+  let normName = materialName;
+  if (materialName === "Food" || materialName === "Organics" || materialName === "food" || materialName === "food_organics") {
+    normName = "Food Organics";
+  } else if (materialName === "Trash" || materialName === "trash") {
+    normName = "General Trash";
+  }
+
+  const data = drillMaterialData[normName] || drillMaterialData.Metal;
+  const panel = document.getElementById("detail-material");
+  if (!panel) return;
+
+  panel.querySelectorAll("[data-material-title]").forEach(el => { el.textContent = normName; });
+  panel.querySelectorAll("[data-material-subtitle]").forEach(el => { el.textContent = data.subtitle; });
+  panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = data.tonnage; el.style.color = data.color; });
+  panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = data.value; el.style.color = data.color; });
+  panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = data.rate; });
+  panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = data.purity; el.style.color = data.color; });
+  panel.querySelectorAll("[data-material-status]").forEach(el => { el.textContent = data.status; });
+  panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = data.isContaminant ? "Total Flagged" : "Tonnage Recovered"; });
+  panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = data.isContaminant ? "Est. Sorting Penalty" : "Commodity Market Value"; });
+  panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = data.isContaminant ? "Severity Rating" : "Avg Material Purity"; });
+  panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = data.isContaminant ? "30-Day Flagged Trend" : "30-Day Recovery Trend"; });
+  panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = data.isContaminant ? "Flags by Scanner Station" : "Distribution by Scanner Station"; });
+  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, data.trend, data.color));
+  panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, data.zones, data.color, data.isContaminant ? "" : " t"));
+
+  if (activate) activateDetailPanel("detail-material");
+}
+
+function renderStationDetail(stationId, options = {}) {
+  const activate = options.activate !== false;
+  
+  // Normalize
+  let normId = stationId;
+  if (stationId === "BELT-A01") normId = "STATION-A01";
+  if (stationId === "BELT-B02") normId = "STATION-B02";
+  if (stationId === "BELT-C03") normId = "STATION-C03";
+  if (stationId === "BELT-D04") normId = "STATION-D04";
+
+  const data = drillStationData[normId] || drillStationData["STATION-A01"];
+  const panel = document.getElementById("detail-belt");
+  if (!panel) return;
+
+  panel.querySelectorAll("[data-belt-id]").forEach(el => { el.textContent = normId; });
+  panel.querySelectorAll("[data-belt-load]").forEach(el => { el.textContent = data.load; });
+  panel.querySelectorAll("[data-belt-capacity]").forEach(el => { el.textContent = data.capacity; });
+  panel.querySelectorAll("[data-belt-speed]").forEach(el => { el.textContent = data.speed; });
+  panel.querySelectorAll("[data-belt-max-speed]").forEach(el => { el.textContent = data.maxSpeed; });
+  panel.querySelectorAll("[data-belt-scanner]").forEach(el => { el.textContent = data.scanner; });
+  panel.querySelectorAll("[data-belt-motor]").forEach(el => { el.textContent = data.motor; });
+  panel.querySelectorAll("[data-belt-air]").forEach(el => { el.textContent = data.air; });
+  panel.querySelectorAll("[data-belt-action]").forEach(el => { el.textContent = data.action; });
+  panel.querySelectorAll("[data-belt-insight]").forEach(el => { el.textContent = data.insight; });
+  panel.querySelectorAll("[data-belt-uptime]").forEach(el => renderBarRows(el, data.uptime, "#167647", "%"));
+  panel.querySelectorAll("[data-belt-composition]").forEach(el => renderBarRows(el, data.composition, "#2f6f8f", "%"));
+
+  // Adjust headings of drill-down to Station layout
+  const kicker = panel.querySelector(".eyebrow");
+  if (kicker) kicker.textContent = "AI Station Diagnostics";
+  const title = panel.querySelector("h2");
+  if (title) title.innerHTML = `Scanning Device: <span data-belt-id>${normId}</span>`;
+
+  const labels = panel.querySelectorAll(".detail-card h3");
+  if (labels[0]) labels[0].textContent = "Sensor & Camera Diagnostics";
+  if (labels[1]) labels[1].textContent = "Model Reliability & Sorting Mix";
+
+  const rows = panel.querySelectorAll(".detail-list dt");
+  if (rows[0]) rows[0].textContent = "Camera Lens Status";
+  if (rows[1]) rows[1].textContent = "Compute Core Temp";
+  if (rows[2]) rows[2].textContent = "Recalibration Delta";
+
+  if (activate) activateDetailPanel("detail-belt");
+}
+
+function initDrillThrough() {
+  document.querySelectorAll("[data-drill-target]").forEach(trigger => {
+    trigger.addEventListener("click", function (event) {
+      if (event.target.closest("[data-material-detail], [data-belt-detail]")) return;
+      activateDetailPanel(trigger.dataset.drillTarget);
+    });
+    trigger.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activateDetailPanel(trigger.dataset.drillTarget);
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-material-detail]").forEach(trigger => {
+    trigger.addEventListener("click", function (event) {
+      event.stopPropagation();
+      renderMaterialDetail(trigger.dataset.materialDetail);
+    });
+  });
+
+  document.querySelectorAll("[data-belt-detail]").forEach(trigger => {
+    trigger.addEventListener("click", function (event) {
+      event.stopPropagation();
+      renderStationDetail(trigger.dataset.beltDetail);
+    });
+  });
+
+  if (document.querySelector(".belt-detail-output")) {
+    const defaultBelt = document.querySelector("[data-belt-id]")?.textContent?.trim() || "STATION-A01";
+    renderStationDetail(defaultBelt, { activate: false });
+  }
+}
+
+/* Page Navigation Match & Trigger */
+document.addEventListener("DOMContentLoaded", function () {
+  // Navigation terminology updates across all files
+  const sideLinks = document.querySelectorAll(".side-nav a");
+  sideLinks.forEach(link => {
+    const text = link.textContent.trim();
+    if (text === "Live AI Stream") {
+      link.textContent = "Classification Result";
+    } else if (text === "Review Logs") {
+      link.textContent = "Verification Logs";
+    } else if (text === "Analytics & Reports") {
+      link.textContent = "Operations Dashboard";
+    }
+  });
+
+  initUploadPage();
+  initResultPage();
+  initReviewModal();
+  initAnalyticsCharts();
+  initDrillThrough();
+});
