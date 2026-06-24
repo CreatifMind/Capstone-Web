@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body>
+<body class="ops-pro-page upload-pro-page">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -32,22 +32,22 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Operations</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Feed">
+        <div class="sidebar-section-label">Workflow</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Mixed Image Upload</span>
+          <span class="nav-item-label">Upload Images</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="AI Classifier">
-          <i class="nav-item-icon fa-solid fa-camera"></i>
-          <span class="nav-item-label">Classification Result</span>
+        <a href="result.html" class="nav-item" data-tooltip="Results">
+          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
+          <span class="nav-item-label">Classification Results</span>
         </a>
 
-        <div class="sidebar-section-label">Compliance</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Logs & Alerts">
-          <i class="nav-item-icon fa-solid fa-receipt"></i>
-          <span class="nav-item-label">Verification Logs</span>
+        <div class="sidebar-section-label">Review</div>
+        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
+          <span class="nav-item-label">Human Review Logs</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
+        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Operations Dashboard</span>
         </a>
@@ -58,7 +58,7 @@
           <div class="user-avatar">AD</div>
           <div class="user-info">
             <div class="user-name">Admin Operator</div>
-            <div class="user-role">Super Admin</div>
+            <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
         <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
@@ -76,8 +76,8 @@
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Mixed Waste Upload</h1>
-            <p>AI Sorting Terminal</p>
+            <h1>Upload Images</h1>
+            <p>Submit single images, ZIP batches, or mixed folders for AI classification.</p>
           </div>
         </div>
 
@@ -85,7 +85,7 @@
           <!-- Search Bar -->
           <div class="search-bar">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search logs, alerts, stations..." aria-label="Search" />
+            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
           </div>
 
           <!-- Live Clock / Date Pill -->
@@ -109,20 +109,17 @@
       </header>
 
       <div class="page-body">
-        <section style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px;">
-          <!-- LEFT SIDE: Upload box -->
-          <div class="panel upload-panel bbox-card" style="padding: 32px; display: flex; flex-direction: column;">
+        <section class="upload-command-grid">
+          <div class="panel upload-panel bbox-card">
             <div class="upload-box"
               style="border: 2px dashed var(--border); padding: 60px 40px; border-radius: 12px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
-              <div class="upload-icon"
-                style="background: var(--primary-xlight); color: var(--primary); width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 24px;">
+              <div class="upload-icon">
                 <i class="fa-solid fa-arrow-up-from-bracket"></i>
               </div>
-              <h2 style="font-size: 1.75rem; margin-bottom: 12px; font-weight: 700; color: var(--text);">Select Sorting
-                Files</h2>
-              <p
-                style="margin-bottom: 28px; color: var(--muted); max-width: 420px; font-size: 0.9375rem; line-height: 1.5;">
-                Drag and drop mixed waste images here, or choose files from your local system.
+              <h2>Select waste image files</h2>
+              <p>
+                Drag and drop images or ZIP batches. PurityLoop AI will process them into classification results,
+                contamination flags, and review records.
               </p>
               <label for="fileUpload" class="upload-label"
                 style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
@@ -146,12 +143,10 @@
             </div>
           </div>
 
-          <!-- RIGHT SIDE: Tips Card -->
-          <div class="panel upload-info-panel bbox-card"
-            style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 480px;">
+          <div class="panel upload-info-panel bbox-card">
             <div>
               <div class="section-heading compact" style="margin-bottom: 24px;">
-                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text); text-align: left;">Upload & Quality
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text); text-align: left;">Upload and Quality
                   Tips</h2>
               </div>
               <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px;">
@@ -161,8 +156,8 @@
                   <div>
                     <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Lighting &
                       Contrast</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Ensure images are
-                      captured under uniform conveyor belt LED lighting.</p>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Use clear,
+                      evenly lit images with the waste item visible.</p>
                   </div>
                 </li>
                 <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
@@ -171,8 +166,8 @@
                   <div>
                     <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Full
                       Visibility</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid overlapping
-                      materials. Ensure clear spacing between items on the belt.</p>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid excessive
+                      overlap so the model can identify material boundaries.</p>
                   </div>
                 </li>
                 <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
@@ -181,8 +176,8 @@
                   <div>
                     <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Minimize
                       Blur</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Keep shutter
-                      speeds above 1/500s to avoid conveyor motion blur.</p>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid blurred
+                      captures and low-resolution screenshots.</p>
                   </div>
                 </li>
                 <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">

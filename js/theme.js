@@ -91,10 +91,14 @@ window.showToast = function (message, type = 'success') {
     container.id = 'toastContainer';
     document.body.appendChild(container);
   }
-  const icons = { success: '✅', error: '❌', warning: '⚠️' };
+  const icons = {
+    success: '<i class="fa-solid fa-circle-check"></i>',
+    error: '<i class="fa-solid fa-circle-xmark"></i>',
+    warning: '<i class="fa-solid fa-triangle-exclamation"></i>'
+  };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<span class="toast-icon">${icons[type] || '💬'}</span><span class="toast-message">${message}</span>`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || '<i class="fa-solid fa-circle-info"></i>'}</span><span class="toast-message">${message}</span>`;
   container.appendChild(toast);
   requestAnimationFrame(() => { requestAnimationFrame(() => { toast.classList.add('show'); }); });
   setTimeout(() => {
@@ -229,10 +233,10 @@ function initTyped() {
   if (!el) return;
   new Typed(el, {
     strings: [
-      'Predict shortages before they happen.',
-      'Optimize procurement workflows.',
-      'Eliminate waste with AI insights.',
-      'Power smarter inventory decisions.',
+      'Classify uploaded waste images in seconds.',
+      'Recover recyclable value with AI confidence scoring.',
+      'Detect contamination before it reaches the final stream.',
+      'Route uncertain results to human review.',
     ],
     typeSpeed: 45,
     backSpeed: 25,
@@ -327,7 +331,7 @@ function initLandingCharts() {
     new Chart(riskEl, {
       type: 'bar',
       data: {
-        labels: ['Sta. A01', 'Sta. B02', 'Sta. C03', 'Sta. D04', 'Sta. E05'],
+        labels: ['Single image', 'ZIP batch', 'Mixed set', 'Hazard review', 'Clean batch'],
         datasets: [{
           label: 'Risk Score',
           data: [12, 8, 34, 19, 5],

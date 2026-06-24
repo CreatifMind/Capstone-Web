@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — PurityLoop AI Platform</title>
+  <title>Login | PurityLoop AI Platform</title>
   <meta name="description" content="Sign in to the PurityLoop AI intelligent waste sorting platform." />
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
@@ -16,13 +16,10 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="login-body">
+<body class="login-body premium-login">
 
   <div class="login-split">
 
-    <!-- ═══════════════════════
-         LEFT — BRANDING PANEL
-    ═══════════════════════ -->
     <div class="login-visual">
       <div class="login-visual-content">
         <!-- Brand mark -->
@@ -35,26 +32,26 @@
         </h1>
 
         <p class="login-desc">
-          AI-powered procurement forecasting and inventory optimization.
+          Upload waste images, classify materials with AI, detect contamination, and keep every decision auditable.
         </p>
 
         <!-- Checklist -->
         <div class="login-checklist">
           <div class="checklist-item">
             <i class="fa-solid fa-circle-check"></i>
-            <span>AI Shortage Prediction</span>
+            <span>YOLOv8 waste classification</span>
           </div>
           <div class="checklist-item">
             <i class="fa-solid fa-circle-check"></i>
-            <span>Procurement Intelligence</span>
+            <span>Contamination risk detection</span>
           </div>
           <div class="checklist-item">
             <i class="fa-solid fa-circle-check"></i>
-            <span>Demand Forecasting</span>
+            <span>Human review log trail</span>
           </div>
           <div class="checklist-item">
             <i class="fa-solid fa-circle-check"></i>
-            <span>Real-Time Analytics</span>
+            <span>Operations analytics dashboard</span>
           </div>
         </div>
 
@@ -109,16 +106,12 @@
       <div class="login-visual-footer">
         <div class="ai-badge">
           <span class="ai-badge-dot"></span>
-          AI-Powered · YOLOv8 Model
+          AI-Powered | YOLOv8 Model
         </div>
-        <p>© 2026 PurityLoop AI · Capstone Demonstration</p>
+        <p>© 2026 PurityLoop AI | Capstone Demonstration</p>
       </div>
     </div>
 
-
-    <!-- ═══════════════════════
-         RIGHT — LOGIN CARD
-    ═══════════════════════ -->
     <div class="login-card">
       <div class="login-card-header">
         <a href="index.html"
@@ -186,9 +179,13 @@
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('loginBtn');
     if (form && btn) {
-      form.addEventListener('submit', () => {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing In…';
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in...';
         btn.disabled = true;
+        window.setTimeout(() => {
+          window.location.href = 'upload.html';
+        }, 350);
       });
     }
   </script>

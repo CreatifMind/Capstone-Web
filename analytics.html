@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 
-<body data-page="analytics">
+<body data-page="analytics" class="ops-pro-page analytics-pro-page">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -34,22 +34,22 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Operations</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Feed">
+        <div class="sidebar-section-label">Workflow</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Mixed Image Upload</span>
+          <span class="nav-item-label">Upload Images</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="AI Classifier">
-          <i class="nav-item-icon fa-solid fa-camera"></i>
-          <span class="nav-item-label">Classification Result</span>
+        <a href="result.html" class="nav-item" data-tooltip="Results">
+          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
+          <span class="nav-item-label">Classification Results</span>
         </a>
 
-        <div class="sidebar-section-label">Compliance</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Logs & Alerts">
-          <i class="nav-item-icon fa-solid fa-receipt"></i>
-          <span class="nav-item-label">Verification Logs</span>
+        <div class="sidebar-section-label">Review</div>
+        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
+          <span class="nav-item-label">Human Review Logs</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
+        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Operations Dashboard</span>
         </a>
@@ -60,7 +60,7 @@
           <div class="user-avatar">AD</div>
           <div class="user-info">
             <div class="user-name">Admin Operator</div>
-            <div class="user-role">Super Admin</div>
+            <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
         <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
@@ -78,8 +78,8 @@
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Plant Operations Command Center</h1>
-            <p>AI Plant Management</p>
+            <h1>Operations Command Centre</h1>
+            <p>Track upload throughput, material recovery, contamination risk, and review workload.</p>
           </div>
         </div>
 
@@ -87,7 +87,7 @@
           <!-- Search Bar -->
           <div class="search-bar">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search logs, alerts, stations..." aria-label="Search" />
+            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
           </div>
 
           <!-- Live Clock / Date Pill -->
@@ -115,18 +115,18 @@
         <section class="kpi-grid kpi-grid-four">
           <article class="kpi-card material drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
             <div class="kpi-icon-row">
-              <span class="kpi-badge badge-blue"><i>♻️</i></span>
+              <span class="kpi-badge badge-blue"><i class="fa-solid fa-recycle"></i></span>
               <span class="kpi-trend trend-up">▲ 5.2%</span>
             </div>
             <span>Total Material Diverted</span>
             <strong>1,500 <small>tons</small></strong>
-            <p>Year-to-date across all sorting stations</p>
+            <p>Year-to-date across uploaded image batches</p>
             <div class="kpi-progress-bar"><i style="width: 72%"></i></div>
           </article>
 
           <article class="kpi-card revenue drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
             <div class="kpi-icon-row">
-              <span class="kpi-badge badge-green"><i>💰</i></span>
+              <span class="kpi-badge badge-green"><i class="fa-solid fa-sack-dollar"></i></span>
               <span class="kpi-trend trend-up">▲ 8.1%</span>
             </div>
             <span>Revenue Generated</span>
@@ -137,7 +137,7 @@
 
           <article class="kpi-card purity drill-trigger bbox-card" data-drill-target="detail-purity" tabindex="0">
             <div class="kpi-icon-row">
-              <span class="kpi-badge badge-amber"><i>📊</i></span>
+              <span class="kpi-badge badge-amber"><i class="fa-solid fa-chart-simple"></i></span>
               <span class="kpi-trend trend-down">▼ 0.5%</span>
             </div>
             <span>Average Purity Rate</span>
@@ -148,8 +148,8 @@
 
           <article class="kpi-card hazard drill-trigger bbox-card" data-drill-target="detail-contaminants" tabindex="0">
             <div class="kpi-icon-row">
-              <span class="kpi-badge badge-red"><i>⚠️</i></span>
-              <span class="kpi-trend trend-neutral">— stable</span>
+              <span class="kpi-badge badge-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
+              <span class="kpi-trend trend-neutral">stable</span>
             </div>
             <span>Anomalies Blocked</span>
             <strong>23</strong>
@@ -170,7 +170,7 @@
             </div>
 
             <a href="alerts.html" class="alert-row review">
-              <div class="alert-row-icon"><i>🔔</i></div>
+              <div class="alert-row-icon"><i class="fa-solid fa-bell"></i></div>
               <div class="alert-row-body">
                 <strong>8 Pending Reviews</strong>
                 <p>Low confidence overrides awaiting human QA.</p>
@@ -179,7 +179,7 @@
             </a>
 
             <div class="alert-row success drill-trigger" data-drill-target="detail-purity" tabindex="0">
-              <div class="alert-row-icon"><i>🎯</i></div>
+              <div class="alert-row-icon"><i class="fa-solid fa-bullseye"></i></div>
               <div class="alert-row-body">
                 <strong>AI Detection Precision</strong>
                 <p>Active camera classification score.</p>
@@ -188,7 +188,7 @@
             </div>
 
             <div class="alert-row neutral drill-trigger" data-drill-target="detail-contaminants" tabindex="0">
-              <div class="alert-row-icon"><i>🚫</i></div>
+              <div class="alert-row-icon"><i class="fa-solid fa-ban"></i></div>
               <div class="alert-row-body">
                 <strong>Anomalies Blocked</strong>
                 <p>Textile and battery hazard alerts.</p>
@@ -197,10 +197,10 @@
             </div>
 
             <div class="alert-row danger-row drill-trigger" data-drill-target="detail-purity" tabindex="0">
-              <div class="alert-row-icon"><i>🔍</i></div>
+              <div class="alert-row-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
               <div class="alert-row-body">
-                <strong>Station C03 — Lens Alert</strong>
-                <p>Glass sorting bay needs lens cleaning.</p>
+                <strong>Mixed batch needs human review</strong>
+                <p>Glass confidence dropped below approval threshold.</p>
               </div>
               <span class="alert-row-value" style="color: var(--danger);">!</span>
             </div>
@@ -215,7 +215,7 @@
                 <h2>Material Mix</h2>
               </div>
             </div>
-            <p class="chart-subtitle">Breakdown of all 9 material categories detected across facility scanners, 2026
+            <p class="chart-subtitle">Breakdown of all 9 material categories detected across uploaded images, 2026
               YTD.
             </p>
             <div class="chart-box">
@@ -247,7 +247,7 @@
                 <p class="eyebrow">Log Trail</p>
                 <h2>Recent Verification Ledger</h2>
               </div>
-              <a href="alerts.html" class="secondary-btn">Full Ledger →</a>
+              <a href="alerts.html" class="secondary-btn">Full Ledger</a>
             </div>
 
             <div class="ledger-list" id="dashLedgerList">
@@ -255,17 +255,17 @@
               <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
                 <span class="status-pill cleared">Cleared</span>
                 <strong>Scan Verification</strong>
-                <p>10:42 AM · STATION-A01 · Metal (98.7%)</p>
+                <p>10:42 AM | single-image-upload.jpg | Metal (98.7%)</p>
               </div>
               <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
                 <span class="status-pill review">Review</span>
                 <strong>Manual Review Needed</strong>
-                <p>10:30 AM · STATION-C03 · Glass (82.0%)</p>
+                <p>10:30 AM | mixed-batch.zip | Glass (82.0%)</p>
               </div>
               <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
                 <span class="status-pill quarantine">Quarantine</span>
                 <strong>Battery Hazard</strong>
-                <p>10:25 AM · STATION-D04 · Battery</p>
+                <p>10:25 AM | hazard-sample.png | Battery</p>
               </div>
             </div>
           </article>
@@ -284,30 +284,30 @@
             </div>
           </article>
 
-          <!-- Additional Analytics: Belt Telemetry Panel -->
+          <!-- Additional Analytics: Upload Processing Health -->
           <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-belt" tabindex="0">
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">Additional Analytics</p>
-                <h2>Belt Telemetry Status</h2>
+                <h2>Upload Processing Health</h2>
               </div>
             </div>
-            <p class="chart-subtitle">Live sorting conveyor belt speed and operational efficiency telemetry.</p>
+            <p class="chart-subtitle">Batch processing throughput, queue load, and model review status.</p>
             <div class="belt-telemetry-list" style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
               <div
                 style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Belt-A01 (Recyclables)</span>
-                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active · 1.2 m/s</span>
+                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Single image uploads</span>
+                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active | 42/min</span>
               </div>
               <div
                 style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Belt-B02 (Organics)</span>
-                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active · 0.9 m/s</span>
+                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">ZIP batch ingestion</span>
+                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active | 11/min</span>
               </div>
               <div
                 style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Belt-C03 (Contaminants)</span>
-                <span class="status-pill review" style="padding:2px 8px; font-size:0.75rem;">Review · 0.5 m/s</span>
+                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Low confidence queue</span>
+                <span class="status-pill review" style="padding:2px 8px; font-size:0.75rem;">Review | 8 open</span>
               </div>
             </div>
           </article>
@@ -426,20 +426,20 @@
             <div class="detail-grid two">
               <div class="formula-card">
                 <span>Formula</span>
-                <strong>Purity = Verified Recyclable Mass / Total Audited Mass x 100</strong>
-                <p>Average sorting purity is calculated from verified, clean recyclable scan outcomes.</p>
+                <strong>Purity = Verified recyclable results / Total audited results x 100</strong>
+                <p>Average purity is calculated from verified, clean recyclable upload outcomes.</p>
               </div>
               <div class="action-card warning" style="border-left: 4px solid var(--amber);">
                 <span>System Alert</span>
                 <strong>Glass purity dropped by 4.2%</strong>
-                <p>High impurity incident count on STATION-C03. Clean optical camera lenses to improve accuracy.</p>
+                <p>High impurity count in mixed ZIP uploads. Review image quality and batch composition.</p>
               </div>
             </div>
             <div class="bar-list">
-              <div><span>Station A01</span><strong>99.1%</strong><i style="width: 99.1%"></i></div>
-              <div><span>Station B02</span><strong>95.0%</strong><i style="width: 95.0%"></i></div>
-              <div><span>Station C03</span><strong>90.8%</strong><i style="width: 90.8%"></i></div>
-              <div><span>Station D04</span><strong>88.8%</strong><i style="width: 88.8%"></i></div>
+              <div><span>Single image uploads</span><strong>99.1%</strong><i style="width: 99.1%"></i></div>
+              <div><span>Clean ZIP batches</span><strong>95.0%</strong><i style="width: 95.0%"></i></div>
+              <div><span>Mixed material batches</span><strong>90.8%</strong><i style="width: 90.8%"></i></div>
+              <div><span>Hazard review uploads</span><strong>88.8%</strong><i style="width: 88.8%"></i></div>
             </div>
           </article>
 
@@ -455,29 +455,29 @@
               <div>
                 <h3>Recyclables Breakdown</h3>
                 <div class="bar-list compact">
-                  <button type="button" data-material-detail="Metal"><span>Metal</span><strong>25% · 450 t</strong><i
+                  <button type="button" data-material-detail="Metal"><span>Metal</span><strong>25% | 450 t</strong><i
                       style="width: 25%"></i></button>
-                  <button type="button" data-material-detail="Plastic"><span>Plastic</span><strong>20% · 380
+                  <button type="button" data-material-detail="Plastic"><span>Plastic</span><strong>20% | 380
                       t</strong><i style="width: 20%"></i></button>
-                  <button type="button" data-material-detail="Glass"><span>Glass</span><strong>15% · 127 t</strong><i
+                  <button type="button" data-material-detail="Glass"><span>Glass</span><strong>15% | 127 t</strong><i
                       style="width: 15%"></i></button>
-                  <button type="button" data-material-detail="Paper"><span>Paper</span><strong>10% · 150 t</strong><i
+                  <button type="button" data-material-detail="Paper"><span>Paper</span><strong>10% | 150 t</strong><i
                       style="width: 10%"></i></button>
-                  <button type="button" data-material-detail="Cardboard"><span>Cardboard</span><strong>10% · 140
+                  <button type="button" data-material-detail="Cardboard"><span>Cardboard</span><strong>10% | 140
                       t</strong><i style="width: 10%"></i></button>
                 </div>
               </div>
               <div>
                 <h3>Contaminants &amp; Hazards</h3>
                 <div class="bar-list compact danger-bars">
-                  <button type="button" data-material-detail="Food Organics"><span>Food Organics</span><strong>8% ·
+                  <button type="button" data-material-detail="Food Organics"><span>Food Organics</span><strong>8% |
                       1,420
                       incidents</strong><i style="width: 8%"></i></button>
-                  <button type="button" data-material-detail="General Trash"><span>General Trash</span><strong>5% · 950
+                  <button type="button" data-material-detail="General Trash"><span>General Trash</span><strong>5% | 950
                       incidents</strong><i style="width: 5%"></i></button>
-                  <button type="button" data-material-detail="Textile"><span>Textile</span><strong>5% · 780
+                  <button type="button" data-material-detail="Textile"><span>Textile</span><strong>5% | 780
                       incidents</strong><i style="width: 5%"></i></button>
-                  <button type="button" data-material-detail="Battery"><span>Battery</span><strong>2% · 210
+                  <button type="button" data-material-detail="Battery"><span>Battery</span><strong>2% | 210
                       incidents</strong><i style="width: 2%"></i></button>
                 </div>
               </div>
@@ -520,7 +520,7 @@
                 <thead>
                   <tr>
                     <th>Timestamp</th>
-                    <th>Scanner Station</th>
+                    <th>Upload Source</th>
                     <th>Material</th>
                     <th>Weight</th>
                     <th>AI Confidence</th>
@@ -530,7 +530,7 @@
                 <tbody>
                   <tr>
                     <td>10:42 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="STATION-A01">STATION-A01</button>
+                    <td><button type="button" class="text-drill" data-belt-detail="SINGLE-IMAGE">single-image-upload.jpg</button>
                     </td>
                     <td><button type="button" class="text-drill" data-material-detail="Metal">Metal</button></td>
                     <td>18.4 kg</td>
@@ -539,7 +539,7 @@
                   </tr>
                   <tr>
                     <td>10:30 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="STATION-C03">STATION-C03</button>
+                    <td><button type="button" class="text-drill" data-belt-detail="ZIP-BATCH">mixed-batch.zip</button>
                     </td>
                     <td><button type="button" class="text-drill" data-material-detail="Glass">Glass</button></td>
                     <td>14.5 kg</td>
@@ -548,7 +548,7 @@
                   </tr>
                   <tr>
                     <td>10:25 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="STATION-D04">STATION-D04</button>
+                    <td><button type="button" class="text-drill" data-belt-detail="QUARANTINE-UPLOAD">hazard-sample.png</button>
                     </td>
                     <td><button type="button" class="text-drill" data-material-detail="General Trash">General
                         Trash</button></td>
@@ -585,21 +585,20 @@
                 <div class="spark-bars" data-material-trend></div>
               </div>
               <div>
-                <h3 data-material-zone-title>Distribution by Scanner Station</h3>
+                <h3 data-material-zone-title>Distribution by Upload Source</h3>
                 <div class="bar-list compact" data-material-zones></div>
               </div>
             </div>
           </article>
 
-          <!-- AI STATION DIAGNOSTICS -->
+          <!-- AI UPLOAD DIAGNOSTICS -->
           <article class="panel detail-panel belt-detail-output" id="detail-belt">
             <div class="section-heading compact">
               <div>
-                <p class="eyebrow">AI Station Diagnostics</p>
-                <h2>Scanning Device: <span data-belt-id>STATION-A01</span></h2>
-                <p class="detail-copy" data-belt-insight>Optical lens is calibrated and rate response query parameters
-                  are
-                  nominal.</p>
+                <p class="eyebrow">AI Upload Diagnostics</p>
+                <h2>Upload Source: <span data-belt-id>UPLOAD-HUB</span></h2>
+                <p class="detail-copy" data-belt-insight>Uploaded images are processed by the classifier and routed to
+                  human review when confidence or contamination risk requires a decision.</p>
               </div>
             </div>
 
@@ -608,30 +607,30 @@
                   equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
               <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4
                   Active</strong><small data-belt-max-speed>Core Model</small></div>
-              <div class="metric-tile static"><span>Scanner Diagnostic</span><strong
-                  data-belt-action>Operational</strong><small>No recalibration required</small></div>
+              <div class="metric-tile static"><span>Review State</span><strong
+                  data-belt-action>Operational</strong><small>Human validation available</small></div>
             </div>
 
             <div class="detail-grid two">
               <div class="detail-card">
-                <h3>Sensor &amp; Camera Diagnostics</h3>
+                <h3>Upload and Compute Diagnostics</h3>
                 <dl class="detail-list">
                   <div>
-                    <dt>Camera Lens Status</dt>
-                    <dd data-belt-scanner>Clean</dd>
+                    <dt>Input channel</dt>
+                    <dd data-belt-scanner>Web upload</dd>
                   </div>
                   <div>
                     <dt>Compute Core Temp</dt>
                     <dd data-belt-motor>42°C</dd>
                   </div>
                   <div>
-                    <dt>Recalibration Delta</dt>
-                    <dd data-belt-air>0.05 px</dd>
+                    <dt>File policy</dt>
+                    <dd data-belt-air>100 MB batch limit</dd>
                   </div>
                 </dl>
               </div>
               <div class="detail-card">
-                <h3>Model Reliability &amp; Sorting Mix</h3>
+                <h3>Model Reliability and Material Mix</h3>
                 <div class="bar-list compact" data-belt-uptime></div>
                 <div class="bar-list compact" data-belt-composition></div>
               </div>
