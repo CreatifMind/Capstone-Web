@@ -5854,6 +5854,23 @@ input:checked+.slider:before {
 .dark-landing .tech-pill { border-color: var(--ai-border); background: rgba(9,24,20,0.74); color: var(--ai-text); box-shadow: none; }
 .dark-landing .hdc-metric-val,
 .dark-landing .hdc-item-val { color: var(--ai-green); }
+.dark-landing .hdc-chart-placeholder {
+  border-color: rgba(73, 255, 182, 0.20);
+  background:
+    linear-gradient(rgba(73,255,182,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(73,255,182,0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(0,240,138,0.10), rgba(0,214,214,0.045));
+  background-size: 100% 25%, 12.5% 100%, 100% 100%;
+  box-shadow: inset 0 0 28px rgba(0, 240, 138, 0.08);
+}
+.dark-landing .hdc-bar {
+  background: rgba(159, 182, 173, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.dark-landing .hdc-bar.active {
+  background: linear-gradient(180deg, var(--ai-green), rgba(0, 214, 214, 0.82));
+  box-shadow: 0 0 16px rgba(0, 240, 138, 0.26);
+}
 .dark-landing .section,
 .dark-landing .section-alt { background: var(--ai-bg); }
 .dark-landing .impact-section,
