@@ -5882,7 +5882,7 @@ input:checked+.slider:before {
   box-shadow: inset 0 0 20px rgba(0,240,138,0.08);
 }
 .dark-landing .problem-icon.red { color: #ff7a83; background: rgba(255,77,87,0.10); border-color: rgba(255,77,87,0.22); }
-.dark-landing .problem-icon.amber { color: var(--ai-amber); background: rgba(255,184,77,0.10); border-color: rgba(255,184,77,0.22); }
+.dark-landing .problem-icon.amber { color: var(--ai-teal) !important; background: rgba(0,214,214,0.10) !important; border-color: rgba(0,214,214,0.24) !important; }
 .dark-landing .problem-icon.blue { color: var(--ai-teal); background: rgba(0,214,214,0.10); border-color: rgba(0,214,214,0.22); }
 .dark-landing .problem-icon.green { color: var(--ai-green); background: rgba(0,240,138,0.10); border-color: rgba(0,240,138,0.22); }
 .dark-landing .problem-stat,
@@ -5892,8 +5892,8 @@ input:checked+.slider:before {
   color: rgba(244,255,249,0.86) !important;
 }
 .dark-landing .problem-card:nth-child(1) .problem-stat { border-color: rgba(255,77,87,0.24); color: #ff7a83 !important; }
-.dark-landing .problem-card:nth-child(2) .problem-stat,
-.dark-landing .problem-card:nth-child(3) .problem-stat { border-color: rgba(255,184,77,0.24); color: var(--ai-amber) !important; }
+.dark-landing .problem-card:nth-child(2) .problem-stat { border-color: rgba(0,214,214,0.26); color: var(--ai-teal) !important; }
+.dark-landing .problem-card:nth-child(3) .problem-stat { border-color: rgba(0,240,138,0.24); color: var(--ai-green) !important; }
 .dark-landing .problem-card:nth-child(4) .problem-stat { border-color: rgba(0,240,138,0.24); color: var(--ai-green) !important; }
 .dark-landing .hdc-chart-placeholder {
   border-color: rgba(73, 255, 182, 0.20);
