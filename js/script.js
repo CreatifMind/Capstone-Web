@@ -5,6 +5,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB per image
 const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100 MB per ZIP file
 const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100 MB total upload
 const MAX_TOTAL_FILES = 50;
+const DEFAULT_SCAN_ASSET = "assets/items/upload-result-reference.png";
 
 /* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
 const detectionResults = {
@@ -131,14 +132,14 @@ const detectionResults = {
   mixed_batch: {
     title: "Mixed Batch Scan Detected",
     confidence: "98%",
-    category: "Paper",
-    bin: "Paper Sorting Bin",
+    category: "Mixed Recyclables",
+    bin: "Multi-stream Recovery",
     weight: "0.485 kg",
-    statusClass: "warning",
-    status: "Contaminant detected in batch.",
-    instruction: "Divert Glass Bottle contaminant to Glass Bin. Recyclable Paper packaging/cups cleared.",
-    color: "#ff8000",
-    imageSrc: "assets/items/mixed-waste.jpg"
+    statusClass: "safe",
+    status: "Recyclable materials detected.",
+    instruction: "Recover PET bottle, aluminum can, cardboard packaging, and glass jar into their matching material streams.",
+    color: "#00f08a",
+    imageSrc: DEFAULT_SCAN_ASSET
   }
 };
 
@@ -147,12 +148,12 @@ function getDetectedObjectsForFile(name) {
   const fileLower = name.toLowerCase();
 
   // New default viewport image from user screenshot
-  if (fileLower.includes("viewport") || fileLower.includes("mixed-waste") || fileLower.includes("active_scan")) {
+  if (fileLower.includes("viewport") || fileLower.includes("mixed-waste") || fileLower.includes("active_scan") || fileLower.includes("upload-result-reference")) {
     return [
-      { label: "Paper Packaging", confidence: "98%", color: "#39d12f", x: 0.18, y: 0.02, w: 0.30, h: 0.35 },
-      { label: "Paper Packaging", confidence: "80%", color: "#39d12f", x: 0.06, y: 0.22, w: 0.43, h: 0.40 },
-      { label: "Glass Bottle Contaminant", confidence: "99%", color: "#f04438", x: 0.34, y: 0.26, w: 0.40, h: 0.38 },
-      { label: "Paper Cup", confidence: "100%", color: "#39d12f", x: 0.34, y: 0.52, w: 0.44, h: 0.42 }
+      { label: "PET Bottle", confidence: "97%", color: "#39d12f", x: 0.025, y: 0.30, w: 0.235, h: 0.31 },
+      { label: "Aluminum Can", confidence: "98%", color: "#39d12f", x: 0.285, y: 0.38, w: 0.185, h: 0.25 },
+      { label: "Cardboard Box", confidence: "96%", color: "#39d12f", x: 0.505, y: 0.245, w: 0.255, h: 0.39 },
+      { label: "Glass Jar", confidence: "95%", color: "#39d12f", x: 0.795, y: 0.365, w: 0.16, h: 0.30 }
     ];
   }
 
@@ -241,29 +242,10 @@ function getDetectedObjectsForFile(name) {
   const primaryCat = matched.category;
   const primaryConf = matched.confidence;
 
-  const boxes = [
-    { label: primaryCat, confidence: primaryConf, color: primaryColor, x: 0.20 + Math.random() * 0.1, y: 0.20 + Math.random() * 0.1, w: 0.30 + Math.random() * 0.15, h: 0.40 + Math.random() * 0.15 }
+  return [
+    { label: primaryCat, confidence: primaryConf, color: primaryColor, x: 0.18, y: 0.20, w: 0.34, h: 0.46 },
+    { label: "Manual Review Region", confidence: "82%", color: "#ff8000", x: 0.55, y: 0.34, w: 0.26, h: 0.34 }
   ];
-
-  if (Math.random() > 0.4) {
-    const contaminants = [
-      { label: "Plastic Film Alert", color: "#ff8000" },
-      { label: "Food Waste Alert", color: "#ff8000" },
-      { label: "General Trash", color: "#7f8c8d" }
-    ];
-    const secondary = contaminants[Math.floor(Math.random() * contaminants.length)];
-    boxes.push({
-      label: secondary.label,
-      confidence: `${Math.floor(70 + Math.random() * 19)}%`,
-      color: secondary.color,
-      x: 0.55 + Math.random() * 0.1,
-      y: 0.35 + Math.random() * 0.1,
-      w: 0.20 + Math.random() * 0.1,
-      h: 0.25 + Math.random() * 0.1
-    });
-  }
-
-  return boxes;
 }
 
 /* Format file size helper */
@@ -277,7 +259,7 @@ function formatFileSize(bytes) {
 /* Match category from name */
 function detectWasteTypeFromFileName(name) {
   const fileLower = name.toLowerCase();
-  if (fileLower.includes("viewport") || fileLower.includes("mixed")) return detectionResults.mixed_batch;
+  if (fileLower.includes("viewport") || fileLower.includes("mixed") || fileLower.includes("upload-result-reference")) return detectionResults.mixed_batch;
   if (fileLower.includes("battery") || fileLower.includes("lithium")) return detectionResults.battery;
   if (fileLower.includes("food") || fileLower.includes("organic") || fileLower.includes("apple") || fileLower.includes("banana")) return detectionResults.food_organics;
   if (fileLower.includes("trash") || fileLower.includes("waste") || fileLower.includes("cup") || fileLower.includes("mug")) return detectionResults.general_trash;
@@ -557,7 +539,8 @@ function initUploadPage() {
       const simpleMetadata = list.map(f => ({
         name: f.name,
         size: f.size,
-        type: f.name.endsWith(".zip") ? "ZIP" : "File"
+        type: f.name.endsWith(".zip") ? "ZIP" : "File",
+        resultAssetPath: DEFAULT_SCAN_ASSET
       }));
       localStorage.setItem("purityloop_uploads", JSON.stringify(simpleMetadata));
       if (scanImageBtn) scanImageBtn.disabled = false;
@@ -593,7 +576,8 @@ function initUploadPage() {
           compressedList.push({
             name: file.name,
             size: file.size,
-            dataUrl: dataUrl
+            dataUrl: dataUrl,
+            resultAssetPath: DEFAULT_SCAN_ASSET
           });
 
           loadedCount++;
@@ -703,23 +687,25 @@ function initResultPage() {
     uploads.unshift({
       name: "Active_Scan_Viewport.jpg",
       size: 145000,
-      assetPath: "assets/items/mixed-waste.jpg"
+      assetPath: DEFAULT_SCAN_ASSET
     });
     localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
   } else {
     // If it exists but isn't index 0, move it to index 0
     const idx = uploads.findIndex(item => item.name === "Active_Scan_Viewport.jpg");
+    uploads[idx].assetPath = DEFAULT_SCAN_ASSET;
+    uploads[idx].resultAssetPath = DEFAULT_SCAN_ASSET;
     if (idx > 0) {
       const item = uploads.splice(idx, 1)[0];
       uploads.unshift(item);
-      localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
     }
+    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
   }
 
   // Fallback default simulation list if nothing else is left
   if (uploads.length <= 1) {
     uploads = [
-      { name: "Active_Scan_Viewport.jpg", size: 145000, assetPath: "assets/items/mixed-waste.jpg" },
+      { name: "Active_Scan_Viewport.jpg", size: 145000, assetPath: DEFAULT_SCAN_ASSET },
       { name: "Recycled_PET_PlasticBottle.jpg", size: 45000, assetPath: "assets/items/plastic-bottle.png" },
       { name: "Crushed_SodaCan_Metal.png", size: 34000, assetPath: "assets/items/aluminum-can.png" },
       { name: "Waste_Battery_Hazard.jpg", size: 28000, assetPath: "assets/items/battery.png" },
@@ -924,7 +910,9 @@ function initResultPage() {
     if (activeBeltTitle) activeBeltTitle.textContent = activeFile.name;
 
     activeImageObj = new Image();
-    if (activeFile.dataUrl) {
+    if (activeFile.resultAssetPath) {
+      activeImageObj.src = activeFile.resultAssetPath;
+    } else if (activeFile.dataUrl) {
       activeImageObj.src = activeFile.dataUrl;
     } else {
       activeImageObj.src = activeFile.assetPath || "assets/items/plastic-bottle.png";
