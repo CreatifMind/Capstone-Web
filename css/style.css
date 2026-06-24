@@ -5956,6 +5956,81 @@ input:checked+.slider:before {
 .dark-landing .alert-feed-row.critical .alert-feed-severity { border-color: rgba(255,77,87,0.24); color: #ff7a83; }
 .dark-landing .alert-feed-row.high .alert-feed-severity { border-color: rgba(255,184,77,0.24); color: var(--ai-amber); }
 .dark-landing .alert-feed-row.review .alert-feed-severity { border-color: rgba(0,214,214,0.24); color: var(--ai-teal); }
+.dark-landing .material-dashboard-card {
+  border-color: rgba(73,255,182,0.20);
+  background:
+    linear-gradient(140deg, rgba(0,240,138,0.075), transparent 42%),
+    rgba(4,15,13,0.88);
+  box-shadow: inset 0 0 34px rgba(0,240,138,0.055);
+}
+.material-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dark-landing .material-metric-tile {
+  border: 1px solid rgba(73,255,182,0.18);
+  border-radius: 14px;
+  padding: 18px 14px;
+  text-align: center;
+  background: rgba(255,255,255,0.045);
+}
+.dark-landing .material-metric-tile strong {
+  display: block;
+  color: var(--ai-green);
+  font-size: 1.75rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+.dark-landing .material-metric-tile span {
+  display: block;
+  margin-top: 6px;
+  color: var(--ai-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.material-bar-list {
+  display: grid;
+  gap: 10px;
+}
+.dark-landing .material-bar-row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  border: 1px solid rgba(73,255,182,0.16);
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: rgba(255,255,255,0.045);
+}
+.dark-landing .material-bar-row span {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  color: rgba(244,255,249,0.82);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+.dark-landing .material-bar-row strong {
+  position: relative;
+  z-index: 1;
+  color: var(--ai-green);
+  font-size: 0.86rem;
+}
+.dark-landing .material-bar-row i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, var(--ai-green), var(--ai-teal));
+  box-shadow: 0 0 16px rgba(0,240,138,0.24);
+}
 .dark-landing .hdc-chart-placeholder {
   border-color: rgba(73, 255, 182, 0.20);
   background:
