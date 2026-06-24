@@ -5884,7 +5884,7 @@ input:checked+.slider:before {
 .dark-landing .problem-icon.red { color: #ff7a83; background: rgba(255,77,87,0.10); border-color: rgba(255,77,87,0.22); }
 .dark-landing .problem-icon.amber { color: var(--ai-teal) !important; background: rgba(0,214,214,0.10) !important; border-color: rgba(0,214,214,0.24) !important; }
 .dark-landing .problem-icon.blue { color: var(--ai-green) !important; background: rgba(0,240,138,0.10) !important; border-color: rgba(0,240,138,0.24) !important; }
-.dark-landing .problem-icon.green { color: var(--ai-green); background: rgba(0,240,138,0.10); border-color: rgba(0,240,138,0.22); }
+.dark-landing .problem-icon.green { color: var(--ai-green) !important; background: rgba(0,240,138,0.10) !important; border-color: rgba(0,240,138,0.24) !important; }
 .dark-landing .problem-stat,
 .dark-landing .problem-card .problem-stat[style] {
   border: 1px solid rgba(73,255,182,0.18);
