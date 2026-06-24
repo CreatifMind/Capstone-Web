@@ -1,158 +1,349 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>PurityLoop AI | Verification Logs</title>
 
+  <link rel="icon" href="assets/logo.png" type="image/png" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body data-page="ledger">
   <div class="app-layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <img src="assets/logo.png" alt="PurityLoop AI Smart Waste, Clean Future" class="brand-logo" />
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- Collapsible Sidebar -->
+    <aside id="appSidebar" class="sidebar">
+      <div class="sidebar-header">
+        <a href="index.html" class="sidebar-logo">
+          <img src="assets/logo.png" alt="PurityLoop AI Logo" />
+        </a>
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="Collapse Sidebar">
+          <i class="fa-solid fa-angles-left"></i>
+        </button>
       </div>
 
-      <nav class="side-nav">
-        <a href="upload.html">Mixed Image Upload</a>
-        <a href="live-camera.html">Classification Result</a>
-        <a href="alerts.html" class="active">Verification Logs</a>
-        <a href="analytics.html">Operations Dashboard</a>
+      <nav class="sidebar-nav">
+        <div class="sidebar-section-label">Operations</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload Feed">
+          <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
+          <span class="nav-item-label">Mixed Image Upload</span>
+        </a>
+        <a href="result.html" class="nav-item" data-tooltip="AI Classifier">
+          <i class="nav-item-icon fa-solid fa-camera"></i>
+          <span class="nav-item-label">Classification Result</span>
+        </a>
+
+        <div class="sidebar-section-label">Compliance</div>
+        <a href="alerts.html" class="nav-item" data-tooltip="Logs & Alerts">
+          <i class="nav-item-icon fa-solid fa-receipt"></i>
+          <span class="nav-item-label">Verification Logs</span>
+        </a>
+        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
+          <i class="nav-item-icon fa-solid fa-chart-line"></i>
+          <span class="nav-item-label">Operations Dashboard</span>
+        </a>
       </nav>
 
-      <div class="sidebar-note">
-        <strong>QA Audit</strong>
-        <p>Audit sorting history ledger logs and confirm overrides for low-confidence scans.</p>
+      <div class="sidebar-footer">
+        <div class="user-row">
+          <div class="user-avatar">AD</div>
+          <div class="user-info">
+            <div class="user-name">Admin Operator</div>
+            <div class="user-role">Super Admin</div>
+          </div>
+        </div>
+        <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="logout-text">Logout</span>
+        </a>
       </div>
-
-      <a href="login.html" class="logout-btn">Logout</a>
     </aside>
 
     <main class="main-content">
+      <!-- Topbar -->
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Recycling Audit Trail Logs</p>
-          <h1>AI Classification Audit Ledger</h1>
-          <p>Verify low-confidence waste uploads and override sorting classifications to maintain clean recycling loops.</p>
+        <div class="topbar-left">
+          <button id="mobileToggle" class="mobile-toggle" aria-label="Open navigation">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="topbar-title">
+            <h1>AI Classification Audit Ledger</h1>
+            <p>Recycling Audit Trail Logs</p>
+          </div>
         </div>
 
-        <div class="user-badge review-badge">8 Reviews Pending</div>
+        <div class="topbar-right">
+          <!-- Search Bar -->
+          <div class="search-bar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Search logs, alerts, stations..." aria-label="Search" />
+          </div>
+
+          <!-- Live Clock / Date Pill -->
+          <div class="date-pill">
+            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
+            <span id="liveClock">00:00:00 AM</span>
+          </div>
+
+          <!-- Notification Button -->
+          <button class="topbar-icon-btn" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot"></span>
+          </button>
+
+          <!-- User Badge -->
+          <div class="user-badge review-badge">
+            <div class="user-badge-avatar">AD</div>
+            <span style="margin-left: 6px;">8 Reviews Pending</span>
+          </div>
+        </div>
       </header>
 
-      <section class="ledger-summary">
-        <div class="summary-card cleared">
-          <span>Verified Scans</span>
-          <strong>142</strong>
-          <p>Audited and verified clean recyclable batches.</p>
-        </div>
-        <div class="summary-card review">
-          <span>Pending Reviews</span>
-          <strong>8</strong>
-          <p>Scans awaiting human QA verification.</p>
-        </div>
-        <div class="summary-card quarantine">
-          <span>Quarantined Scans</span>
-          <strong>3</strong>
-          <p>Lithium hazards or high-organic contaminants isolated.</p>
-        </div>
-      </section>
-
-      <section class="panel ledger-panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">QA Audit Verification</p>
-            <h2>AI Classification Audit Ledger</h2>
+      <div class="page-body">
+        <section class="ledger-summary">
+          <div class="summary-card cleared">
+            <span>Verified Scans</span>
+            <strong>142</strong>
+            <p>Audited and verified clean recyclable batches.</p>
           </div>
-          <a href="live-camera.html" class="secondary-btn">Back to Results View</a>
-        </div>
-
-        <div class="table-wrap">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Scanner Station</th>
-                <th>Material</th>
-                <th>Weight</th>
-                <th>AI Confidence</th>
-                <th>Status / Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Populated dynamically by js/script.js -->
-              <tr>
-                <td colspan="6" style="text-align: center; color: var(--muted);">Loading audit trail ledger records...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="detail-dock" id="ledgerDrillDetails">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Ledger Drill-through</p>
-            <h2>Station, Material, and Calibration Diagnostics</h2>
+          <div class="summary-card review">
+            <span>Pending Reviews</span>
+            <strong>8</strong>
+            <p>Scans awaiting human QA verification.</p>
           </div>
-          <p class="detail-hint">Click any Scanner Station ID or Material type in the ledger above to inspect diagnostic performance indicators.</p>
-        </div>
+          <div class="summary-card quarantine">
+            <span>Quarantined Scans</span>
+            <strong>3</strong>
+            <p>Lithium hazards or high-organic contaminants isolated.</p>
+          </div>
+        </section>
 
-        <!-- AI STATION DIAGNOSTICS (Replaces Conveyor Details) -->
-        <article class="panel detail-panel active belt-detail-output" id="detail-belt">
-          <div class="section-heading compact">
+        <section class="panel ledger-panel bbox-card">
+          <div class="section-heading">
             <div>
-              <p class="eyebrow">AI Station Diagnostics</p>
-              <h2>Scanning Device: <span data-belt-id>STATION-A01</span></h2>
-              <p class="detail-copy" data-belt-insight>Optical lens is calibrated and rate response query parameters are nominal.</p>
+              <p class="eyebrow">QA Audit Verification</p>
+              <h2>AI Classification Audit Ledger</h2>
             </div>
+            <a href="result.html" class="secondary-btn">Back to Results View</a>
           </div>
 
-          <div class="detail-grid three">
-            <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
-            <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4 Active</strong><small data-belt-max-speed>Core Model</small></div>
-            <div class="metric-tile static"><span>Scanner Diagnostic</span><strong data-belt-action>Operational</strong><small>No recalibration required</small></div>
+          <div class="table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Scanner Station</th>
+                  <th>Material</th>
+                  <th>Weight</th>
+                  <th>AI Confidence</th>
+                  <th>Status / Action</th>
+                </tr>
+              </thead>
+              <tbody id="ledgerTableBody">
+                <!-- Skeleton Loading rows shimmer while data is fetching -->
+                <tr class="skeleton-row">
+                  <td>
+                    <div class="skeleton-cell" style="width: 70px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 110px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 80px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 60px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 50px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 90px;"></div>
+                  </td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td>
+                    <div class="skeleton-cell" style="width: 65px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 95px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 85px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 55px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 45px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 85px;"></div>
+                  </td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td>
+                    <div class="skeleton-cell" style="width: 75px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 105px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 75px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 65px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 48px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 95px;"></div>
+                  </td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td>
+                    <div class="skeleton-cell" style="width: 70px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 100px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 80px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 50px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 40px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 90px;"></div>
+                  </td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td>
+                    <div class="skeleton-cell" style="width: 68px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 98px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 82px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 58px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 42px;"></div>
+                  </td>
+                  <td>
+                    <div class="skeleton-cell" style="width: 88px;"></div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+        </section>
 
-          <div class="detail-grid two">
-            <div class="detail-card">
-              <h3>Sensor & Camera Diagnostics</h3>
-              <dl class="detail-list">
-                <div><dt>Camera Lens Status</dt><dd data-belt-scanner>Clean</dd></div>
-                <div><dt>Compute Core Temp</dt><dd data-belt-motor>42°C</dd></div>
-                <div><dt>Recalibration Delta</dt><dd data-belt-air>0.05 px</dd></div>
-              </dl>
-            </div>
-            <div class="detail-card">
-              <h3>Model Reliability & Sorting Mix</h3>
-              <div class="bar-list compact" data-belt-uptime></div>
-              <div class="bar-list compact" data-belt-composition></div>
-            </div>
-          </div>
-        </article>
-
-        <!-- MATERIAL DEEP DIVE -->
-        <article class="panel detail-panel material-detail-output" id="detail-material">
-          <div class="section-heading compact">
+        <section class="detail-dock" id="ledgerDrillDetails">
+          <div class="section-heading">
             <div>
-              <p class="eyebrow">Material Deep Dive</p>
-              <h2><span data-material-title>Material</span> Details</h2>
-              <p data-material-subtitle class="detail-copy">Review the volume metrics, impurity incidents, and historical trend maps for the selected item.</p>
+              <p class="eyebrow">Ledger Drill-through</p>
+              <h2>Station, Material, and Calibration Diagnostics</h2>
             </div>
+            <p class="detail-hint">Click any Scanner Station ID or Material type in the ledger above to inspect
+              diagnostic
+              performance indicators.</p>
           </div>
-          <div class="detail-grid three">
-            <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
-            <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
-            <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong data-material-purity>0%</strong><small data-material-status>AI-verified sorting score</small></div>
-          </div>
-          <div class="detail-grid two">
-            <div><h3 data-material-trend-title>30-Day Recovery Trend</h3><div class="spark-bars" data-material-trend></div></div>
-            <div><h3 data-material-zone-title>Distribution by Scanner Station</h3><div class="bar-list compact" data-material-zones></div></div>
-          </div>
-        </article>
-      </section>
+
+          <!-- AI STATION DIAGNOSTICS (Replaces Conveyor Details) -->
+          <article class="panel detail-panel active belt-detail-output bbox-card" id="detail-belt">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">AI Station Diagnostics</p>
+                <h2>Scanning Device: <span data-belt-id>STATION-A01</span></h2>
+                <p class="detail-copy" data-belt-insight>Optical lens is calibrated and rate response query parameters
+                  are
+                  nominal.</p>
+              </div>
+            </div>
+
+            <div class="detail-grid three">
+              <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h
+                  equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
+              <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4
+                  Active</strong><small data-belt-max-speed>Core Model</small></div>
+              <div class="metric-tile static"><span>Scanner Diagnostic</span><strong
+                  data-belt-action>Operational</strong><small>No recalibration required</small></div>
+            </div>
+
+            <div class="detail-grid two">
+              <div class="detail-card">
+                <h3>Sensor & Camera Diagnostics</h3>
+                <dl class="detail-list">
+                  <div>
+                    <dt>Camera Lens Status</dt>
+                    <dd data-belt-scanner>Clean</dd>
+                  </div>
+                  <div>
+                    <dt>Compute Core Temp</dt>
+                    <dd data-belt-motor>42°C</dd>
+                  </div>
+                  <div>
+                    <dt>Recalibration Delta</dt>
+                    <dd data-belt-air>0.05 px</dd>
+                  </div>
+                </dl>
+              </div>
+              <div class="detail-card">
+                <h3>Model Reliability & Sorting Mix</h3>
+                <div class="bar-list compact" data-belt-uptime></div>
+                <div class="bar-list compact" data-belt-composition></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- MATERIAL DEEP DIVE -->
+          <article class="panel detail-panel material-detail-output bbox-card" id="detail-material">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Material Deep Dive</p>
+                <h2><span data-material-title>Material</span> Details</h2>
+                <p data-material-subtitle class="detail-copy">Review the volume metrics, impurity incidents, and
+                  historical trend maps for the selected item.</p>
+              </div>
+            </div>
+            <div class="detail-grid three">
+              <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong
+                  data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
+              <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong
+                  data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
+              <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong
+                  data-material-purity>0%</strong><small data-material-status>AI-verified sorting score</small></div>
+            </div>
+            <div class="detail-grid two">
+              <div>
+                <h3 data-material-trend-title>30-Day Recovery Trend</h3>
+                <div class="spark-bars" data-material-trend></div>
+              </div>
+              <div>
+                <h3 data-material-zone-title>Distribution by Scanner Station</h3>
+                <div class="bar-list compact" data-material-zones></div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
     </main>
   </div>
 
@@ -162,7 +353,8 @@
       <button type="button" class="modal-close" id="closeReviewModal" aria-label="Close review modal">×</button>
       <p class="eyebrow" style="color: var(--green);">AI Audit Review</p>
       <h2 id="reviewTitle">AI Classification Review</h2>
-      <p id="reviewDescription">Confirm whether this classification is correct or manually override the waste category.</p>
+      <p id="reviewDescription">Confirm whether this classification is correct or manually override the waste category.
+      </p>
 
       <div class="review-snapshot">
         <div class="snapshot-feed">
@@ -181,6 +373,8 @@
     </div>
   </div>
 
+  <script src="js/theme.js"></script>
   <script src="js/script.js"></script>
 </body>
+
 </html>

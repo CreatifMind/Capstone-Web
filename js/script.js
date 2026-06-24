@@ -149,10 +149,10 @@ function getDetectedObjectsForFile(name) {
   // New default viewport image from user screenshot
   if (fileLower.includes("viewport") || fileLower.includes("mixed-waste") || fileLower.includes("active_scan")) {
     return [
-      { label: "PAPER_PACKAGING", confidence: "98%", color: "#27c93f", x: 0.21, y: 0.012, w: 0.28, h: 0.36 },
-      { label: "PAPER_PACKAGING", confidence: "80%", color: "#27c93f", x: 0.10, y: 0.20, w: 0.42, h: 0.38 },
-      { label: "GLASS_BOTTLE ⚠️", confidence: "99%", color: "#e63030", x: 0.31, y: 0.24, w: 0.395, h: 0.41 },
-      { label: "PAPER_CUP", confidence: "100%", color: "#27c93f", x: 0.32, y: 0.50, w: 0.435, h: 0.40 }
+      { label: "Plastic Bottle", confidence: "97.3%", color: "#00e87a", x: 0.03, y: 0.32, w: 0.23, h: 0.34 },
+      { label: "Aluminum Can", confidence: "98.1%", color: "#00e87a", x: 0.28, y: 0.38, w: 0.20, h: 0.30 },
+      { label: "Cardboard Box", confidence: "96.6%", color: "#00e87a", x: 0.49, y: 0.23, w: 0.26, h: 0.45 },
+      { label: "Glass Jar", confidence: "95.4%", color: "#00e87a", x: 0.77, y: 0.36, w: 0.18, h: 0.40 }
     ];
   }
 
@@ -287,7 +287,7 @@ function detectWasteTypeFromFileName(name) {
   if (fileLower.includes("cardboard") || fileLower.includes("box") || fileLower.includes("package")) return detectionResults.cardboard;
   if (fileLower.includes("glass") || fileLower.includes("jar") || fileLower.includes("bottle_g")) return detectionResults.glass;
   if (fileLower.includes("textile") || fileLower.includes("cloth") || fileLower.includes("shirt") || fileLower.includes("fabric")) return detectionResults.textile;
-  
+
   // Random fallback for simulated variety
   const keys = Object.keys(detectionResults);
   const randomKey = keys[Math.floor(Math.random() * (keys.length - 1))];
@@ -329,7 +329,7 @@ function initUploadPage() {
   const fileList = document.getElementById("fileList");
   const fileCountText = document.getElementById("fileCountText");
   const uploadSummary = document.getElementById("uploadSummary");
-  
+
   // Set up webcam modal
   createWebcamModalElements();
 
@@ -346,16 +346,14 @@ function initUploadPage() {
     ["dragenter", "dragover"].forEach(evt => {
       uploadBox.addEventListener(evt, (e) => {
         e.preventDefault();
-        uploadBox.style.borderColor = "var(--green)";
-        uploadBox.style.background = "var(--green-soft)";
+        uploadBox.classList.add("dragover");
       }, false);
     });
 
     ["dragleave", "drop"].forEach(evt => {
       uploadBox.addEventListener(evt, (e) => {
         e.preventDefault();
-        uploadBox.style.borderColor = "#a9cdbb";
-        uploadBox.style.background = "";
+        uploadBox.classList.remove("dragover");
       }, false);
     });
 
@@ -440,22 +438,22 @@ function initUploadPage() {
     canvas.width = 640;
     canvas.height = 480;
     const ctx = canvas.getContext("2d");
-    
+
     // Draw mirrored if front facing, but environment usually is fine
     ctx.drawImage(webcamVideo, 0, 0, 640, 480);
-    
+
     // Compress to small JPEG dataURL (approx 25KB) to fit localStorage
     const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-    
+
     const captures = [{
       name: "Camera_Snapshot_" + Date.now().toString().slice(-4) + ".jpg",
       size: Math.round(dataUrl.length * 0.75), // approximate byte size
       dataUrl: dataUrl
     }];
-    
+
     localStorage.setItem("purityloop_uploads", JSON.stringify(captures));
     stopWebcam();
-    window.location.href = "live-camera.html";
+    window.location.href = "result.html";
   }
 
   function loadSimulatedUpload() {
@@ -469,12 +467,12 @@ function initUploadPage() {
       assetPath: "assets/items/" + randomName
     }];
     localStorage.setItem("purityloop_uploads", JSON.stringify(simulatedFiles));
-    window.location.href = "live-camera.html";
+    window.location.href = "result.html";
   }
 
   function processSelectedFiles(files) {
     const list = Array.from(files);
-    
+
     // Validate sizes and types
     let totalSize = list.reduce((s, f) => s + f.size, 0);
     if (list.length > MAX_TOTAL_FILES) {
@@ -486,13 +484,32 @@ function initUploadPage() {
       return;
     }
 
-    fileName.textContent = `Processing ${list.length} selected files...`;
+    fileName.textContent = `Selected: ${list[0].name}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`;
+
+    // Render Preview Thumbnail & Checkmark
+    const previewContainer = document.getElementById("uploadPreviewContainer");
+    const previewImage = document.getElementById("uploadPreviewImage");
+    if (previewContainer && previewImage) {
+      const firstFile = list.find(f => f.type.startsWith("image/"));
+      if (firstFile) {
+        const previewReader = new FileReader();
+        previewReader.onload = function (e) {
+          previewImage.src = e.target.result;
+          previewContainer.style.display = "flex";
+        };
+        previewReader.readAsDataURL(firstFile);
+      } else {
+        // Fallback for non-image files (e.g. ZIP)
+        previewImage.src = "assets/logo.png";
+        previewContainer.style.display = "flex";
+      }
+    }
 
     // Compress images asynchronously using canvas to fit localStorage limits
     let loadedCount = 0;
     const compressedList = [];
     const imageFiles = list.filter(f => f.type.startsWith("image/"));
-    
+
     if (imageFiles.length === 0) {
       // Just zip/other files
       const simpleMetadata = list.map(f => ({
@@ -501,7 +518,9 @@ function initUploadPage() {
         type: f.name.endsWith(".zip") ? "ZIP" : "File"
       }));
       localStorage.setItem("purityloop_uploads", JSON.stringify(simpleMetadata));
-      window.location.href = "live-camera.html";
+      setTimeout(() => {
+        window.location.href = "result.html";
+      }, 1500); // 1.5s delay to show preview & checkmark
       return;
     }
 
@@ -540,7 +559,9 @@ function initUploadPage() {
           loadedCount++;
           if (loadedCount === imageFiles.length) {
             localStorage.setItem("purityloop_uploads", JSON.stringify(compressedList));
-            window.location.href = "live-camera.html";
+            setTimeout(() => {
+              window.location.href = "result.html";
+            }, 1500); // 1.5s delay to show preview & checkmark
           }
         };
         img.src = e.target.result;
@@ -617,7 +638,7 @@ function initUploadPage() {
  ******************************************/
 function initResultPage() {
   const canvas = document.getElementById("liveInferenceCanvas");
-  if (!canvas) return; // Not on the live-camera.html page
+  if (!canvas) return; // Not on the result.html page
 
   const ctx2d = canvas.getContext("2d");
   const itemsScannedEl = document.getElementById("liveScanned");
@@ -625,7 +646,7 @@ function initResultPage() {
   const liveFeed = document.getElementById("liveFeed");
   const actionText = document.getElementById("liveActionText");
   const activeBeltTitle = document.getElementById("liveStreamTitle");
-  
+
   // Replace buttons
   const activeBeltDetailBtn = document.getElementById("activeBeltDetailBtn");
   const reviewLogsBtn = document.querySelector(".action-panel a");
@@ -633,7 +654,7 @@ function initResultPage() {
   // Load uploads from storage
   let uploads = [];
   const rawUploads = localStorage.getItem("purityloop_uploads");
-  
+
   if (rawUploads) {
     uploads = JSON.parse(rawUploads);
   }
@@ -676,10 +697,10 @@ function initResultPage() {
   // Change heading labels to reflect "AI Classification Result"
   const eyebrowEl = document.querySelector(".main-content .eyebrow");
   if (eyebrowEl) eyebrowEl.textContent = "AI Classification Hub";
-  
+
   const headingEl = document.querySelector(".main-content h1");
   if (headingEl) headingEl.textContent = "Classification Results Viewer";
-  
+
   const descEl = document.querySelector(".main-content header p");
   if (descEl) descEl.textContent = "Review high-resolution camera analysis, confidence intervals, and automated quarantine audits.";
 
@@ -737,8 +758,8 @@ function initResultPage() {
       currentLedger.unshift(newLog);
       saveAuditLedger(currentLedger);
 
-      // Audit verified verification logs confirmation banner
-      triggerAuditLoggedNotification();
+      // Show toast notification
+      showToast(`Audit verified! ${result.category} logged to ledger successfully.`, "success");
 
       // Mark row in queue as processed
       activeFile.processed = true;
@@ -767,7 +788,7 @@ function initResultPage() {
       const choice = itemsList[Math.floor(Math.random() * itemsList.length)];
       const randomId = Math.floor(1000 + Math.random() * 9000);
       const filename = `${choice.prefix}${randomId}.jpg`;
-      
+
       const newScan = {
         name: filename,
         size: Math.floor(12000 + Math.random() * 45000),
@@ -776,7 +797,7 @@ function initResultPage() {
       };
 
       uploads.push(newScan);
-      
+
       // Keep max 24 items in queue folder to prevent memory bloat
       if (uploads.length > 24) {
         uploads.shift();
@@ -882,48 +903,69 @@ function initResultPage() {
     const scannedVal = document.getElementById("liveScanned");
     const purityVal = document.getElementById("livePurity");
     const actionPanel = document.getElementById("liveActionPanel");
-    
+
     const boxes = getDetectedObjectsForFile(file.name);
-    
+
     // Calculate overall purity (percentage of recyclables)
     let recyclableCount = 0;
     boxes.forEach(box => {
-      if (box.label.includes("⚠️")) {
+      if (box.label.includes("⚠️") || box.label.toLowerCase().includes("hazard") || box.label.toLowerCase().includes("contaminant")) {
         return; // Contaminants do not count toward recyclable purity
       }
       const labelLower = box.label.toLowerCase();
-      if (labelLower.includes("pet bottle") || 
-          labelLower.includes("plastic") || 
-          labelLower.includes("metal") || 
-          labelLower.includes("can") || 
-          labelLower.includes("aluminum") ||
-          labelLower.includes("glass") || 
-          labelLower.includes("paper") || 
-          labelLower.includes("cardboard")) {
+      if (labelLower.includes("pet bottle") ||
+        labelLower.includes("plastic") ||
+        labelLower.includes("metal") ||
+        labelLower.includes("can") ||
+        labelLower.includes("aluminum") ||
+        labelLower.includes("glass") ||
+        labelLower.includes("paper") ||
+        labelLower.includes("cardboard") ||
+        labelLower.includes("bottle") ||
+        labelLower.includes("jar") ||
+        labelLower.includes("box")) {
         recyclableCount++;
       }
     });
-    
+
     const purityPct = Math.round((recyclableCount / boxes.length) * 100);
 
-    if (scannedVal) scannedVal.textContent = `${boxes.length} objects`;
+    if (scannedVal) scannedVal.textContent = `${boxes.length} items`;
     if (purityVal) {
       purityVal.textContent = `${purityPct}%`;
+
+      const ringFill = document.getElementById("purityRingFill");
+      const circumference = 314.16;
+      const offset = circumference - (purityPct / 100) * circumference;
+
+      if (ringFill) {
+        ringFill.style.strokeDashoffset = offset;
+      }
+
       // Color-code the purity value
       if (purityPct === 100) {
         purityVal.style.color = "var(--green)";
+        if (ringFill) ringFill.style.stroke = "var(--green)";
       } else if (purityPct >= 70) {
         purityVal.style.color = "var(--warning)";
+        if (ringFill) ringFill.style.stroke = "var(--warning)";
       } else {
         purityVal.style.color = "var(--danger)";
       }
     }
 
+    const marketValue = (recyclableCount * 0.05).toFixed(2);
+    const co2Offset = (recyclableCount * 0.2).toFixed(1);
+    const marketValueEl = document.getElementById("liveMarketValue");
+    const co2OffsetEl = document.getElementById("liveCO2Offset");
+    if (marketValueEl) marketValueEl.textContent = `$${marketValue}`;
+    if (co2OffsetEl) co2OffsetEl.textContent = `${co2Offset} kg`;
+
     // Next Steps Action Guide Generator
     if (actionText) {
       const hasBattery = boxes.some(b => b.label.toLowerCase().includes("battery"));
       const hasContaminant = purityPct < 100;
-      
+
       let badgeHtml = "";
       if (hasBattery) {
         if (actionPanel) {
@@ -971,7 +1013,7 @@ function initResultPage() {
 
     if (liveFeed) {
       liveFeed.innerHTML = "";
-      
+
       const listContainer = document.createElement("div");
       listContainer.style.display = "flex";
       listContainer.style.flexDirection = "column";
@@ -988,7 +1030,7 @@ function initResultPage() {
         itemDiv.style.background = "#f4f8f5";
         itemDiv.style.borderLeft = `4px solid ${box.color}`;
         itemDiv.style.fontSize = "12.5px";
-        
+
         itemDiv.innerHTML = `
           <span style="font-weight: 700; color: var(--text);">${box.label}</span>
           <span style="font-weight: 800; color: var(--muted);">${box.confidence}</span>
@@ -1072,9 +1114,9 @@ function initResultPage() {
 
       // Determine if this is a hazard/contaminant (red) vs recyclable (green/other)
       const isHazard = box.color === "#b42318" || box.color === "#ff8000" ||
-                       box.label.includes("⚠️") || box.label.includes("Hazard") ||
-                       box.label.includes("Trash") || box.label.includes("Textile") ||
-                       box.label.includes("Film");
+        box.label.includes("⚠️") || box.label.includes("Hazard") ||
+        box.label.includes("Trash") || box.label.includes("Textile") ||
+        box.label.includes("Film");
       const borderColor = isHazard ? "#e63030" : box.color;
 
       // Semi-transparent colored fill inside box (NANDO AI signature look)
@@ -1135,9 +1177,9 @@ function initResultPage() {
     const badge = document.createElement("div");
     badge.className = "audit-badge-animation";
     badge.innerHTML = `✅ Audit Verified!<br><strong>Logged to Ledger</strong>`;
-    
+
     document.body.appendChild(badge);
-    
+
     setTimeout(() => {
       badge.remove();
     }, 2800);
@@ -1187,14 +1229,14 @@ function initReviewModal() {
   const closeButton = document.getElementById("closeReviewModal");
   const clearButton = document.getElementById("clearSegment");
   const quarantineButton = document.getElementById("quarantineSegment");
-  
+
   let activeLogId = null;
   let activeRow = null;
 
   // Change heading titles to match "Audit Logs"
   const sectionKicker = document.querySelector(".ledger-panel .eyebrow");
   if (sectionKicker) sectionKicker.textContent = "QA Audit Verification";
-  
+
   const sectionTitle = document.querySelector(".ledger-panel h2");
   if (sectionTitle) sectionTitle.textContent = "AI Classification Audit Ledger";
 
@@ -1220,7 +1262,7 @@ function initReviewModal() {
   // Pre-load reclassification controls inside the modal
   const snapshotItems = document.querySelector(".review-snapshot .snapshot-items");
   const modalActions = document.querySelector(".modal-actions");
-  
+
   if (modalActions && !document.getElementById("reclassifySelect")) {
     // Inject custom reclassificaton dropdown
     const reclassifyDiv = document.createElement("div");
@@ -1247,8 +1289,10 @@ function initReviewModal() {
   if (clearButton) clearButton.textContent = "Verify & Approve Result";
   if (quarantineButton) quarantineButton.textContent = "Flag as Contaminated / Reject";
 
-  // Build Table from LocalStorage state
-  buildLedgerTable();
+  // Build Table from LocalStorage state with simulated skeleton loading delay
+  setTimeout(() => {
+    buildLedgerTable();
+  }, 800);
 
   function buildLedgerTable() {
     if (!tableBody) return;
@@ -1282,10 +1326,10 @@ function initReviewModal() {
         <td>${log.weight}</td>
         <td class="${confidenceClass}">${log.confidence}</td>
         <td>
-          ${log.status === "Review Needed" 
-            ? `<button type="button" class="status-pill review review-action" data-logid="${log.id}">${log.status}</button>` 
-            : `<span class="status-pill ${statusPillClass}">${statusText}</span>`
-          }
+          ${log.status === "Review Needed"
+          ? `<button type="button" class="status-pill review review-action" data-logid="${log.id}">${log.status}</button>`
+          : `<span class="status-pill ${statusPillClass}">${statusText}</span>`
+        }
         </td>
       `;
 
@@ -1311,10 +1355,10 @@ function initReviewModal() {
         event.stopPropagation();
         activeLogId = button.dataset.logid;
         activeRow = button.closest("tr");
-        
+
         const ledger = getAuditLedger();
         const activeLog = ledger.find(l => l.id === activeLogId);
-        
+
         if (reviewTitle) reviewTitle.textContent = "Audit Record: " + activeLog.id;
         if (reviewDescription) {
           reviewDescription.textContent = `Review AI sorting parameters. Overrides directly reclassify sorted bales and statistics.`;
@@ -1334,7 +1378,7 @@ function initReviewModal() {
           let categoryKey = activeLog.category.toLowerCase().replace(" ", "_");
           if (categoryKey === "food_organics" || categoryKey === "food") categoryKey = "food_organics";
           const itemMeta = detectionResults[categoryKey] || detectionResults.unknown;
-          
+
           snapshotItems.innerHTML = `
             <img src="${itemMeta.imageSrc}" alt="${activeLog.category}" style="max-height:90px; object-fit:contain;" />
             <div style="display:flex; flex-direction:column; gap:4px; font-size:13px; text-align:left;">
@@ -1374,19 +1418,23 @@ function initReviewModal() {
       if (activeLogId) {
         const ledger = getAuditLedger();
         const activeLog = ledger.find(l => l.id === activeLogId);
-        
+
         const reclassifySelect = document.getElementById("reclassifySelect");
         const chosenCategory = reclassifySelect ? reclassifySelect.value : activeLog.category;
 
+        let toastMsg = "";
         if (chosenCategory !== activeLog.category) {
+          toastMsg = `Record reclassified to ${chosenCategory} and verified.`;
           activeLog.category = chosenCategory;
           activeLog.status = "Verified (Reclassified)";
         } else {
+          toastMsg = `Record ${activeLog.id} verified and cleared.`;
           activeLog.status = "Verified (Cleared)";
         }
-        
+
         saveAuditLedger(ledger);
         buildLedgerTable();
+        showToast(toastMsg, "success");
       }
       closeModal();
     });
@@ -1400,6 +1448,7 @@ function initReviewModal() {
         activeLog.status = "Quarantined";
         saveAuditLedger(ledger);
         buildLedgerTable();
+        showToast(`Record ${activeLog.id} flagged as contaminated and rejected.`, "error");
       }
       closeModal();
     });
@@ -1443,12 +1492,12 @@ function initAnalyticsCharts() {
   if (recentList) {
     const ledger = getAuditLedger().slice(0, 3);
     recentList.innerHTML = "";
-    
+
     ledger.forEach(log => {
       const itemDiv = document.createElement("div");
       itemDiv.className = "drill-trigger";
       itemDiv.tabIndex = 0;
-      
+
       let statusClass = "cleared";
       if (log.status === "Review Needed") statusClass = "review";
       if (log.status === "Quarantined" || log.status === "Quarantine") statusClass = "quarantine";
@@ -1481,6 +1530,13 @@ function initAnalyticsCharts() {
     Chart.register(ChartDataLabels);
   }
 
+  const isLight = document.body.classList.contains("light");
+  const tickColor = isLight ? "#6c7b74" : "#6b8f7a";
+  const gridColor = isLight ? "#dce7e1" : "rgba(0, 232, 122, 0.1)";
+  const labelColor = isLight ? "#14221b" : "#f0faf5";
+  const legendColor = isLight ? "#6c7b74" : "#6b8f7a";
+  const donutBorderColor = isLight ? "#ffffff" : "#111815";
+
   const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
@@ -1488,7 +1544,7 @@ function initAnalyticsCharts() {
       legend: {
         labels: {
           boxWidth: 12,
-          color: "#66756f"
+          color: legendColor
         }
       }
     }
@@ -1512,7 +1568,7 @@ function initAnalyticsCharts() {
           palette.teal,
           palette.red
         ],
-        borderColor: "#ffffff",
+        borderColor: donutBorderColor,
         borderWidth: 2
       }]
     },
@@ -1521,7 +1577,7 @@ function initAnalyticsCharts() {
       cutout: "68%",
       plugins: {
         ...chartDefaults.plugins,
-        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 }, color: "#66756f" } },
+        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 }, color: legendColor } },
         datalabels: {
           color: "#ffffff",
           font: { weight: "bold", size: 10 },
@@ -1555,7 +1611,7 @@ function initAnalyticsCharts() {
           datalabels: {
             anchor: "end",
             align: "top",
-            color: "#14221b",
+            color: labelColor,
             font: { weight: "bold", size: 10.5 },
             formatter: (value) => "$" + (value / 1000).toFixed(0) + "k",
             padding: { bottom: 4 }
@@ -1564,10 +1620,10 @@ function initAnalyticsCharts() {
         scales: {
           y: {
             beginAtZero: true,
-            ticks: { callback: (value) => "$" + value / 1000 + "k", color: "#66756f" },
-            grid: { color: "#d9e6df" }
+            ticks: { callback: (value) => "$" + value / 1000 + "k", color: tickColor },
+            grid: { color: gridColor }
           },
-          x: { ticks: { color: "#66756f" }, grid: { display: false } }
+          x: { ticks: { color: tickColor }, grid: { display: false } }
         }
       }
     });
@@ -1581,11 +1637,11 @@ function initAnalyticsCharts() {
       data: {
         labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
         datasets: [
-          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.amber, backgroundColor: "rgba(183, 121, 31, 0.08)", tension: 0.32, fill: true },
-          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.blue, backgroundColor: "rgba(47, 111, 143, 0.08)", tension: 0.32, fill: true },
-          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.slate, backgroundColor: "rgba(138, 160, 168, 0.08)", tension: 0.32, fill: true },
-          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.orange, backgroundColor: "rgba(230, 126, 34, 0.08)", tension: 0.32, fill: true },
-          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.purple, backgroundColor: "rgba(139, 92, 246, 0.08)", tension: 0.32, fill: true }
+          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.amber, backgroundColor: isLight ? "rgba(183, 121, 31, 0.04)" : "rgba(183, 121, 31, 0.08)", tension: 0.32, fill: true },
+          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.blue, backgroundColor: isLight ? "rgba(47, 111, 143, 0.04)" : "rgba(47, 111, 143, 0.08)", tension: 0.32, fill: true },
+          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.slate, backgroundColor: isLight ? "rgba(138, 160, 168, 0.04)" : "rgba(138, 160, 168, 0.08)", tension: 0.32, fill: true },
+          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.orange, backgroundColor: isLight ? "rgba(230, 126, 34, 0.04)" : "rgba(230, 126, 34, 0.08)", tension: 0.32, fill: true },
+          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.purple, backgroundColor: isLight ? "rgba(139, 92, 246, 0.04)" : "rgba(139, 92, 246, 0.08)", tension: 0.32, fill: true }
         ]
       },
       options: {
@@ -1594,8 +1650,8 @@ function initAnalyticsCharts() {
           datalabels: { display: false }
         },
         scales: {
-          y: { beginAtZero: true, ticks: { color: "#66756f" }, grid: { color: "#d9e6df" } },
-          x: { ticks: { color: "#66756f" }, grid: { display: false } }
+          y: { beginAtZero: true, ticks: { color: tickColor }, grid: { color: gridColor } },
+          x: { ticks: { color: tickColor }, grid: { display: false } }
         }
       }
     });
@@ -1980,7 +2036,7 @@ function renderBarRows(container, rows, color, suffix = "") {
 
 function renderMaterialDetail(materialName, options = {}) {
   const activate = options.activate !== false;
-  
+
   // Normalization
   let normName = materialName;
   if (materialName === "Food" || materialName === "Organics" || materialName === "food" || materialName === "food_organics") {
@@ -2013,7 +2069,7 @@ function renderMaterialDetail(materialName, options = {}) {
 
 function renderStationDetail(stationId, options = {}) {
   const activate = options.activate !== false;
-  
+
   // Normalize
   let normId = stationId;
   if (stationId === "BELT-A01") normId = "STATION-A01";
@@ -2090,6 +2146,155 @@ function initDrillThrough() {
   }
 }
 
+/* Toast Notification System */
+function showToast(message, type = "success") {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+
+  const icon = type === "success"
+    ? '<i class="fa-solid fa-circle-check"></i>'
+    : type === "error"
+      ? '<i class="fa-solid fa-circle-xmark"></i>'
+      : '<i class="fa-solid fa-triangle-exclamation"></i>';
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <span class="toast-message">${message}</span>
+  `;
+
+  container.appendChild(toast);
+
+  // Slide in
+  setTimeout(() => toast.classList.add("show"), 10);
+
+  // Auto-dismiss
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => {
+      toast.remove();
+      // Remove container if empty
+      if (container.childNodes.length === 0) {
+        container.remove();
+      }
+    }, 350);
+  }, 3500);
+}
+
+/* Mobile Sidebar Navigation & Toggle */
+function initMobileNav() {
+  const toggleBtn = document.getElementById("sidebarToggle");
+  const sidebar = document.querySelector(".sidebar");
+  if (!toggleBtn || !sidebar) return;
+
+  // Create overlay
+  const overlay = document.createElement("div");
+  overlay.className = "sidebar-overlay";
+  document.body.appendChild(overlay);
+
+  toggleBtn.addEventListener("click", () => {
+    sidebar.classList.add("active");
+    overlay.classList.add("active");
+  });
+
+  overlay.addEventListener("click", () => {
+    sidebar.classList.remove("active");
+    overlay.classList.remove("active");
+  });
+
+  // Close sidebar on link click
+  sidebar.querySelectorAll("a").forEach(link => {
+    link.addEventListener("click", () => {
+      sidebar.classList.remove("active");
+      overlay.classList.remove("active");
+    });
+  });
+}
+
+/* 1. Theme Toggle Management */
+function initThemeToggle() {
+  const savedTheme = localStorage.getItem("purityloop_theme") || "dark";
+  if (savedTheme === "light") {
+    document.body.classList.add("light");
+  } else {
+    document.body.classList.remove("light");
+  }
+
+  const toggleBtns = document.querySelectorAll(".theme-toggle-btn");
+
+  function updateIcons() {
+    const isLight = document.body.classList.contains("light");
+    toggleBtns.forEach(btn => {
+      const icon = btn.querySelector("i");
+      if (icon) {
+        if (isLight) {
+          icon.className = "fa-solid fa-sun";
+        } else {
+          icon.className = "fa-solid fa-moon";
+        }
+      }
+    });
+  }
+
+  updateIcons();
+
+  toggleBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.body.classList.toggle("light");
+      const newTheme = document.body.classList.contains("light") ? "light" : "dark";
+      localStorage.setItem("purityloop_theme", newTheme);
+      updateIcons();
+
+      // Smooth transitions for charts & canvases - reload page on analytics/result pages
+      const activePage = document.body.getAttribute("data-page");
+      if (activePage === "analytics" || activePage === "live-stream") {
+        window.location.reload();
+      }
+    });
+  });
+}
+
+/* 2. Login Password Reveal Toggle */
+function initPasswordToggle() {
+  const toggleBtn = document.getElementById("passwordToggle");
+  const passwordInput = document.getElementById("password");
+  if (!toggleBtn || !passwordInput) return;
+
+  toggleBtn.addEventListener("click", () => {
+    const type = passwordInput.getAttribute("type") === "password" ? "text" : "password";
+    passwordInput.setAttribute("type", type);
+    const icon = toggleBtn.querySelector("i");
+    if (icon) {
+      if (type === "text") {
+        icon.className = "fa-solid fa-eye-slash";
+      } else {
+        icon.className = "fa-solid fa-eye";
+      }
+    }
+  });
+}
+
+/* KPI Progress Bars Animation */
+function animateProgressBars() {
+  document.querySelectorAll(".kpi-progress-bar i").forEach(bar => {
+    const targetWidth = bar.style.width || "0%";
+    bar.style.width = "0%";
+
+    // Force reflow
+    bar.offsetHeight;
+
+    setTimeout(() => {
+      bar.style.width = targetWidth;
+    }, 100);
+  });
+}
+
 /* Page Navigation Match & Trigger */
 document.addEventListener("DOMContentLoaded", function () {
   // Navigation terminology updates across all files
@@ -2105,6 +2310,10 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  initThemeToggle();
+  initPasswordToggle();
+  // initMobileNav(); // Handled by theme.js
+  animateProgressBars();
   initUploadPage();
   initResultPage();
   initReviewModal();

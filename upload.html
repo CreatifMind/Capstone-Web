@@ -1,124 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>PurityLoop AI | Mixed Image Upload</title>
 
+  <link rel="icon" href="assets/logo.png" type="image/png" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body>
   <div class="app-layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <img
-          src="assets/logo.png"
-          alt="PurityLoop AI Smart Waste, Clean Future"
-          class="brand-logo"
-        />
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- Collapsible Sidebar -->
+    <aside id="appSidebar" class="sidebar">
+      <div class="sidebar-header">
+        <a href="index.html" class="sidebar-logo">
+          <img src="assets/logo.png" alt="PurityLoop AI Logo" />
+        </a>
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="Collapse Sidebar">
+          <i class="fa-solid fa-angles-left"></i>
+        </button>
       </div>
 
-      <nav class="side-nav">
-        <a href="upload.html" class="active">Mixed Image Upload</a>
-        <a href="live-camera.html">Classification Result</a>
-        <a href="alerts.html">Verification Logs</a>
-        <a href="analytics.html">Operations Dashboard</a>
+      <nav class="sidebar-nav">
+        <div class="sidebar-section-label">Operations</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload Feed">
+          <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
+          <span class="nav-item-label">Mixed Image Upload</span>
+        </a>
+        <a href="result.html" class="nav-item" data-tooltip="AI Classifier">
+          <i class="nav-item-icon fa-solid fa-camera"></i>
+          <span class="nav-item-label">Classification Result</span>
+        </a>
+
+        <div class="sidebar-section-label">Compliance</div>
+        <a href="alerts.html" class="nav-item" data-tooltip="Logs & Alerts">
+          <i class="nav-item-icon fa-solid fa-receipt"></i>
+          <span class="nav-item-label">Verification Logs</span>
+        </a>
+        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
+          <i class="nav-item-icon fa-solid fa-chart-line"></i>
+          <span class="nav-item-label">Operations Dashboard</span>
+        </a>
       </nav>
 
-      <div class="sidebar-note">
-        <strong>AI Sorting Terminal</strong>
-        <p>
-          Upload waste images, datasets, or capture real-time snapshots to run purity classification.
-        </p>
+      <div class="sidebar-footer">
+        <div class="user-row">
+          <div class="user-avatar">AD</div>
+          <div class="user-info">
+            <div class="user-name">Admin Operator</div>
+            <div class="user-role">Super Admin</div>
+          </div>
+        </div>
+        <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="logout-text">Logout</span>
+        </a>
       </div>
-
-      <a href="login.html" class="logout-btn">Logout</a>
     </aside>
 
     <main class="main-content">
+      <!-- Topbar -->
       <header class="topbar">
-        <div>
-          <p class="eyebrow">AI Sorting Terminal</p>
-          <h1>Mixed Waste Upload</h1>
-          <p>
-            Upload batch waste photographs, zip files, or capture real-time webcam frame snapshots to audit sorting purity.
-          </p>
+        <div class="topbar-left">
+          <button id="mobileToggle" class="mobile-toggle" aria-label="Open navigation">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="topbar-title">
+            <h1>Mixed Waste Upload</h1>
+            <p>AI Sorting Terminal</p>
+          </div>
         </div>
 
-        <div class="user-badge">Admin Mode</div>
+        <div class="topbar-right">
+          <!-- Search Bar -->
+          <div class="search-bar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Search logs, alerts, stations..." aria-label="Search" />
+          </div>
+
+          <!-- Live Clock / Date Pill -->
+          <div class="date-pill">
+            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
+            <span id="liveClock">00:00:00 AM</span>
+          </div>
+
+          <!-- Notification Button -->
+          <button class="topbar-icon-btn" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot"></span>
+          </button>
+
+          <!-- User Badge -->
+          <div class="user-badge">
+            <div class="user-badge-avatar">AD</div>
+            <span style="margin-left: 6px;">Admin Mode</span>
+          </div>
+        </div>
       </header>
 
-      <section class="page-grid">
-        <!-- LEFT SIDE: Upload box + Webcam -->
-        <div class="panel upload-panel">
-          <div class="upload-box" style="border: 2px dashed var(--line); padding: 50px 30px;">
-            <div class="upload-icon" style="background: var(--green);">↑</div>
+      <div class="page-body">
+        <section style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px;">
+          <!-- LEFT SIDE: Upload box -->
+          <div class="panel upload-panel bbox-card" style="padding: 32px; display: flex; flex-direction: column;">
+            <div class="upload-box"
+              style="border: 2px dashed var(--border); padding: 60px 40px; border-radius: 12px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
+              <div class="upload-icon"
+                style="background: var(--primary-xlight); color: var(--primary); width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 24px;">
+                <i class="fa-solid fa-arrow-up-from-bracket"></i>
+              </div>
+              <h2 style="font-size: 1.75rem; margin-bottom: 12px; font-weight: 700; color: var(--text);">Select Sorting
+                Files</h2>
+              <p
+                style="margin-bottom: 28px; color: var(--muted); max-width: 420px; font-size: 0.9375rem; line-height: 1.5;">
+                Drag and drop mixed waste images here, or choose files from your local system.
+              </p>
+              <label for="fileUpload" class="upload-label"
+                style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
+                <i class="fa-solid fa-file-image"></i> Choose Files
+              </label>
+              <input type="file" id="fileUpload" accept="image/*,.zip,application/zip,application/x-zip-compressed"
+                multiple style="display: none;" />
+              <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
+                No file selected</p>
 
-            <h2 style="font-size: 26px; margin-bottom: 10px;">Select Sorting Files</h2>
-
-            <p style="margin-bottom: 25px;">
-              Drag and drop mixed waste images here, or choose files from your local system.
-            </p>
-
-            <label for="fileUpload" class="upload-label">
-              Choose Files
-            </label>
-
-            <input
-              type="file"
-              id="fileUpload"
-              accept="image/*,.zip,application/zip,application/x-zip-compressed"
-              multiple
-            />
-
-            <p id="fileName" class="file-name">No file selected</p>
+              <!-- Preview container -->
+              <div id="uploadPreviewContainer"
+                style="display: none; margin-top: 20px; flex-direction: column; align-items: center; gap: 8px;">
+                <img id="uploadPreviewImage" src="" alt="Selected Preview"
+                  style="max-height: 120px; border-radius: 12px; border: 1px solid var(--border);" />
+                <span id="uploadCheckmark"
+                  style="color: var(--primary); font-weight: 700; display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                  <i class="fa-solid fa-circle-check"></i> Ready for AI Audit
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <!-- RIGHT SIDE: Requirements & Instructions -->
-        <div class="panel upload-info-panel">
-          <div class="section-heading compact">
+          <!-- RIGHT SIDE: Tips Card -->
+          <div class="panel upload-info-panel bbox-card"
+            style="padding: 32px; display: flex; flex-direction: column; justify-content: space-between; min-height: 480px;">
             <div>
-              <p class="eyebrow">Device Guidelines</p>
-              <h2>Upload Requirements</h2>
+              <div class="section-heading compact" style="margin-bottom: 24px;">
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text); text-align: left;">Upload & Quality
+                  Tips</h2>
+              </div>
+              <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px;">
+                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
+                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
+                      class="fa-solid fa-lightbulb"></i></span>
+                  <div>
+                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Lighting &
+                      Contrast</strong>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Ensure images are
+                      captured under uniform conveyor belt LED lighting.</p>
+                  </div>
+                </li>
+                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
+                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
+                      class="fa-solid fa-expand"></i></span>
+                  <div>
+                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Full
+                      Visibility</strong>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid overlapping
+                      materials. Ensure clear spacing between items on the belt.</p>
+                  </div>
+                </li>
+                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
+                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
+                      class="fa-solid fa-circle-minus"></i></span>
+                  <div>
+                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Minimize
+                      Blur</strong>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Keep shutter
+                      speeds above 1/500s to avoid conveyor motion blur.</p>
+                  </div>
+                </li>
+                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
+                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
+                      class="fa-solid fa-clipboard-list"></i></span>
+                  <div>
+                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Supported
+                      Formats</strong>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Images: JPG, PNG,
+                      WEBP. Dataset batches: ZIP archive only.</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div class="instruction-box"
+              style="background: var(--light); border: 1px solid var(--border); padding: 18px; border-radius: 8px; margin-top: 28px;">
+              <h4
+                style="font-weight: 700; font-size: 0.875rem; color: var(--text); display: flex; align-items: center; gap: 8px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;">
+                <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i> AUTOMATIC AI REDIRECT
+              </h4>
+              <p style="font-size: 0.8125rem; color: var(--muted); line-height: 1.5; margin: 0;">
+                Once your file is selected, the PurityLoop compute node runs real-time YOLOv8 object mapping, logs the
+                entry, and redirects to the bounding box results page.
+              </p>
             </div>
           </div>
-
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 20px;">
-            <div class="result-item">
-              <span>Supported Upload</span>
-              <strong>Single, Batch, ZIP</strong>
-            </div>
-
-            <div class="result-item">
-              <span>Allowed Formats</span>
-              <strong>JPG, PNG, WEBP, ZIP</strong>
-            </div>
-
-            <div class="result-item">
-              <span>Image Limit</span>
-              <strong>10 MB per file</strong>
-            </div>
-
-            <div class="result-item">
-              <span>ZIP Dataset Limit</span>
-              <strong>100 MB per ZIP</strong>
-            </div>
-          </div>
-
-          <div class="instruction-box" style="background: var(--green-dark); padding: 18px; border-radius: var(--radius);">
-            <h3>Automatic AI Audit Handoff</h3>
-            <p style="font-size: 13px; margin-top: 6px;">
-              Once a file is selected or camera snapshot is captured, the compute engine immediately runs classification audits and redirects you to the detailed bounding box view.
-            </p>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   </div>
 
+  <script src="js/theme.js"></script>
   <script src="js/script.js"></script>
 </body>
+
 </html>
