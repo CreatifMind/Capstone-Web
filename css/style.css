@@ -5816,7 +5816,7 @@ input:checked+.slider:before {
 .dark-landing .hero-section {
   min-height: 100dvh;
   padding-top: 132px;
-  background: linear-gradient(90deg, rgba(2,8,7,0.96) 0%, rgba(2,8,7,0.78) 44%, rgba(2,8,7,0.34) 100%), radial-gradient(circle at 70% 42%, rgba(0,240,138,0.16), transparent 28rem), url("../assets/hero-bg.png") center / cover no-repeat;
+  background: linear-gradient(90deg, rgba(2,8,7,0.96) 0%, rgba(2,8,7,0.78) 44%, rgba(2,8,7,0.34) 100%), radial-gradient(circle at 70% 42%, rgba(0,240,138,0.16), transparent 28rem), url("../assets/landing-login-bg.png") center / cover no-repeat;
 }
 .dark-landing [data-aos] {
   opacity: 1 !important;
@@ -5860,7 +5860,7 @@ input:checked+.slider:before {
 .dark-landing .landing-footer { background: #010504; }
 
 .dark-login .login-split { background: radial-gradient(circle at 20% 18%, rgba(0,240,138,0.20), transparent 28rem), linear-gradient(135deg,#020807 0%,#06110f 100%); }
-.dark-login .login-visual { border-right: 1px solid var(--ai-border); background: linear-gradient(90deg, rgba(2,8,7,0.90), rgba(2,8,7,0.64)), url("../assets/hero-bg.png") center / cover no-repeat; }
+.dark-login .login-visual { border-right: 1px solid var(--ai-border); background: linear-gradient(90deg, rgba(2,8,7,0.90), rgba(2,8,7,0.64)), url("../assets/landing-login-bg.png") center / cover no-repeat; }
 .dark-login .login-card { border: 1px solid var(--ai-border); border-radius: 28px; background: rgba(8,20,17,0.88); box-shadow: var(--ai-glow); color: var(--ai-text); }
 .dark-login .login-card-header p,
 .dark-login .small-note,
