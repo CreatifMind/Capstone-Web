@@ -162,8 +162,8 @@ function getDetectedObjectsForFile(name) {
       { label: "PET Bottle", confidence: "97%", color: "#27c93f", x: 0.18, y: 0.25, w: 0.20, h: 0.25 },
       { label: "PET Bottle", confidence: "96%", color: "#27c93f", x: 0.28, y: 0.55, w: 0.16, h: 0.22 },
       { label: "Aluminum Can", confidence: "94%", color: "#0080ff", x: 0.42, y: 0.36, w: 0.18, h: 0.20 },
-      { label: "Food Waste ⚠️", confidence: "85%", color: "#ff8000", x: 0.50, y: 0.59, w: 0.22, h: 0.18 },
-      { label: "Plastic Film ⚠️", confidence: "89%", color: "#ff8000", x: 0.65, y: 0.21, w: 0.20, h: 0.26 },
+      { label: "Food Waste Alert", confidence: "85%", color: "#ff8000", x: 0.50, y: 0.59, w: 0.22, h: 0.18 },
+      { label: "Plastic Film Alert", confidence: "89%", color: "#ff8000", x: 0.65, y: 0.21, w: 0.20, h: 0.26 },
       { label: "Aluminum Can", confidence: "91%", color: "#0080ff", x: 0.72, y: 0.49, w: 0.14, h: 0.18 }
     ];
   }
@@ -172,7 +172,7 @@ function getDetectedObjectsForFile(name) {
   if (fileLower.includes("plastic") || fileLower.includes("bottle") || fileLower.includes("pet")) {
     return [
       { label: "PET Bottle", confidence: "95%", color: "#27c93f", x: 0.25, y: 0.20, w: 0.30, h: 0.50 },
-      { label: "Plastic Film ⚠️", confidence: "88%", color: "#ff8000", x: 0.60, y: 0.30, w: 0.20, h: 0.35 },
+      { label: "Plastic Film Alert", confidence: "88%", color: "#ff8000", x: 0.60, y: 0.30, w: 0.20, h: 0.35 },
       { label: "General Trash", confidence: "75%", color: "#7f8c8d", x: 0.45, y: 0.60, w: 0.15, h: 0.20 }
     ];
   }
@@ -180,8 +180,8 @@ function getDetectedObjectsForFile(name) {
   // 3. Battery mapping
   if (fileLower.includes("battery") || fileLower.includes("lithium")) {
     return [
-      { label: "Battery Hazard ⚠️", confidence: "99%", color: "#b42318", x: 0.35, y: 0.30, w: 0.25, h: 0.35 },
-      { label: "Plastic Film ⚠️", confidence: "84%", color: "#ff8000", x: 0.15, y: 0.50, w: 0.20, h: 0.30 },
+      { label: "Battery Hazard Alert", confidence: "99%", color: "#b42318", x: 0.35, y: 0.30, w: 0.25, h: 0.35 },
+      { label: "Plastic Film Alert", confidence: "84%", color: "#ff8000", x: 0.15, y: 0.50, w: 0.20, h: 0.30 },
       { label: "Paper Crumpled", confidence: "79%", color: "#8aa0a8", x: 0.65, y: 0.25, w: 0.20, h: 0.25 }
     ];
   }
@@ -197,9 +197,9 @@ function getDetectedObjectsForFile(name) {
   // 5. Food organics mapping
   if (fileLower.includes("food") || fileLower.includes("organic") || fileLower.includes("peel")) {
     return [
-      { label: "Food Waste ⚠️", confidence: "87%", color: "#ff8000", x: 0.25, y: 0.25, w: 0.40, h: 0.45 },
+      { label: "Food Waste Alert", confidence: "87%", color: "#ff8000", x: 0.25, y: 0.25, w: 0.40, h: 0.45 },
       { label: "Paper Crumpled", confidence: "81%", color: "#8aa0a8", x: 0.70, y: 0.50, w: 0.15, h: 0.25 },
-      { label: "Textile Scrap ⚠️", confidence: "76%", color: "#1abc9c", x: 0.10, y: 0.60, w: 0.18, h: 0.22 }
+      { label: "Textile Scrap Alert", confidence: "76%", color: "#1abc9c", x: 0.10, y: 0.60, w: 0.18, h: 0.22 }
     ];
   }
 
@@ -207,7 +207,7 @@ function getDetectedObjectsForFile(name) {
   if (fileLower.includes("paper") || fileLower.includes("newspaper") || fileLower.includes("sheet")) {
     return [
       { label: "Paper Crumpled", confidence: "89%", color: "#8aa0a8", x: 0.20, y: 0.20, w: 0.45, h: 0.45 },
-      { label: "Plastic Film ⚠️", confidence: "82%", color: "#ff8000", x: 0.60, y: 0.40, w: 0.25, h: 0.35 }
+      { label: "Plastic Film Alert", confidence: "82%", color: "#ff8000", x: 0.60, y: 0.40, w: 0.25, h: 0.35 }
     ];
   }
 
@@ -222,7 +222,7 @@ function getDetectedObjectsForFile(name) {
   // 8. Textile mapping
   if (fileLower.includes("textile") || fileLower.includes("cloth") || fileLower.includes("fabric")) {
     return [
-      { label: "Textile Scrap ⚠️", confidence: "83%", color: "#1abc9c", x: 0.25, y: 0.25, w: 0.45, h: 0.45 },
+      { label: "Textile Scrap Alert", confidence: "83%", color: "#1abc9c", x: 0.25, y: 0.25, w: 0.45, h: 0.45 },
       { label: "General Trash", confidence: "70%", color: "#7f8c8d", x: 0.60, y: 0.50, w: 0.20, h: 0.30 }
     ];
   }
@@ -231,7 +231,7 @@ function getDetectedObjectsForFile(name) {
   if (fileLower.includes("cup") || fileLower.includes("mug") || fileLower.includes("trash")) {
     return [
       { label: "General Trash", confidence: "78%", color: "#7f8c8d", x: 0.25, y: 0.25, w: 0.40, h: 0.50 },
-      { label: "Plastic Film ⚠️", confidence: "80%", color: "#ff8000", x: 0.55, y: 0.35, w: 0.25, h: 0.35 }
+      { label: "Plastic Film Alert", confidence: "80%", color: "#ff8000", x: 0.55, y: 0.35, w: 0.25, h: 0.35 }
     ];
   }
 
@@ -247,8 +247,8 @@ function getDetectedObjectsForFile(name) {
 
   if (Math.random() > 0.4) {
     const contaminants = [
-      { label: "Plastic Film ⚠️", color: "#ff8000" },
-      { label: "Food Waste ⚠️", color: "#ff8000" },
+      { label: "Plastic Film Alert", color: "#ff8000" },
+      { label: "Food Waste Alert", color: "#ff8000" },
       { label: "General Trash", color: "#7f8c8d" }
     ];
     const secondary = contaminants[Math.floor(Math.random() * contaminants.length)];
@@ -300,15 +300,15 @@ function getAuditLedger() {
   if (localLedger) {
     return JSON.parse(localLedger);
   }
-  // Default mock ledger
+  // Default mock ledger, based on uploaded images rather than physical stations
   const mockLedger = [
-    { id: "LOG-9821", time: "10:42 AM", station: "STATION-A01", category: "Metal", weight: "18.4 kg", confidence: "98.7%", status: "Cleared" },
-    { id: "LOG-9820", time: "10:30 AM", station: "STATION-C03", category: "Glass", weight: "14.5 kg", confidence: "82.0%", status: "Review Needed" },
-    { id: "LOG-9819", time: "10:25 AM", station: "MOBILE-APP", category: "General Trash", weight: "12.0 kg", confidence: "42.1%", status: "Quarantined" },
-    { id: "LOG-9818", time: "10:14 AM", station: "STATION-A01", category: "Metal", weight: "19.2 kg", confidence: "99.2%", status: "Cleared" },
-    { id: "LOG-9817", time: "10:05 AM", station: "STATION-B02", category: "Plastic", weight: "15.1 kg", confidence: "98.1%", status: "Cleared" },
-    { id: "LOG-9816", time: "09:58 AM", station: "STATION-D04", category: "Battery", weight: "8.0 kg", confidence: "54.1%", status: "Quarantined" },
-    { id: "LOG-9815", time: "09:42 AM", station: "STATION-C03", category: "Glass", weight: "11.3 kg", confidence: "96.7%", status: "Cleared" }
+    { id: "LOG-9821", time: "10:42 AM", source: "batch_metal_can_042.jpg", sourceKey: "SINGLE-IMAGE", category: "Metal", weight: "18.4 kg", confidence: "98.7%", status: "Cleared" },
+    { id: "LOG-9820", time: "10:30 AM", source: "glass_mixed_batch.zip", sourceKey: "ZIP-BATCH", category: "Glass", weight: "14.5 kg", confidence: "82.0%", status: "Review Needed" },
+    { id: "LOG-9819", time: "10:25 AM", source: "trash_contamination_set.zip", sourceKey: "ZIP-BATCH", category: "General Trash", weight: "12.0 kg", confidence: "42.1%", status: "Quarantined" },
+    { id: "LOG-9818", time: "10:14 AM", source: "metal_recovery_sample.png", sourceKey: "SINGLE-IMAGE", category: "Metal", weight: "19.2 kg", confidence: "99.2%", status: "Cleared" },
+    { id: "LOG-9817", time: "10:05 AM", source: "plastic_bottle_upload.jpg", sourceKey: "SINGLE-IMAGE", category: "Plastic", weight: "15.1 kg", confidence: "98.1%", status: "Cleared" },
+    { id: "LOG-9816", time: "09:58 AM", source: "battery_hazard_upload.jpg", sourceKey: "QUARANTINE-UPLOAD", category: "Battery", weight: "8.0 kg", confidence: "54.1%", status: "Quarantined" },
+    { id: "LOG-9815", time: "09:42 AM", source: "glass_jar_upload.webp", sourceKey: "SINGLE-IMAGE", category: "Glass", weight: "11.3 kg", confidence: "96.7%", status: "Cleared" }
   ];
   localStorage.setItem("purityloop_audit_ledger", JSON.stringify(mockLedger));
   return mockLedger;
@@ -316,6 +316,22 @@ function getAuditLedger() {
 
 function saveAuditLedger(ledger) {
   localStorage.setItem("purityloop_audit_ledger", JSON.stringify(ledger));
+}
+
+function getLogSourceLabel(log) {
+  if (log.source) return log.source;
+  if (!log.station) return "Uploaded image";
+  if (log.station === "UPLOAD-HUB") return "Upload queue";
+  if (log.station === "MOBILE-APP") return "Camera upload";
+  if (String(log.station).startsWith("STATION-")) return "Legacy uploaded image";
+  return log.station;
+}
+
+function getLogSourceKey(log) {
+  if (log.sourceKey) return log.sourceKey;
+  if (log.source && log.source.toLowerCase().endsWith(".zip")) return "ZIP-BATCH";
+  if (log.status === "Quarantined" || log.status === "Quarantine") return "QUARANTINE-UPLOAD";
+  return "SINGLE-IMAGE";
 }
 
 /*****************************************
@@ -694,15 +710,15 @@ function initResultPage() {
   let activeIndex = 0;
   let activeImageObj = null;
 
-  // Change heading labels to reflect "AI Classification Result"
+  // Keep page headings aligned with the upload-to-result workflow
   const eyebrowEl = document.querySelector(".main-content .eyebrow");
   if (eyebrowEl) eyebrowEl.textContent = "AI Classification Hub";
 
   const headingEl = document.querySelector(".main-content h1");
-  if (headingEl) headingEl.textContent = "Classification Results Viewer";
+  if (headingEl) headingEl.textContent = "Image Classification Results";
 
   const descEl = document.querySelector(".main-content header p");
-  if (descEl) descEl.textContent = "Review high-resolution camera analysis, confidence intervals, and automated quarantine audits.";
+  if (descEl) descEl.textContent = "Review uploaded images, confidence scores, contaminants, and recommended sorting action.";
 
   // Rename sidebar menu
   const sidebarNote = document.querySelector(".sidebar-note");
@@ -748,7 +764,8 @@ function initResultPage() {
       const newLog = {
         id: "LOG-" + Math.floor(1000 + Math.random() * 9000),
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        station: "UPLOAD-HUB",
+        source: activeFile.name,
+        sourceKey: activeFile.name && activeFile.name.toLowerCase().endsWith(".zip") ? "ZIP-BATCH" : "SINGLE-IMAGE",
         category: result.category,
         weight: result.weight,
         confidence: result.confidence,
@@ -759,7 +776,7 @@ function initResultPage() {
       saveAuditLedger(currentLedger);
 
       // Show toast notification
-      showToast(`Audit verified! ${result.category} logged to ledger successfully.`, "success");
+      showToast(`Audit verified. ${result.category} was added to the review ledger.`, "success");
 
       // Mark row in queue as processed
       activeFile.processed = true;
@@ -909,7 +926,7 @@ function initResultPage() {
     // Calculate overall purity (percentage of recyclables)
     let recyclableCount = 0;
     boxes.forEach(box => {
-      if (box.label.includes("⚠️") || box.label.toLowerCase().includes("hazard") || box.label.toLowerCase().includes("contaminant")) {
+      if (box.label.includes("Alert") || box.label.toLowerCase().includes("hazard") || box.label.toLowerCase().includes("contaminant")) {
         return; // Contaminants do not count toward recyclable purity
       }
       const labelLower = box.label.toLowerCase();
@@ -973,9 +990,9 @@ function initResultPage() {
           actionPanel.style.borderColor = "var(--danger)";
         }
         badgeHtml = `
-          <strong style="color: var(--danger); display: block; font-size: 14px; margin-bottom: 6px;">🚨 CRITICAL HAZARD: ISOLATE IMMEDIATELY</strong>
+          <strong style="color: var(--danger); display: block; font-size: 14px; margin-bottom: 6px;">CRITICAL HAZARD: ISOLATE IMMEDIATELY</strong>
           <p style="color: #7f1d1d; font-weight: 700; line-height: 1.4; margin: 0;">
-            Lithium battery detected in batch! Manually extract the battery and place in fire-safe quarantine container immediately. Reject the rest of the batch. Click 'Verify & Approve' to log this hazard.
+            Lithium battery detected in this upload. Extract the battery and place it in fire-safe quarantine storage. Reject the contaminated record after review.
           </p>
         `;
       } else if (hasContaminant) {
@@ -985,15 +1002,15 @@ function initResultPage() {
         }
         const contaminantsList = [];
         boxes.forEach(b => {
-          if (b.label.includes("⚠️") || b.label.includes("Trash") || b.label.includes("Textile")) {
-            contaminantsList.push(b.label.replace(" ⚠️", ""));
+          if (b.label.includes("Alert") || b.label.includes("Trash") || b.label.includes("Textile")) {
+            contaminantsList.push(b.label.replace(" Alert", ""));
           }
         });
         const uniqContaminants = [...new Set(contaminantsList)];
         badgeHtml = `
-          <strong style="color: #b7791f; display: block; font-size: 14px; margin-bottom: 6px;">⚠️ MANUAL SORT REQUIRED</strong>
+          <strong style="color: #b7791f; display: block; font-size: 14px; margin-bottom: 6px;">MANUAL SORT REQUIRED</strong>
           <p style="color: #78350f; font-weight: 700; line-height: 1.4; margin: 0;">
-            Contamination rate is ${100 - purityPct}%. Manually remove the highlighted contaminants (<strong>${uniqContaminants.join(", ")}</strong>) from the sorting table before baling. Click 'Verify & Approve' to log.
+            Contamination rate is ${100 - purityPct}%. Review the highlighted contaminants (<strong>${uniqContaminants.join(", ")}</strong>) before approving this record.
           </p>
         `;
       } else {
@@ -1002,9 +1019,9 @@ function initResultPage() {
           actionPanel.style.borderColor = "#a9cdbb";
         }
         badgeHtml = `
-          <strong style="color: var(--green); display: block; font-size: 14px; margin-bottom: 6px;">✅ CLEAR FOR BALING</strong>
+          <strong style="color: var(--green); display: block; font-size: 14px; margin-bottom: 6px;">CLEAR FOR RECOVERY</strong>
           <p style="color: var(--green-dark); font-weight: 700; line-height: 1.4; margin: 0;">
-            100% recyclable purity. No contaminants or hazards detected in this batch. Click 'Verify & Approve Scan Result' to approve batch into sorting lines.
+            100% recyclable purity. No contaminants or hazards were detected. Verify this result to add it to the review ledger.
           </p>
         `;
       }
@@ -1054,7 +1071,7 @@ function initResultPage() {
       liveFeed.appendChild(infoDiv);
     }
 
-    renderStationDetail("STATION-A01", { activate: false });
+    renderStationDetail("UPLOAD-HUB", { activate: false });
     renderMaterialDetail(result.category, { activate: false });
   }
 
@@ -1082,7 +1099,7 @@ function initResultPage() {
     canvas.width = rect.width;
     canvas.height = rect.height || Math.round(rect.width * (9 / 16));
 
-    // ── 1. Draw image filling the entire canvas (object-fit: cover style) ──
+    // - 1. Draw image filling the entire canvas (object-fit: cover style) -
     const imgW = activeImageObj.width;
     const imgH = activeImageObj.height;
     const scale = Math.max(canvas.width / imgW, canvas.height / imgH);
@@ -1093,16 +1110,16 @@ function initResultPage() {
 
     ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
 
-    // ── 2. Subtle dark vignette overlay (like NANDO AI dims the image slightly) ──
+    // - 2. Subtle dark vignette overlay (like NANDO AI dims the image slightly) -
     ctx2d.fillStyle = "rgba(0, 0, 0, 0.28)";
     ctx2d.fillRect(0, 0, canvas.width, canvas.height);
 
-    // ── 3. Redraw image at 88% brightness on top (creates the "dim background" look) ──
+    // - 3. Redraw image at 88% brightness on top (creates the "dim background" look) -
     ctx2d.globalAlpha = 0.88;
     ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
     ctx2d.globalAlpha = 1.0;
 
-    // ── 4. Draw all bounding boxes (NANDO AI static style) ──
+    // - 4. Draw all bounding boxes (NANDO AI static style) -
     const activeFile = uploads[activeIndex];
     const boxes = getDetectedObjectsForFile(activeFile.name);
 
@@ -1114,7 +1131,7 @@ function initResultPage() {
 
       // Determine if this is a hazard/contaminant (red) vs recyclable (green/other)
       const isHazard = box.color === "#b42318" || box.color === "#ff8000" ||
-        box.label.includes("⚠️") || box.label.includes("Hazard") ||
+        box.label.includes("Alert") || box.label.includes("Hazard") ||
         box.label.includes("Trash") || box.label.includes("Textile") ||
         box.label.includes("Film");
       const borderColor = isHazard ? "#e63030" : box.color;
@@ -1125,14 +1142,14 @@ function initResultPage() {
         : hexToRgba(borderColor, 0.13);
       ctx2d.fillRect(boxX, boxY, boxW, boxH);
 
-      // Solid border — 2px, matches NANDO AI
+      // Solid border - 2px, matches NANDO AI
       ctx2d.strokeStyle = borderColor;
       ctx2d.lineWidth = 2;
       ctx2d.strokeRect(boxX, boxY, boxW, boxH);
 
-      // ── Label tag at top-left of box (NANDO AI flat dark chip style) ──
+      // - Label tag at top-left of box (NANDO AI flat dark chip style) -
       ctx2d.font = "bold 11.5px 'Courier New', monospace";
-      const rawLabel = box.label.replace(" ⚠️", "").toUpperCase().replace(/ /g, "_");
+      const rawLabel = box.label.replace(" Alert", "").toUpperCase().replace(/ /g, "_");
       const labelText = `${rawLabel} ${box.confidence}`;
       const textW = ctx2d.measureText(labelText).width;
       const tagW = textW + 14;
@@ -1140,7 +1157,7 @@ function initResultPage() {
       const tagX = boxX;
       const tagY = boxY;
 
-      // Dark chip background (exactly like NANDO AI — very dark, slight transparency)
+      // Dark chip background (exactly like NANDO AI - very dark, slight transparency)
       ctx2d.fillStyle = "rgba(4, 8, 6, 0.88)";
       ctx2d.fillRect(tagX, tagY, tagW, tagH);
 
@@ -1153,7 +1170,7 @@ function initResultPage() {
       ctx2d.fillText(labelText, tagX + 7, tagY + 15);
     });
 
-    // ── 5. Bottom telemetry bar (subtle, minimal — doesn't distract from image) ──
+    // - 5. Bottom telemetry bar (subtle, minimal - doesn't distract from image) -
     const hudY = canvas.height - 30;
     ctx2d.fillStyle = "rgba(4, 8, 6, 0.70)";
     ctx2d.fillRect(0, hudY, canvas.width, 30);
@@ -1176,7 +1193,7 @@ function initResultPage() {
   function triggerAuditLoggedNotification() {
     const badge = document.createElement("div");
     badge.className = "audit-badge-animation";
-    badge.innerHTML = `✅ Audit Verified!<br><strong>Logged to Ledger</strong>`;
+    badge.innerHTML = `Audit verified<br><strong>Logged to Ledger</strong>`;
 
     document.body.appendChild(badge);
 
@@ -1233,30 +1250,30 @@ function initReviewModal() {
   let activeLogId = null;
   let activeRow = null;
 
-  // Change heading titles to match "Audit Logs"
+  // Change heading titles to match upload-based audit logs
   const sectionKicker = document.querySelector(".ledger-panel .eyebrow");
-  if (sectionKicker) sectionKicker.textContent = "QA Audit Verification";
+  if (sectionKicker) sectionKicker.textContent = "Audit verification";
 
   const sectionTitle = document.querySelector(".ledger-panel h2");
-  if (sectionTitle) sectionTitle.textContent = "AI Classification Audit Ledger";
+  if (sectionTitle) sectionTitle.textContent = "Uploaded Image Ledger";
 
   const mainHeaderTitle = document.querySelector(".main-content h1");
-  if (mainHeaderTitle) mainHeaderTitle.textContent = "Recycling Audit Trail Logs";
+  if (mainHeaderTitle) mainHeaderTitle.textContent = "Human Review Logs";
 
   const mainHeaderDesc = document.querySelector(".main-content header p");
-  if (mainHeaderDesc) mainHeaderDesc.textContent = "Verify low-confidence waste uploads and override sorting classifications.";
+  if (mainHeaderDesc) mainHeaderDesc.textContent = "Validate uploaded image results before they become final classification records.";
 
   const ledgerSidebarNote = document.querySelector(".sidebar-note");
   if (ledgerSidebarNote) {
     ledgerSidebarNote.innerHTML = `
-      <strong>QA Audit</strong>
-      <p>Click 'Review Needed' to override categories or approve sorting records.</p>
+      <strong>Human review</strong>
+      <p>Open records marked review needed to approve, correct, or reject AI classifications.</p>
     `;
   }
 
-  // Adjust table columns: Segment ID -> Source Station
+  // Adjust table columns to the upload-only workflow
   const tableHeaders = document.querySelectorAll(".ledger-table th");
-  if (tableHeaders[1]) tableHeaders[1].textContent = "Scanner Station";
+  if (tableHeaders[1]) tableHeaders[1].textContent = "Upload Source";
   if (tableHeaders[4]) tableHeaders[4].textContent = "AI Confidence";
 
   // Pre-load reclassification controls inside the modal
@@ -1269,7 +1286,7 @@ function initReviewModal() {
     reclassifyDiv.style.gridColumn = "span 2";
     reclassifyDiv.style.marginTop = "10px";
     reclassifyDiv.innerHTML = `
-      <label for="reclassifySelect" style="display:block; font-weight:800; margin-bottom:6px; font-size:13px;">Manual Reclassification Category:</label>
+      <label for="reclassifySelect" style="display:block; font-weight:800; margin-bottom:6px; font-size:13px;">Manual reclassification category</label>
       <select id="reclassifySelect" style="width:100%; height:42px; border:1px solid var(--line); border-radius:var(--radius); padding:0 10px; background:#fff; font-weight:700;">
         <option value="Plastic">Plastic</option>
         <option value="Metal">Metal</option>
@@ -1286,8 +1303,8 @@ function initReviewModal() {
   }
 
   // Adjust button text
-  if (clearButton) clearButton.textContent = "Verify & Approve Result";
-  if (quarantineButton) quarantineButton.textContent = "Flag as Contaminated / Reject";
+  if (clearButton) clearButton.textContent = "Verify result";
+  if (quarantineButton) quarantineButton.textContent = "Reject as contaminated";
 
   // Build Table from LocalStorage state with simulated skeleton loading delay
   setTimeout(() => {
@@ -1302,6 +1319,8 @@ function initReviewModal() {
     ledger.forEach(log => {
       const tr = document.createElement("tr");
       tr.id = `row-${log.id}`;
+      const sourceLabel = getLogSourceLabel(log);
+      const sourceKey = getLogSourceKey(log);
 
       let confidenceClass = "positive";
       const numConf = parseFloat(log.confidence);
@@ -1321,7 +1340,7 @@ function initReviewModal() {
 
       tr.innerHTML = `
         <td>${log.time}</td>
-        <td><button type="button" class="text-drill" data-station-detail="${log.station}">${log.station}</button></td>
+        <td><button type="button" class="text-drill source-drill" data-station-detail="${sourceKey}">${sourceLabel}</button></td>
         <td><button type="button" class="text-drill" data-material-detail="${log.category}">${log.category}</button></td>
         <td>${log.weight}</td>
         <td class="${confidenceClass}">${log.confidence}</td>
@@ -1361,7 +1380,7 @@ function initReviewModal() {
 
         if (reviewTitle) reviewTitle.textContent = "Audit Record: " + activeLog.id;
         if (reviewDescription) {
-          reviewDescription.textContent = `Review AI sorting parameters. Overrides directly reclassify sorted bales and statistics.`;
+          reviewDescription.textContent = "Review this uploaded image result. Overrides update the material category and final audit status.";
         }
 
         // Load correct mock image asset into snapshot box
@@ -1369,7 +1388,7 @@ function initReviewModal() {
         if (snapshotFeed) {
           snapshotFeed.innerHTML = `
             <span class="snapshot-live"></span>
-            <strong>LOW AI CONFIDENCE - HUMAN AUDIT REQUIRED</strong>
+            <strong>LOW CONFIDENCE - HUMAN AUDIT REQUIRED</strong>
           `;
         }
 
@@ -1383,6 +1402,7 @@ function initReviewModal() {
             <img src="${itemMeta.imageSrc}" alt="${activeLog.category}" style="max-height:90px; object-fit:contain;" />
             <div style="display:flex; flex-direction:column; gap:4px; font-size:13px; text-align:left;">
               <div><strong>Initial Prediction:</strong> ${activeLog.category}</div>
+              <div><strong>Upload Source:</strong> ${getLogSourceLabel(activeLog)}</div>
               <div><strong>Weight:</strong> ${activeLog.weight}</div>
               <div><strong>Confidence:</strong> ${activeLog.confidence}</div>
             </div>
@@ -1481,7 +1501,7 @@ function initAnalyticsCharts() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const dateStr = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-    clockEl.textContent = `${dateStr} · ${timeStr}`;
+    clockEl.textContent = `${dateStr}  -  ${timeStr}`;
   }
   updateClock();
   setInterval(updateClock, 1000);
@@ -1505,7 +1525,7 @@ function initAnalyticsCharts() {
       itemDiv.innerHTML = `
         <span class="status-pill ${statusClass}">${log.status}</span>
         <strong>Scan Verification</strong>
-        <p>${log.time} · ${log.station} · ${log.category} (${log.confidence})</p>
+        <p>${log.time}  -  ${getLogSourceLabel(log)}  -  ${log.category} (${log.confidence})</p>
       `;
 
       itemDiv.addEventListener("click", () => {
@@ -1817,9 +1837,9 @@ const drillMaterialData = {
     rate: "@ $1,200/ton market rate",
     purity: "99.1%",
     status: "Clean recyclable metal grade",
-    subtitle: "30-day recovery trend, purity grade, and source stations for audited metals.",
+    subtitle: "30-day recovery trend, purity grade, and upload source mix for audited metals.",
     trend: [12, 14, 15, 13, 16, 18, 17, 15, 14, 15, 16, 14, 13, 15, 17, 19, 18, 16, 15, 14],
-    zones: [["Station A01", 180], ["Mobile Scanner", 150], ["Station C03", 120]]
+    zones: [["Single image", 180], ["ZIP batch", 150], ["Demo dataset", 120]]
   },
   Plastic: {
     color: "#2f6f8f",
@@ -1829,9 +1849,9 @@ const drillMaterialData = {
     rate: "@ $400/ton market rate",
     purity: "97.4%",
     status: "Bale-ready recyclables",
-    subtitle: "Plastic recovery trend, resale value, and optical-line scan station logs.",
+    subtitle: "Plastic recovery trend, resale value, and uploaded image review logs.",
     trend: [10, 11, 12, 11, 13, 14, 13, 12, 11, 12, 13, 11, 10, 12, 14, 15, 14, 12, 11, 10],
-    zones: [["Station A01", 150], ["Mobile Scanner", 130], ["Station C03", 100]]
+    zones: [["Single image", 150], ["ZIP batch", 130], ["Demo dataset", 100]]
   },
   Glass: {
     color: "#8b5cf6",
@@ -1843,7 +1863,7 @@ const drillMaterialData = {
     status: "Recalibration recommended",
     subtitle: "Glass recovery is stable, but audit reviews suggest color segregation holds potential value.",
     trend: [2, 3, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 3],
-    zones: [["Station A01", 60], ["Mobile Scanner", 40], ["Station C03", 27]]
+    zones: [["Single image", 60], ["ZIP batch", 40], ["Demo dataset", 27]]
   },
   Paper: {
     color: "#8aa0a8",
@@ -1855,7 +1875,7 @@ const drillMaterialData = {
     status: "Clean recyclable paper grade",
     subtitle: "Paper recovery logs showing dry-fiber bale consistency.",
     trend: [4, 5, 4, 6, 5, 4, 5, 6, 4, 5, 4, 6, 7, 5, 4, 5, 6, 4, 5, 6],
-    zones: [["Station A01", 40], ["Mobile Scanner", 80], ["Station C03", 30]]
+    zones: [["Single image", 40], ["ZIP batch", 80], ["Demo dataset", 30]]
   },
   Cardboard: {
     color: "#e67e22",
@@ -1867,7 +1887,7 @@ const drillMaterialData = {
     status: "Bale-ready high-grade fibers",
     subtitle: "Cardboard recovery, fiber purity, and sorting source distribution.",
     trend: [3, 4, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 4],
-    zones: [["Station A01", 30], ["Mobile Scanner", 90], ["Station C03", 20]]
+    zones: [["Single image", 30], ["ZIP batch", 90], ["Demo dataset", 20]]
   },
   "Food Organics": {
     color: "#27ae60",
@@ -1879,7 +1899,7 @@ const drillMaterialData = {
     status: "High residue hazard",
     subtitle: "Organic contamination flags, cleaning costs, and incident hotspots.",
     trend: [50, 48, 52, 45, 60, 55, 49, 45, 42, 50, 48, 44, 46, 52, 55, 60, 58, 45, 40, 38],
-    zones: [["Station A01", 600], ["Mobile Scanner", 500], ["Station C03", 320]]
+    zones: [["Single image", 600], ["ZIP batch", 500], ["Demo dataset", 320]]
   },
   "General Trash": {
     color: "#7f8c8d",
@@ -1891,7 +1911,7 @@ const drillMaterialData = {
     status: "Unrecoverable waste logs",
     subtitle: "General trash contamination patterns and landfill diversion rates.",
     trend: [30, 32, 28, 35, 30, 29, 31, 33, 30, 28, 35, 34, 32, 30, 29, 31, 33, 35, 30, 28],
-    zones: [["Station A01", 400], ["Mobile Scanner", 350], ["Station C03", 200]]
+    zones: [["Single image", 400], ["ZIP batch", 350], ["Demo dataset", 200]]
   },
   Textile: {
     color: "#1abc9c",
@@ -1903,7 +1923,7 @@ const drillMaterialData = {
     status: "Tangling / Jamming risk",
     subtitle: "Fabric logs showing machine safety overrides and manual redirects.",
     trend: [25, 24, 26, 28, 25, 24, 27, 26, 25, 23, 28, 29, 25, 24, 26, 27, 25, 24, 23, 25],
-    zones: [["Station A01", 300], ["Mobile Scanner", 280], ["Station C03", 200]]
+    zones: [["Single image", 300], ["ZIP batch", 280], ["Demo dataset", 200]]
   },
   Battery: {
     color: "#b42318",
@@ -1913,90 +1933,64 @@ const drillMaterialData = {
     rate: "Estimated fire safety containment risk",
     purity: "Critical",
     status: "Fire risk - immediate quarantine",
-    subtitle: "Quarantined lithium battery incidents and station safety alarms.",
+    subtitle: "Quarantined lithium battery incidents found in uploaded images.",
     trend: [8, 6, 9, 7, 5, 8, 10, 6, 7, 5, 9, 8, 6, 7, 5, 8, 9, 6, 7, 5],
-    zones: [["Station A01", 100], ["Mobile Scanner", 70], ["Station C03", 40]]
+    zones: [["Single image", 100], ["ZIP batch", 70], ["Demo dataset", 40]]
   }
 };
 
 const drillStationData = {
-  "STATION-A01": {
-    load: "8.5 t/h equivalent",
-    capacity: "/ 10 t/h capacity",
-    speed: "AI-Model active",
-    maxSpeed: "v2.4 Core Precision",
-    scanner: "Optical Lens Clean",
-    motor: "42°C",
-    air: "Normal calibration",
-    action: "Operational",
-    insight: "Main Sorting Lobby Station. Object classification is optimal, no anomalies reported.",
-    uptime: [["Active Scanning Uptime", 98], ["Diagnostic Downtime", 2]],
-    composition: [["Plastic", 50], ["Metal", 30], ["Paper", 20]]
-  },
-  "STATION-B02": {
-    load: "4.2 t/h equivalent",
-    capacity: "/ 8 t/h capacity",
-    speed: "AI-Model active",
-    maxSpeed: "v2.4 Core Precision",
-    scanner: "Optical Lens Clean",
-    motor: "39°C",
-    air: "Normal calibration",
-    action: "Operational",
-    insight: "Loading Dock AI Scanner. Calibrated for high-glare exterior cargo lighting.",
-    uptime: [["Active Scanning Uptime", 95], ["Diagnostic Downtime", 5]],
-    composition: [["Glass", 60], ["Cardboard", 30], ["Textiles", 10]]
-  },
-  "STATION-C03": {
-    load: "6.8 t/h equivalent",
-    capacity: "/ 8 t/h capacity",
-    speed: "AI-Model active",
-    maxSpeed: "v2.1 Light Precision",
-    scanner: "Lens Obscured (10%)",
-    motor: "45°C",
-    air: "Clean Lens recommended",
-    action: "Clean Lens Alert",
-    insight: "Glass Sorting Bay. High humidity causing dust buildup on sorting lens mirror.",
-    uptime: [["Active Scanning Uptime", 90], ["Maintenance Calibration", 10]],
-    composition: [["Glass", 80], ["General Trash", 15], ["Batteries", 5]]
-  },
-  "STATION-D04": {
-    load: "1.5 t/h equivalent",
-    capacity: "/ 5 t/h capacity",
-    speed: "AI-Model active",
-    maxSpeed: "v2.4 Core Precision",
-    scanner: "Optical Lens Clean",
-    motor: "35°C",
-    air: "Normal calibration",
-    action: "Quarantine Safe",
-    insight: "Contaminant Recovery Bin. Keeps track of textiles, organic waste, and battery quarantine cycles.",
-    uptime: [["Active Scanning Uptime", 99], ["Diagnostic Downtime", 1]],
-    composition: [["General Trash", 60], ["Food Organics", 25], ["Batteries", 15]]
-  },
-  "MOBILE-APP": {
-    load: "User-sourced upload",
-    capacity: "On-demand api queue",
-    speed: "Mobile API active",
-    maxSpeed: "v1.0 Lightweight",
-    scanner: "User device cameras",
-    motor: "API online",
-    air: "Rate limit: 120 req/min",
-    action: "Operational",
-    insight: "Station for facility operators to upload real-time waste sorting photos.",
-    uptime: [["API Service Uptime", 99.9], ["API Downtime", 0.1]],
-    composition: [["Plastic Bottles", 40], ["Aluminium Cans", 30], ["Cardboard", 20], ["Contaminants", 10]]
-  },
   "UPLOAD-HUB": {
-    load: "Mixed file interface",
-    capacity: "On-demand api queue",
-    speed: "Web UI upload active",
+    load: "On-demand",
+    capacity: "Upload queue",
+    speed: "AI-Model active",
     maxSpeed: "v2.4 Core Precision",
-    scanner: "User Web uploads",
-    motor: "Web app online",
-    air: "File size limit: 100MB",
+    scanner: "Web upload",
+    motor: "Online",
+    air: "100 MB batch limit",
     action: "Operational",
-    insight: "Manual batch file uploader and Webcam capture terminal interface for sorting verification.",
-    uptime: [["Web UI Service Uptime", 99.8], ["Web UI Downtime", 0.2]],
-    composition: [["Metal", 30], ["Plastic", 30], ["Glass", 20], ["Paper", 10], ["Contaminants", 10]]
+    insight: "Uploaded images are queued for classification, confidence scoring, and human review.",
+    uptime: [["Completed reviews", 82], ["Pending review", 18]],
+    composition: [["Single images", 52], ["ZIP batches", 36], ["Demo samples", 12]]
+  },
+  "SINGLE-IMAGE": {
+    load: "Single file",
+    capacity: "JPG, PNG, WEBP",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Local image upload",
+    motor: "Online",
+    air: "10 MB image limit",
+    action: "Operational",
+    insight: "Single image uploads are processed immediately and can be approved or moved to human review.",
+    uptime: [["Auto-cleared", 74], ["Manual review", 26]],
+    composition: [["Plastic", 34], ["Metal", 26], ["Paper", 22], ["Contaminants", 18]]
+  },
+  "ZIP-BATCH": {
+    load: "Batch archive",
+    capacity: "Up to 100 MB",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Batch Precision",
+    scanner: "ZIP image batch",
+    motor: "Online",
+    air: "50 file cap",
+    action: "Review recommended",
+    insight: "ZIP batches can contain mixed materials, so low-confidence images are routed into human review.",
+    uptime: [["Auto-cleared", 61], ["Manual review", 39]],
+    composition: [["Glass", 28], ["Plastic", 24], ["Cardboard", 21], ["Contaminants", 27]]
+  },
+  "QUARANTINE-UPLOAD": {
+    load: "Flagged upload",
+    capacity: "Human decision required",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Rejected or hazard image",
+    motor: "Online",
+    air: "Override required",
+    action: "Quarantine",
+    insight: "Hazards, organics, textile scraps, and general trash are isolated in the review queue before final logging.",
+    uptime: [["Rejected", 68], ["Corrected", 32]],
+    composition: [["General Trash", 45], ["Food Organics", 27], ["Batteries", 18], ["Textile", 10]]
   }
 };
 
@@ -2060,7 +2054,7 @@ function renderMaterialDetail(materialName, options = {}) {
   panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = data.isContaminant ? "Est. Sorting Penalty" : "Commodity Market Value"; });
   panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = data.isContaminant ? "Severity Rating" : "Avg Material Purity"; });
   panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = data.isContaminant ? "30-Day Flagged Trend" : "30-Day Recovery Trend"; });
-  panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = data.isContaminant ? "Flags by Scanner Station" : "Distribution by Scanner Station"; });
+  panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = data.isContaminant ? "Flags by upload type" : "Distribution by upload type"; });
   panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, data.trend, data.color));
   panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, data.zones, data.color, data.isContaminant ? "" : " t"));
 
@@ -2072,12 +2066,11 @@ function renderStationDetail(stationId, options = {}) {
 
   // Normalize
   let normId = stationId;
-  if (stationId === "BELT-A01") normId = "STATION-A01";
-  if (stationId === "BELT-B02") normId = "STATION-B02";
-  if (stationId === "BELT-C03") normId = "STATION-C03";
-  if (stationId === "BELT-D04") normId = "STATION-D04";
+  if (stationId === "BELT-A01" || stationId === "BELT-B02" || stationId === "STATION-A01" || stationId === "STATION-B02") normId = "SINGLE-IMAGE";
+  if (stationId === "BELT-C03" || stationId === "STATION-C03") normId = "ZIP-BATCH";
+  if (stationId === "BELT-D04" || stationId === "STATION-D04") normId = "QUARANTINE-UPLOAD";
 
-  const data = drillStationData[normId] || drillStationData["STATION-A01"];
+  const data = drillStationData[normId] || drillStationData["UPLOAD-HUB"];
   const panel = document.getElementById("detail-belt");
   if (!panel) return;
 
@@ -2094,20 +2087,20 @@ function renderStationDetail(stationId, options = {}) {
   panel.querySelectorAll("[data-belt-uptime]").forEach(el => renderBarRows(el, data.uptime, "#167647", "%"));
   panel.querySelectorAll("[data-belt-composition]").forEach(el => renderBarRows(el, data.composition, "#2f6f8f", "%"));
 
-  // Adjust headings of drill-down to Station layout
+  // Adjust headings of drill-down to upload-source layout
   const kicker = panel.querySelector(".eyebrow");
-  if (kicker) kicker.textContent = "AI Station Diagnostics";
+  if (kicker) kicker.textContent = "Upload source";
   const title = panel.querySelector("h2");
-  if (title) title.innerHTML = `Scanning Device: <span data-belt-id>${normId}</span>`;
+  if (title) title.innerHTML = `Source: <span data-belt-id>${normId}</span>`;
 
   const labels = panel.querySelectorAll(".detail-card h3");
-  if (labels[0]) labels[0].textContent = "Sensor & Camera Diagnostics";
-  if (labels[1]) labels[1].textContent = "Model Reliability & Sorting Mix";
+  if (labels[0]) labels[0].textContent = "Upload diagnostics";
+  if (labels[1]) labels[1].textContent = "Review reliability and material mix";
 
   const rows = panel.querySelectorAll(".detail-list dt");
-  if (rows[0]) rows[0].textContent = "Camera Lens Status";
-  if (rows[1]) rows[1].textContent = "Compute Core Temp";
-  if (rows[2]) rows[2].textContent = "Recalibration Delta";
+  if (rows[0]) rows[0].textContent = "Input channel";
+  if (rows[1]) rows[1].textContent = "Compute state";
+  if (rows[2]) rows[2].textContent = "File policy";
 
   if (activate) activateDetailPanel("detail-belt");
 }
@@ -2141,7 +2134,7 @@ function initDrillThrough() {
   });
 
   if (document.querySelector(".belt-detail-output")) {
-    const defaultBelt = document.querySelector("[data-belt-id]")?.textContent?.trim() || "STATION-A01";
+    const defaultBelt = document.querySelector("[data-belt-id]")?.textContent?.trim() || "UPLOAD-HUB";
     renderStationDetail(defaultBelt, { activate: false });
   }
 }

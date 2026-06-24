@@ -5,22 +5,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>PurityLoop AI | Classification Result</title>
+  <title>PurityLoop AI | Classification Results</title>
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
   <link
-    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body data-page="live-stream">
+<body data-page="live-stream" class="ops-pro-page">
   <div class="app-layout">
-    <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
-    <!-- Collapsible Sidebar -->
     <aside id="appSidebar" class="sidebar">
       <div class="sidebar-header">
         <a href="index.html" class="sidebar-logo">
@@ -32,22 +30,22 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Operations</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Feed">
+        <div class="sidebar-section-label">Workflow</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Mixed Image Upload</span>
+          <span class="nav-item-label">Upload Images</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="AI Classifier">
-          <i class="nav-item-icon fa-solid fa-camera"></i>
-          <span class="nav-item-label">Classification Result</span>
+        <a href="result.html" class="nav-item active" data-tooltip="Results">
+          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
+          <span class="nav-item-label">Classification Results</span>
         </a>
 
-        <div class="sidebar-section-label">Compliance</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Logs & Alerts">
-          <i class="nav-item-icon fa-solid fa-receipt"></i>
-          <span class="nav-item-label">Verification Logs</span>
+        <div class="sidebar-section-label">Review</div>
+        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
+          <span class="nav-item-label">Human Review Logs</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
+        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Operations Dashboard</span>
         </a>
@@ -58,10 +56,10 @@
           <div class="user-avatar">AD</div>
           <div class="user-info">
             <div class="user-name">Admin Operator</div>
-            <div class="user-role">Super Admin</div>
+            <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
-        <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+        <a href="login.html" class="logout-btn">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span class="logout-text">Logout</span>
         </a>
@@ -69,163 +67,135 @@
     </aside>
 
     <main class="main-content">
-      <!-- Topbar -->
       <header class="topbar">
         <div class="topbar-left">
           <button id="mobileToggle" class="mobile-toggle" aria-label="Open navigation">
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Classification Results Viewer</h1>
-            <p>AI Classification Hub</p>
+            <h1>Image Classification Results</h1>
+            <p>Review uploaded images, confidence scores, contaminants, and recommended sorting action.</p>
           </div>
         </div>
 
         <div class="topbar-right">
-          <!-- Search Bar -->
           <div class="search-bar">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search logs, alerts, stations..." aria-label="Search" />
+            <input type="text" placeholder="Search uploads, materials, confidence..." aria-label="Search" />
           </div>
 
-          <!-- Live Clock / Date Pill -->
           <div class="date-pill">
             <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
             <span id="liveClock">00:00:00 AM</span>
           </div>
 
-          <!-- Notification Button -->
           <button class="topbar-icon-btn" aria-label="Notifications">
             <i class="fa-solid fa-bell"></i>
             <span class="notif-dot"></span>
           </button>
 
-          <!-- User Badge -->
           <div class="user-badge live-badge">
-            <div class="user-badge-avatar">AD</div>
-            <span style="margin-left: 6px;">Active View</span>
+            <div class="user-badge-avatar">AI</div>
+            <span>Processing</span>
           </div>
         </div>
       </header>
 
       <div class="page-body">
-        <section class="stream-layout">
-          <!-- LEFT: Classification Viewport -->
-          <div class="stream-panel bbox-card">
+        <section class="ops-hero result-hero">
+          <div class="ops-hero-copy">
+            <span class="ops-kicker">Upload-to-result workflow</span>
+            <h2>Every image becomes a reviewable sorting decision.</h2>
+            <p>PurityLoop AI maps uploaded waste images into detected materials, confidence scores, contamination flags,
+              and a human-approved log trail.</p>
+          </div>
+          <div class="ops-hero-metrics" aria-label="Current result summary">
+            <div>
+              <span id="liveScanned">0 items</span>
+              <small>Detected in active image</small>
+            </div>
+            <div>
+              <span id="livePurity">0%</span>
+              <small>Estimated purity</small>
+            </div>
+            <div>
+              <span id="liveMarketValue">$0.00</span>
+              <small>Recoverable value</small>
+            </div>
+            <div>
+              <span id="liveCO2Offset">0.0 kg</span>
+              <small>CO2 offset</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="result-workbench">
+          <article class="stream-panel bbox-card">
             <div class="stream-panel-header">
               <div>
-                <span class="panel-kicker">Active Scan Viewport</span>
-                <h2 id="liveStreamTitle">Select Image to Audit</h2>
+                <span class="panel-kicker">Active image analysis</span>
+                <h2 id="liveStreamTitle">Select image to audit</h2>
               </div>
-              <span class="recording-chip"
-                style="background: rgba(32, 178, 107, 0.1); border-color: rgba(32, 178, 107, 0.3); color: #20b26b;"><span
-                  style="background: #20b26b; box-shadow: 0 0 0 4px rgba(32, 178, 107, 0.22);"></span> ONLINE</span>
+              <span class="recording-chip">
+                <span></span> AI ready
+              </span>
             </div>
 
             <div class="stream-canvas-wrap">
-              <canvas id="liveInferenceCanvas" aria-label="Waste sorting classification viewfinder overlay"></canvas>
+              <canvas id="liveInferenceCanvas" aria-label="Waste sorting classification overlay"></canvas>
               <div class="scan-line"></div>
-              <div class="scan-hud" aria-hidden="true" style="border-color: rgba(32, 178, 107, 0.22);">
-                <span style="border-color: rgba(32, 178, 107, 0.8);"></span>
-                <span style="border-color: rgba(32, 178, 107, 0.8);"></span>
-                <span style="border-color: rgba(32, 178, 107, 0.8);"></span>
-                <span style="border-color: rgba(32, 178, 107, 0.8);"></span>
+              <div class="scan-hud" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
             </div>
-          </div>
+          </article>
 
-          <!-- RIGHT: Audit Actions & Diagnostics -->
-          <aside class="stream-sidebar">
-            <section class="mini-panel" style="display: none;">
-              <h3>Uploaded File Queue</h3>
-              <div class="belt-list" id="beltList">
-                <div class="feed-empty">No queue files available...</div>
-              </div>
-            </section>
-
-            <section class="mini-panel metrics-panel bbox-card" style="text-align: center;">
-              <h3>AI Batch Diagnostics</h3>
-              <div class="purity-ring-container">
-                <div class="purity-ring-wrapper">
-                  <svg class="purity-ring-svg" viewBox="0 0 120 120">
-                    <circle class="purity-ring-bg" cx="60" cy="60" r="50"></circle>
-                    <circle class="purity-ring-fill" id="purityRingFill" cx="60" cy="60" r="50"></circle>
-                  </svg>
-                  <div class="purity-ring-info">
-                    <span class="purity-ring-val" id="livePurity">0%</span>
-                    <span class="purity-ring-label">Purity</span>
-                  </div>
-                </div>
-                <div style="font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 8px;">
-                  Detected: <strong id="liveScanned" style="color: var(--text);">0 items</strong>
-                </div>
-
-                <div
-                  style="display: flex; justify-content: space-around; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
-                  <div style="text-align: center;">
-                    <span style="font-size: 0.6875rem; font-weight: 600; color: var(--muted); display: block;">Est.
-                      Resale Value</span>
-                    <strong id="liveMarketValue"
-                      style="font-size: 1.125rem; font-weight: 700; color: var(--primary);">$0.00</strong>
-                  </div>
-                  <div style="text-align: center;">
-                    <span style="font-size: 0.6875rem; font-weight: 600; color: var(--muted); display: block;">Carbon
-                      Offset</span>
-                    <strong id="liveCO2Offset" style="font-size: 1.125rem; font-weight: 700; color: #3b82f6;">0.0
-                      kg</strong>
-                  </div>
-                </div>
-              </div>
-            </section>
-
+          <aside class="result-inspector">
             <section class="mini-panel detection-panel bbox-card">
-              <h3>Detected Materials Breakdown</h3>
+              <div class="panel-heading-row">
+                <h3>Material breakdown</h3>
+                <span>Live inference</span>
+              </div>
               <div id="liveFeed" class="live-feed">
-                <div class="feed-empty">Waiting for camera processing...</div>
+                <div class="feed-empty">Upload or select an image to view detected materials.</div>
               </div>
             </section>
 
-            <section class="mini-panel action-panel bbox-card" id="liveActionPanel"
-              style="background: var(--green-soft); border-color: #a9cdbb;">
-              <h3>Next Steps Action Guide</h3>
-              <div id="liveActionText" style="margin-bottom: 12px; font-size: 12.5px;">
-                <!-- Populated dynamically by js/script.js -->
+            <section class="mini-panel action-panel bbox-card" id="liveActionPanel">
+              <div class="panel-heading-row">
+                <h3>Recommended action</h3>
+                <span>Human check</span>
               </div>
-              <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify & Approve Scan
-                Result</button>
-              <a href="alerts.html" class="secondary-btn full-btn"
-                style="background: white; border: 1px solid var(--line); color: var(--green-ink); display: flex; align-items: center; justify-content: center; margin-top: 10px;">Go
-                to Verification Logs</a>
+              <div id="liveActionText">
+                Select an uploaded image to generate a sorting recommendation.
+              </div>
+              <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify result</button>
+              <a href="alerts.html" class="secondary-btn full-btn">Open review logs</a>
             </section>
           </aside>
         </section>
 
-        <!-- macOS Finder Explorer Mockup Gallery -->
-        <section class="finder-window">
+        <section class="upload-review-board">
           <header class="finder-header">
-            <div class="finder-controls">
-              <span class="window-dot close"></span>
-              <span class="window-dot minimize"></span>
-              <span class="window-dot expand"></span>
-              <span class="finder-path-bar" style="margin-left: 10px;">📁 PurityLoop AI &gt; Audited_Scans</span>
+            <div>
+              <span class="panel-kicker">Uploaded image queue</span>
+              <h2>Images waiting for audit</h2>
             </div>
-
             <div class="finder-toolbar">
-              <!-- Live Auto-Scan Toggle -->
               <div class="live-toggle-container" id="liveScanToggle">
-                <span class="recording-chip"
-                  style="background:transparent; border:0; padding:0; height:auto; color:inherit; font-size:inherit; display:inline-flex; align-items:center; gap:5px; box-shadow:none;">
-                  <span class="snapshot-live"
-                    style="width:6px; height:6px; box-shadow:0 0 0 2px rgba(180,35,24,0.15); animation: pulse 1.3s ease-in-out infinite;"></span>
-                  Live Auto-Scan Feed
+                <span class="recording-chip compact">
+                  <span class="snapshot-live"></span>
+                  Simulate incoming uploads
                 </span>
                 <label class="switch">
                   <input type="checkbox" id="autoScanCheckbox">
                   <span class="slider"></span>
                 </label>
               </div>
-              <div
-                style="font-size: 11px; color: var(--muted); font-weight: 800; border: 1px solid var(--line); padding: 5px 8px; border-radius: 4px; background: #fff;">
+              <div class="queue-count-pill">
                 <span id="finderCountText">0 items</span>
               </div>
             </div>
@@ -233,106 +203,103 @@
 
           <div class="finder-body">
             <aside class="finder-sidebar">
-              <h4>Locations</h4>
+              <h4>Queue views</h4>
               <div class="finder-sidebar-list">
-                <button type="button" class="finder-sidebar-item active">📁 Audited Directory</button>
-                <button type="button" class="finder-sidebar-item">📁 Quarantine Log</button>
-                <button type="button" class="finder-sidebar-item">📁 Upload History</button>
+                <button type="button" class="finder-sidebar-item active">All uploads</button>
+                <button type="button" class="finder-sidebar-item">Needs review</button>
+                <button type="button" class="finder-sidebar-item">Quarantine candidates</button>
               </div>
             </aside>
 
             <div class="finder-content-pane">
               <div class="finder-grid" id="finderGrid">
-                <!-- Grid of waste item files populated by js/script.js -->
-                <div style="grid-column: span 4; text-align: center; color: var(--muted); padding: 40px 0;">No scanned
-                  images in folder. Upload files or activate Live Auto-Scan.</div>
+                <div class="feed-empty">No uploaded images yet.</div>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- DETAIL DOCK: Station and Material Details -->
-        <section class="detail-dock" id="liveDrillDetails" style="margin-top: 24px;">
+        <section class="detail-dock" id="liveDrillDetails">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Scan Diagnostic Drill-through</p>
-              <h2>AI Station Diagnostics & Details</h2>
+              <p class="eyebrow">Batch diagnostics</p>
+              <h2>Upload source and material details</h2>
             </div>
-            <p class="detail-hint">Select a queue image file above to inspect details of its associated station
-              calibration, camera health, and composition trends.</p>
+            <p class="detail-hint">Select an image or material to inspect model confidence, batch source, and risk
+              profile.</p>
           </div>
 
           <article class="panel detail-panel active belt-detail-output bbox-card" id="detail-belt">
             <div class="section-heading compact">
               <div>
-                <p class="eyebrow">AI Station Diagnostics</p>
-                <h2>Scanning Device: <span data-belt-id>STATION-A01</span></h2>
-                <p class="detail-copy" data-belt-insight>Optical lens is calibrated and rate response query parameters
-                  are
-                  nominal.</p>
+                <p class="eyebrow">Upload source</p>
+                <h2>Source: <span data-belt-id>UPLOAD-HUB</span></h2>
+                <p class="detail-copy" data-belt-insight>Image uploads are queued for AI classification and human
+                  verification.</p>
               </div>
             </div>
 
             <div class="detail-grid three">
-              <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h
-                  equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
-              <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4
-                  Active</strong><small data-belt-max-speed>Core Model</small></div>
-              <div class="metric-tile static"><span>Scanner Diagnostic</span><strong
-                  data-belt-action>Operational</strong><small>No recalibration required</small></div>
+              <div class="metric-tile static"><span>Processing load</span><strong data-belt-load>On-demand</strong><small
+                  data-belt-capacity>Upload queue</small></div>
+              <div class="metric-tile static"><span>AI model</span><strong data-belt-speed>YOLOv8 active</strong><small
+                  data-belt-max-speed>Classification core</small></div>
+              <div class="metric-tile static"><span>Review action</span><strong
+                  data-belt-action>Ready</strong><small>Human-in-the-loop enabled</small></div>
             </div>
 
             <div class="detail-grid two">
               <div class="detail-card">
-                <h3>Sensor & Camera Diagnostics</h3>
+                <h3>Upload diagnostics</h3>
                 <dl class="detail-list">
                   <div>
-                    <dt>Camera Lens Status</dt>
-                    <dd data-belt-scanner>Clean</dd>
+                    <dt>Input channel</dt>
+                    <dd data-belt-scanner>Web upload</dd>
                   </div>
                   <div>
-                    <dt>Compute Core Temp</dt>
-                    <dd data-belt-motor>42°C</dd>
+                    <dt>Compute state</dt>
+                    <dd data-belt-motor>Online</dd>
                   </div>
                   <div>
-                    <dt>Recalibration Delta</dt>
-                    <dd data-belt-air>0.05 px</dd>
+                    <dt>File policy</dt>
+                    <dd data-belt-air>100 MB batch limit</dd>
                   </div>
                 </dl>
               </div>
               <div class="detail-card">
-                <h3>Model Reliability & Sorting Mix</h3>
+                <h3>Model reliability and mix</h3>
                 <div class="bar-list compact" data-belt-uptime></div>
                 <div class="bar-list compact" data-belt-composition></div>
               </div>
             </div>
           </article>
 
-          <article class="panel detail-panel material-detail-output bbox-card" id="detail-material"
-            style="margin-top: 18px;">
+          <article class="panel detail-panel material-detail-output bbox-card" id="detail-material">
             <div class="section-heading compact">
               <div>
-                <p class="eyebrow">Material Deep Dive</p>
+                <p class="eyebrow">Material deep dive</p>
                 <h2><span data-material-title>Material</span> Details</h2>
-                <p data-material-subtitle class="detail-copy">Review the volume metrics, impurity incidents, and
-                  historical trend maps for the selected item.</p>
+                <p data-material-subtitle class="detail-copy">Review volume metrics, contamination risk, and historical
+                  trend signals for the selected material.</p>
               </div>
             </div>
+
             <div class="detail-grid three">
-              <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong
-                  data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
-              <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong
-                  data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
-              <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong
-                  data-material-purity>0%</strong><small data-material-status>AI-verified sorting score</small></div>
+              <div class="metric-tile static"><span data-material-kpi-one>Total flagged</span><strong
+                  data-material-tonnage>0</strong><small>Current mock dataset</small></div>
+              <div class="metric-tile static"><span data-material-kpi-two>Market value</span><strong
+                  data-material-value>$0</strong><small data-material-rate>Estimated</small></div>
+              <div class="metric-tile static"><span data-material-kpi-three>Risk rating</span><strong
+                  data-material-purity>Medium</strong><small data-material-status>Awaiting review</small></div>
             </div>
+
             <div class="detail-grid two">
-              <div>
-                <h3 data-material-trend-title>30-Day Recovery Trend</h3>
+              <div class="detail-card">
+                <h3 data-material-trend-title>30-day trend</h3>
                 <div class="spark-bars" data-material-trend></div>
               </div>
-              <div>
-                <h3 data-material-zone-title>Distribution by Scanner Station</h3>
+              <div class="detail-card">
+                <h3 data-material-zone-title>Distribution by upload type</h3>
                 <div class="bar-list compact" data-material-zones></div>
               </div>
             </div>
