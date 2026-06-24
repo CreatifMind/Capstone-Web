@@ -6142,6 +6142,30 @@ input:checked+.slider:before {
 .dark-app .upload-info-panel p,
 .dark-app .ledger-command-panel p { color: var(--ai-muted) !important; }
 .dark-app .upload-command-grid .upload-icon { border-color: var(--ai-border-strong); background: rgba(0,240,138,0.12) !important; color: var(--ai-green) !important; }
+.dark-app .upload-info-panel h2 {
+  color: var(--ai-text) !important;
+}
+.dark-app .upload-info-panel li > span {
+  color: var(--ai-green) !important;
+}
+.dark-app .upload-info-panel strong {
+  color: rgba(244,255,249,0.88) !important;
+}
+.dark-app .upload-info-panel .instruction-box {
+  border-color: rgba(73,255,182,0.20) !important;
+  background:
+    linear-gradient(140deg, rgba(0,240,138,0.09), transparent 48%),
+    rgba(255,255,255,0.055) !important;
+}
+.dark-app .upload-info-panel .instruction-box h4 {
+  color: var(--ai-text) !important;
+}
+.dark-app .upload-info-panel .instruction-box h4 i {
+  color: var(--ai-green) !important;
+}
+.dark-app .upload-info-panel .instruction-box p {
+  color: rgba(244,255,249,0.68) !important;
+}
 .dark-app .upload-scan-btn { margin-top: 18px; }
 .dark-app .upload-scan-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .dark-app .stream-canvas-wrap { aspect-ratio: 16 / 9; min-height: 0 !important; border: 1px solid var(--ai-border-strong); background: #010504; }
