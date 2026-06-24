@@ -362,35 +362,26 @@
             <li><i class="fa-solid fa-check"></i> Real-time quarantine alert with override capability</li>
           </ul>
         </div>
-        <div class="feature-visual" data-aos="fade-right" style="background:linear-gradient(135deg,#FEF2F2,#FFFBEB);">
+        <div class="feature-visual alert-feed-card" data-aos="fade-right">
           <div class="feature-visual-header">
             <span style="font-size:0.875rem;font-weight:700;">Alert Feed</span>
-            <span class="feature-visual-tag" style="background:#FEF2F2;color:#EF4444;">3 Active Alerts</span>
+            <span class="feature-visual-tag alert-feed-count">3 Active Alerts</span>
           </div>
-          <div style="display:grid;gap:10px;">
-            <div
-              style="background:white;border:1px solid #FECACA;border-left:4px solid #EF4444;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">
-              <span style="font-size:1.25rem;"><i class="fa-solid fa-battery-full"></i></span>
-              <div><strong style="font-size:0.875rem;">Battery Hazard | hazard-sample.png</strong><br><small
-                  style="color:#6B7280;font-size:0.75rem;">Lithium risk detected | Immediate quarantine</small></div>
-              <span
-                style="background:#FEF2F2;color:#EF4444;font-size:0.6875rem;font-weight:700;padding:4px 8px;border-radius:6px;margin-left:auto;white-space:nowrap;">CRITICAL</span>
+          <div class="alert-feed-list">
+            <div class="alert-feed-row critical">
+              <span class="alert-feed-icon"><i class="fa-solid fa-battery-full"></i></span>
+              <div><strong>Battery Hazard | hazard-sample.png</strong><br><small>Lithium risk detected | Immediate quarantine</small></div>
+              <span class="alert-feed-severity">Critical</span>
             </div>
-            <div
-              style="background:white;border:1px solid #FDE68A;border-left:4px solid #F59E0B;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">
-              <span style="font-size:1.25rem;"><i class="fa-solid fa-seedling"></i></span>
-              <div><strong style="font-size:0.875rem;">Organic Contamination | mixed-batch.zip</strong><br><small
-                  style="color:#6B7280;font-size:0.75rem;">Food waste in recyclable stream</small></div>
-              <span
-                style="background:#FFFBEB;color:#F59E0B;font-size:0.6875rem;font-weight:700;padding:4px 8px;border-radius:6px;margin-left:auto;white-space:nowrap;">HIGH</span>
+            <div class="alert-feed-row high">
+              <span class="alert-feed-icon"><i class="fa-solid fa-seedling"></i></span>
+              <div><strong>Organic Contamination | mixed-batch.zip</strong><br><small>Food waste in recyclable stream</small></div>
+              <span class="alert-feed-severity">High</span>
             </div>
-            <div
-              style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;">
-              <span style="font-size:1.25rem;"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <div><strong style="font-size:0.875rem;">Low Confidence Review | glass-upload.jpg</strong><br><small
-                  style="color:#6B7280;font-size:0.75rem;">Glass result at 82% | manual review needed</small></div>
-              <span
-                style="background:#EFF6FF;color:#3B82F6;font-size:0.6875rem;font-weight:700;padding:4px 8px;border-radius:6px;margin-left:auto;white-space:nowrap;">REVIEW</span>
+            <div class="alert-feed-row review">
+              <span class="alert-feed-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <div><strong>Low Confidence Review | glass-upload.jpg</strong><br><small>Glass result at 82% | manual review needed</small></div>
+              <span class="alert-feed-severity">Review</span>
             </div>
           </div>
         </div>
