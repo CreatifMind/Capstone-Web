@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="ops-pro-page upload-pro-page lab-ui lab-app">
+<body class="ops-pro-page upload-pro-page lab-ui lab-app dark-ai dark-app">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -32,24 +32,30 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Workflow</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
+        <div class="sidebar-section-label">Platform</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Upload Images</span>
+          <span class="nav-item-label">Upload</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="Results">
+        <a href="result.html" class="nav-item" data-tooltip="Result">
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
-          <span class="nav-item-label">Classification Results</span>
+          <span class="nav-item-label">Result</span>
         </a>
-
-        <div class="sidebar-section-label">Review</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+        <a href="alerts.html" class="nav-item" data-tooltip="Log">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Human Review Logs</span>
+          <span class="nav-item-label">Log</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
+        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
-          <span class="nav-item-label">Operations Dashboard</span>
+          <span class="nav-item-label">Analytics</span>
+        </a>
+        <a href="submit-ticket.html" class="nav-item" data-tooltip="Submit Ticket">
+          <i class="nav-item-icon fa-solid fa-ticket"></i>
+          <span class="nav-item-label">Submit Ticket</span>
+        </a>
+        <a href="settings.html" class="nav-item" data-tooltip="Settings">
+          <i class="nav-item-icon fa-solid fa-gear"></i>
+          <span class="nav-item-label">Settings</span>
         </a>
       </nav>
 
@@ -76,8 +82,8 @@
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Upload Images</h1>
-            <p>Submit single images, ZIP batches, or mixed folders for AI classification.</p>
+            <h1>Upload</h1>
+            <p>Select an image, confirm the preview, then start the AI scan.</p>
           </div>
         </div>
 
@@ -116,17 +122,15 @@
               <div class="upload-icon">
                 <i class="fa-solid fa-arrow-up-from-bracket"></i>
               </div>
-              <h2>Select waste image files</h2>
+              <h2>Select waste image</h2>
               <p>
-                Drag and drop images or ZIP batches. PurityLoop AI will process them into classification results,
-                contamination flags, and review records.
+                Upload one waste image for classification. Results appear only after scanning.
               </p>
               <label for="fileUpload" class="upload-label"
                 style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
-                <i class="fa-solid fa-file-image"></i> Choose Files
+                <i class="fa-solid fa-file-image"></i> Choose Image
               </label>
-              <input type="file" id="fileUpload" accept="image/*,.zip,application/zip,application/x-zip-compressed"
-                multiple style="display: none;" />
+              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" style="display: none;" />
               <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
                 No file selected</p>
 
@@ -140,6 +144,9 @@
                   <i class="fa-solid fa-circle-check"></i> Ready for AI Audit
                 </span>
               </div>
+              <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
+                <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image
+              </button>
             </div>
           </div>
 
@@ -187,7 +194,7 @@
                     <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Supported
                       Formats</strong>
                     <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Images: JPG, PNG,
-                      WEBP. Dataset batches: ZIP archive only.</p>
+                      WEBP. Maximum recommended size: 10 MB.</p>
                   </div>
                 </li>
               </ul>
@@ -197,11 +204,11 @@
               style="background: var(--light); border: 1px solid var(--border); padding: 18px; border-radius: 8px; margin-top: 28px;">
               <h4
                 style="font-weight: 700; font-size: 0.875rem; color: var(--text); display: flex; align-items: center; gap: 8px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;">
-                <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i> AUTOMATIC AI REDIRECT
+                <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i> SCAN START
               </h4>
               <p style="font-size: 0.8125rem; color: var(--muted); line-height: 1.5; margin: 0;">
-                Once your file is selected, the PurityLoop compute node runs real-time YOLOv8 object mapping, logs the
-                entry, and redirects to the bounding box results page.
+                The upload page only prepares the image. Press Scan Image to route the file into the Result page for
+                YOLOv8-style detection output.
               </p>
             </div>
           </div>

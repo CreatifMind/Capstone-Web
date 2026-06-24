@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 
-<body data-page="analytics" class="ops-pro-page analytics-pro-page lab-ui lab-app">
+<body data-page="analytics" class="ops-pro-page analytics-pro-page lab-ui lab-app dark-ai dark-app">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -34,24 +34,30 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Workflow</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
+        <div class="sidebar-section-label">Platform</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Upload Images</span>
+          <span class="nav-item-label">Upload</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="Results">
+        <a href="result.html" class="nav-item" data-tooltip="Result">
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
-          <span class="nav-item-label">Classification Results</span>
+          <span class="nav-item-label">Result</span>
         </a>
-
-        <div class="sidebar-section-label">Review</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+        <a href="alerts.html" class="nav-item" data-tooltip="Log">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Human Review Logs</span>
+          <span class="nav-item-label">Log</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
+        <a href="analytics.html" class="nav-item active" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
-          <span class="nav-item-label">Operations Dashboard</span>
+          <span class="nav-item-label">Analytics</span>
+        </a>
+        <a href="submit-ticket.html" class="nav-item" data-tooltip="Submit Ticket">
+          <i class="nav-item-icon fa-solid fa-ticket"></i>
+          <span class="nav-item-label">Submit Ticket</span>
+        </a>
+        <a href="settings.html" class="nav-item" data-tooltip="Settings">
+          <i class="nav-item-icon fa-solid fa-gear"></i>
+          <span class="nav-item-label">Settings</span>
         </a>
       </nav>
 
@@ -78,7 +84,7 @@
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Operations Command Centre</h1>
+            <h1>Analytics</h1>
             <p>Track upload throughput, material recovery, contamination risk, and review workload.</p>
           </div>
         </div>
@@ -596,7 +602,7 @@
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">AI Upload Diagnostics</p>
-                <h2>Upload Source: <span data-belt-id>UPLOAD-HUB</span></h2>
+                <h2>Upload Source: <span data-belt-id>Upload queue</span></h2>
                 <p class="detail-copy" data-belt-insight>Uploaded images are processed by the classifier and routed to
                   human review when confidence or contamination risk requires a decision.</p>
               </div>

@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body data-page="live-stream" class="ops-pro-page lab-ui lab-app">
+<body data-page="live-stream" class="ops-pro-page lab-ui lab-app dark-ai dark-app">
   <div class="app-layout">
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
@@ -30,24 +30,30 @@
       </div>
 
       <nav class="sidebar-nav">
-        <div class="sidebar-section-label">Workflow</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload Images">
+        <div class="sidebar-section-label">Platform</div>
+        <a href="upload.html" class="nav-item" data-tooltip="Upload">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
-          <span class="nav-item-label">Upload Images</span>
+          <span class="nav-item-label">Upload</span>
         </a>
-        <a href="result.html" class="nav-item active" data-tooltip="Results">
+        <a href="result.html" class="nav-item active" data-tooltip="Result">
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
-          <span class="nav-item-label">Classification Results</span>
+          <span class="nav-item-label">Result</span>
         </a>
-
-        <div class="sidebar-section-label">Review</div>
-        <a href="alerts.html" class="nav-item" data-tooltip="Human Review">
+        <a href="alerts.html" class="nav-item" data-tooltip="Log">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Human Review Logs</span>
+          <span class="nav-item-label">Log</span>
         </a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Command Centre">
+        <a href="analytics.html" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
-          <span class="nav-item-label">Operations Dashboard</span>
+          <span class="nav-item-label">Analytics</span>
+        </a>
+        <a href="submit-ticket.html" class="nav-item" data-tooltip="Submit Ticket">
+          <i class="nav-item-icon fa-solid fa-ticket"></i>
+          <span class="nav-item-label">Submit Ticket</span>
+        </a>
+        <a href="settings.html" class="nav-item" data-tooltip="Settings">
+          <i class="nav-item-icon fa-solid fa-gear"></i>
+          <span class="nav-item-label">Settings</span>
         </a>
       </nav>
 
@@ -233,7 +239,7 @@
             <div class="section-heading compact">
               <div>
                 <p class="eyebrow">Upload source</p>
-                <h2>Source: <span data-belt-id>UPLOAD-HUB</span></h2>
+                <h2>Source: <span data-belt-id>Upload queue</span></h2>
                 <p class="detail-copy" data-belt-insight>Image uploads are queued for AI classification and human
                   verification.</p>
               </div>

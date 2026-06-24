@@ -149,10 +149,10 @@ function getDetectedObjectsForFile(name) {
   // New default viewport image from user screenshot
   if (fileLower.includes("viewport") || fileLower.includes("mixed-waste") || fileLower.includes("active_scan")) {
     return [
-      { label: "Plastic Bottle", confidence: "97.3%", color: "#00e87a", x: 0.03, y: 0.32, w: 0.23, h: 0.34 },
-      { label: "Aluminum Can", confidence: "98.1%", color: "#00e87a", x: 0.28, y: 0.38, w: 0.20, h: 0.30 },
-      { label: "Cardboard Box", confidence: "96.6%", color: "#00e87a", x: 0.49, y: 0.23, w: 0.26, h: 0.45 },
-      { label: "Glass Jar", confidence: "95.4%", color: "#00e87a", x: 0.77, y: 0.36, w: 0.18, h: 0.40 }
+      { label: "Paper Packaging", confidence: "98%", color: "#39d12f", x: 0.18, y: 0.02, w: 0.30, h: 0.35 },
+      { label: "Paper Packaging", confidence: "80%", color: "#39d12f", x: 0.06, y: 0.22, w: 0.43, h: 0.40 },
+      { label: "Glass Bottle Contaminant", confidence: "99%", color: "#f04438", x: 0.34, y: 0.26, w: 0.40, h: 0.38 },
+      { label: "Paper Cup", confidence: "100%", color: "#39d12f", x: 0.34, y: 0.52, w: 0.44, h: 0.42 }
     ];
   }
 
@@ -334,6 +334,16 @@ function getLogSourceKey(log) {
   return "SINGLE-IMAGE";
 }
 
+function getUploadSourceDisplayName(sourceKey) {
+  const labels = {
+    "UPLOAD-HUB": "Upload queue",
+    "SINGLE-IMAGE": "Single image upload",
+    "ZIP-BATCH": "ZIP batch upload",
+    "QUARANTINE-UPLOAD": "Flagged upload"
+  };
+  return labels[sourceKey] || "Uploaded image";
+}
+
 /*****************************************
  * 1. IMAGE UPLOAD & WEBCAM CAPTURE PAGE *
  *****************************************/
@@ -342,6 +352,7 @@ function initUploadPage() {
   if (!fileUpload) return; // Not on upload page
 
   const fileName = document.getElementById("fileName");
+  const scanImageBtn = document.getElementById("scanImageBtn");
   const fileList = document.getElementById("fileList");
   const fileCountText = document.getElementById("fileCountText");
   const uploadSummary = document.getElementById("uploadSummary");
@@ -388,12 +399,27 @@ function initUploadPage() {
     }
   });
 
+  if (scanImageBtn) {
+    scanImageBtn.addEventListener("click", () => {
+      const storedUploads = localStorage.getItem("purityloop_uploads");
+      if (!storedUploads) {
+        showToast("Choose an image before scanning.", "warning");
+        return;
+      }
+      scanImageBtn.disabled = true;
+      scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+      setTimeout(() => {
+        window.location.href = "result.html";
+      }, 450);
+    });
+  }
+
   // Open Webcam Modal
   const cameraLauncher = document.createElement("button");
   cameraLauncher.type = "button";
   cameraLauncher.className = "secondary-btn full-btn";
   cameraLauncher.id = "launchCameraBtn";
-  cameraLauncher.innerHTML = "📷 Open Live Camera Scanner";
+  cameraLauncher.innerHTML = '<i class="fa-solid fa-camera"></i> Open Camera Capture';
   cameraLauncher.style.marginTop = "10px";
   uploadBox.appendChild(cameraLauncher);
 
@@ -534,9 +560,7 @@ function initUploadPage() {
         type: f.name.endsWith(".zip") ? "ZIP" : "File"
       }));
       localStorage.setItem("purityloop_uploads", JSON.stringify(simpleMetadata));
-      setTimeout(() => {
-        window.location.href = "result.html";
-      }, 1500); // 1.5s delay to show preview & checkmark
+      if (scanImageBtn) scanImageBtn.disabled = false;
       return;
     }
 
@@ -575,9 +599,7 @@ function initUploadPage() {
           loadedCount++;
           if (loadedCount === imageFiles.length) {
             localStorage.setItem("purityloop_uploads", JSON.stringify(compressedList));
-            setTimeout(() => {
-              window.location.href = "result.html";
-            }, 1500); // 1.5s delay to show preview & checkmark
+            if (scanImageBtn) scanImageBtn.disabled = false;
           }
         };
         img.src = e.target.result;
@@ -985,42 +1007,34 @@ function initResultPage() {
 
       let badgeHtml = "";
       if (hasBattery) {
-        if (actionPanel) {
-          actionPanel.style.background = "#fff0ed";
-          actionPanel.style.borderColor = "var(--danger)";
-        }
+        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card review-required";
         badgeHtml = `
-          <strong style="color: var(--danger); display: block; font-size: 14px; margin-bottom: 6px;">CRITICAL HAZARD: ISOLATE IMMEDIATELY</strong>
-          <p style="color: #7f1d1d; font-weight: 700; line-height: 1.4; margin: 0;">
+          <strong>Human Review Required</strong>
+          <p>
             Lithium battery detected in this upload. Extract the battery and place it in fire-safe quarantine storage. Reject the contaminated record after review.
           </p>
         `;
       } else if (hasContaminant) {
-        if (actionPanel) {
-          actionPanel.style.background = "#fff7e6";
-          actionPanel.style.borderColor = "var(--warning)";
-        }
+        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card review-required";
         const contaminantsList = [];
         boxes.forEach(b => {
-          if (b.label.includes("Alert") || b.label.includes("Trash") || b.label.includes("Textile")) {
-            contaminantsList.push(b.label.replace(" Alert", ""));
+          const label = b.label.toLowerCase();
+          if (label.includes("alert") || label.includes("trash") || label.includes("textile") || label.includes("contaminant")) {
+            contaminantsList.push(b.label.replace(" Alert", "").replace(" Contaminant", ""));
           }
         });
         const uniqContaminants = [...new Set(contaminantsList)];
         badgeHtml = `
-          <strong style="color: #b7791f; display: block; font-size: 14px; margin-bottom: 6px;">MANUAL SORT REQUIRED</strong>
-          <p style="color: #78350f; font-weight: 700; line-height: 1.4; margin: 0;">
-            Contamination rate is ${100 - purityPct}%. Review the highlighted contaminants (<strong>${uniqContaminants.join(", ")}</strong>) before approving this record.
+          <strong>Human Review Required</strong>
+          <p>
+            Contamination rate is ${100 - purityPct}%. Remove or verify the highlighted material${uniqContaminants.length > 1 ? "s" : ""}: <em>${uniqContaminants.join(", ") || "mixed contaminants"}</em>.
           </p>
         `;
       } else {
-        if (actionPanel) {
-          actionPanel.style.background = "var(--green-soft)";
-          actionPanel.style.borderColor = "#a9cdbb";
-        }
+        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card recovery-clear";
         badgeHtml = `
-          <strong style="color: var(--green); display: block; font-size: 14px; margin-bottom: 6px;">CLEAR FOR RECOVERY</strong>
-          <p style="color: var(--green-dark); font-weight: 700; line-height: 1.4; margin: 0;">
+          <strong>Accept Batch</strong>
+          <p>
             100% recyclable purity. No contaminants or hazards were detected. Verify this result to add it to the review ledger.
           </p>
         `;
@@ -1039,31 +1053,26 @@ function initResultPage() {
 
       boxes.forEach(box => {
         const itemDiv = document.createElement("div");
-        itemDiv.style.display = "flex";
-        itemDiv.style.alignItems = "center";
-        itemDiv.style.justifyContent = "space-between";
-        itemDiv.style.padding = "6px 10px";
-        itemDiv.style.borderRadius = "6px";
-        itemDiv.style.background = "#f4f8f5";
-        itemDiv.style.borderLeft = `4px solid ${box.color}`;
-        itemDiv.style.fontSize = "12.5px";
+        const isContaminant = box.label.toLowerCase().includes("contaminant") ||
+          box.label.toLowerCase().includes("hazard") ||
+          box.label.toLowerCase().includes("alert") ||
+          box.label.toLowerCase().includes("trash");
+        itemDiv.className = `material-row ${isContaminant ? "contaminant" : "recyclable"}`;
+        itemDiv.style.setProperty("--material-color", isContaminant ? "#ff4d57" : box.color);
 
         itemDiv.innerHTML = `
-          <span style="font-weight: 700; color: var(--text);">${box.label}</span>
-          <span style="font-weight: 800; color: var(--muted);">${box.confidence}</span>
+          <span>
+            <strong>${box.label.replace(" Contaminant", "")}</strong>
+            <small>${isContaminant ? "Contaminant" : "Recyclable"} | Qty 1</small>
+          </span>
+          <b>${box.confidence}</b>
         `;
         listContainer.appendChild(itemDiv);
       });
       liveFeed.appendChild(listContainer);
 
       const infoDiv = document.createElement("div");
-      infoDiv.style.fontSize = "11.5px";
-      infoDiv.style.color = "var(--muted)";
-      infoDiv.style.borderTop = "1px solid var(--line)";
-      infoDiv.style.paddingTop = "8px";
-      infoDiv.style.display = "flex";
-      infoDiv.style.flexDirection = "column";
-      infoDiv.style.gap = "4px";
+      infoDiv.className = "material-meta";
       infoDiv.innerHTML = `
         <div><strong>Disposal Bin:</strong> ${result.bin}</div>
         <div><strong>Object Weight:</strong> ${file.size ? formatFileSize(file.size) : result.weight}</div>
@@ -1133,23 +1142,23 @@ function initResultPage() {
       const isHazard = box.color === "#b42318" || box.color === "#ff8000" ||
         box.label.includes("Alert") || box.label.includes("Hazard") ||
         box.label.includes("Trash") || box.label.includes("Textile") ||
-        box.label.includes("Film");
+        box.label.includes("Film") || box.label.includes("Contaminant");
       const borderColor = isHazard ? "#e63030" : box.color;
 
       // Semi-transparent colored fill inside box (NANDO AI signature look)
       ctx2d.fillStyle = isHazard
-        ? "rgba(230, 48, 48, 0.13)"
-        : hexToRgba(borderColor, 0.13);
+        ? "rgba(240, 68, 56, 0.34)"
+        : hexToRgba(borderColor, 0.30);
       ctx2d.fillRect(boxX, boxY, boxW, boxH);
 
       // Solid border - 2px, matches NANDO AI
       ctx2d.strokeStyle = borderColor;
-      ctx2d.lineWidth = 2;
+      ctx2d.lineWidth = 2.4;
       ctx2d.strokeRect(boxX, boxY, boxW, boxH);
 
       // - Label tag at top-left of box (NANDO AI flat dark chip style) -
       ctx2d.font = "bold 11.5px 'Courier New', monospace";
-      const rawLabel = box.label.replace(" Alert", "").toUpperCase().replace(/ /g, "_");
+      const rawLabel = box.label.replace(" Alert", "").replace(" Contaminant", "").toUpperCase().replace(/ /g, "_");
       const labelText = `${rawLabel} ${box.confidence}`;
       const textW = ctx2d.measureText(labelText).width;
       const tagW = textW + 14;
@@ -2074,7 +2083,8 @@ function renderStationDetail(stationId, options = {}) {
   const panel = document.getElementById("detail-belt");
   if (!panel) return;
 
-  panel.querySelectorAll("[data-belt-id]").forEach(el => { el.textContent = normId; });
+  const sourceLabel = getUploadSourceDisplayName(normId);
+  panel.querySelectorAll("[data-belt-id]").forEach(el => { el.textContent = sourceLabel; });
   panel.querySelectorAll("[data-belt-load]").forEach(el => { el.textContent = data.load; });
   panel.querySelectorAll("[data-belt-capacity]").forEach(el => { el.textContent = data.capacity; });
   panel.querySelectorAll("[data-belt-speed]").forEach(el => { el.textContent = data.speed; });
@@ -2091,7 +2101,7 @@ function renderStationDetail(stationId, options = {}) {
   const kicker = panel.querySelector(".eyebrow");
   if (kicker) kicker.textContent = "Upload source";
   const title = panel.querySelector("h2");
-  if (title) title.innerHTML = `Source: <span data-belt-id>${normId}</span>`;
+  if (title) title.innerHTML = `Source: <span data-belt-id>${sourceLabel}</span>`;
 
   const labels = panel.querySelectorAll(".detail-card h3");
   if (labels[0]) labels[0].textContent = "Upload diagnostics";
