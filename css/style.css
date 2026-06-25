@@ -1722,7 +1722,8 @@ input:focus {
   overflow: hidden;
 }
 
-.kpi-progress-bar i {
+.kpi-progress-bar i,
+.kpi-progress-fill {
   display: block;
   height: 100%;
   background: var(--primary);
@@ -6507,7 +6508,8 @@ input:checked+.slider:before {
   box-shadow: inset 0 0 10px rgba(0,0,0,0.28);
 }
 
-.dark-app.analytics-pro-page .kpi-progress-bar i {
+.dark-app.analytics-pro-page .kpi-progress-bar i,
+.dark-app.analytics-pro-page .kpi-progress-fill {
   position: static;
   display: block;
   height: 100%;
@@ -6518,12 +6520,14 @@ input:checked+.slider:before {
   box-shadow: 0 0 16px rgba(0,240,138,0.34);
 }
 
-.dark-app.analytics-pro-page .kpi-card.purity .kpi-progress-bar i {
+.dark-app.analytics-pro-page .kpi-card.purity .kpi-progress-bar i,
+.dark-app.analytics-pro-page .kpi-card.purity .kpi-progress-fill {
   background: linear-gradient(90deg, var(--ai-amber), rgba(0,214,214,0.78)) !important;
   box-shadow: 0 0 16px rgba(255,184,77,0.34);
 }
 
-.dark-app.analytics-pro-page .kpi-card.hazard .kpi-progress-bar i {
+.dark-app.analytics-pro-page .kpi-card.hazard .kpi-progress-bar i,
+.dark-app.analytics-pro-page .kpi-card.hazard .kpi-progress-fill {
   background: linear-gradient(90deg, #ff7a83, var(--ai-amber)) !important;
   box-shadow: 0 0 16px rgba(255,122,131,0.28);
 }
