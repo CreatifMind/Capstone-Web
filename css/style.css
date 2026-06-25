@@ -6356,17 +6356,33 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  place-self: center;
   border: 1px solid rgba(73,255,182,0.18);
   background: rgba(0,240,138,0.10) !important;
   color: rgba(166,255,221,0.92);
   box-shadow: inset 0 0 20px rgba(0,240,138,0.08);
+  line-height: 1;
 }
 
 .dark-app.analytics-pro-page .kpi-badge i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
   color: currentColor;
   font-size: 1.35rem;
+  line-height: 1;
   opacity: 1;
   filter: drop-shadow(0 0 10px rgba(0,240,138,0.28));
+}
+
+.dark-app.analytics-pro-page .kpi-badge i::before {
+  display: block;
+  line-height: 1;
 }
 
 .dark-app.analytics-pro-page .kpi-badge.badge-blue {
