@@ -1516,8 +1516,15 @@ input:focus {
 }
 
 .date-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 172px;
   font-size: 0.75rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
   color: var(--muted);
   background: var(--light);
   border: 1px solid var(--border);
