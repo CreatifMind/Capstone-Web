@@ -1496,7 +1496,7 @@ function initAnalyticsCharts() {
   function updateClock() {
     if (!clockEl) return;
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
     clockEl.textContent = timeStr;
   }
   updateClock();

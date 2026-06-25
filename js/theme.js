@@ -66,7 +66,7 @@ function initLiveClock() {
   if (!el) return;
   function tick() {
     const now = new Date();
-    el.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    el.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   }
   tick();
   setInterval(tick, 1000);

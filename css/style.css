@@ -1520,7 +1520,7 @@ input:focus {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-width: 172px;
+  min-width: 128px;
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
