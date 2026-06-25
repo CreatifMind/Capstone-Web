@@ -6310,6 +6310,8 @@ input:checked+.slider:before {
 }
 .dark-app .detail-panel,
 .dark-app .detail-card,
+.dark-app .formula-card,
+.dark-app .action-card,
 .dark-app .metric-tile,
 .dark-app .metric-tile.static,
 .dark-app .bar-list div,
@@ -6323,18 +6325,33 @@ input:checked+.slider:before {
   color: var(--ai-text);
 }
 .dark-app .detail-card h3,
+.dark-app .formula-card strong,
+.dark-app .action-card strong,
 .dark-app .metric-tile strong,
 .dark-app .bar-list span,
 .dark-app .detail-list dd {
   color: rgba(166,255,221,0.92);
 }
+
+.dark-app .action-card.warning {
+  border-left-color: var(--ai-amber) !important;
+}
+
+.dark-app .action-card.warning strong {
+  color: var(--ai-amber);
+}
+
 .dark-app .detail-list div {
   border-bottom-color: rgba(166,255,221,0.14);
 }
 .dark-app .detail-list dt,
+.dark-app .formula-card span,
+.dark-app .action-card span,
 .dark-app .metric-tile span,
 .dark-app .metric-tile small,
 .dark-app .bar-list strong,
+.dark-app .formula-card p,
+.dark-app .action-card p,
 .dark-app .detail-card p {
   color: rgba(244,255,249,0.62);
 }
