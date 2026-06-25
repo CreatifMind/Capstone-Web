@@ -6375,12 +6375,24 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .kpi-card {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto 44px 58px minmax(72px, 1fr) auto auto;
   align-content: stretch;
 }
 
+.dark-app.analytics-pro-page .kpi-card > span {
+  display: flex;
+  align-items: flex-end;
+  margin-bottom: 0;
+}
+
+.dark-app.analytics-pro-page .kpi-card > strong {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+}
+
 .dark-app.analytics-pro-page .kpi-card > p {
-  min-height: 48px;
+  margin: 0;
 }
 
 .dark-app.analytics-pro-page .kpi-progress-meta {
