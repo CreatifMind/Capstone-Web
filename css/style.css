@@ -6137,6 +6137,38 @@ input:checked+.slider:before {
   padding: 0;
   border-radius: 10px;
 }
+.dark-app .sidebar.collapsed .sidebar-header {
+  height: 116px;
+  padding: 12px 0 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.dark-app .sidebar.collapsed .sidebar-logo {
+  position: static;
+  width: 52px;
+  height: 52px;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dark-app .sidebar.collapsed .sidebar-logo img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  object-position: center;
+}
+.dark-app .sidebar.collapsed .sidebar-toggle {
+  position: static;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  font-size: 0.78rem;
+  border-radius: 10px;
+}
 .dark-app .sidebar-header,
 .dark-app .sidebar-footer { border-color: var(--ai-border); }
 .dark-app .sidebar-section-label,
@@ -6301,6 +6333,131 @@ input:checked+.slider:before {
 }
 .dark-app .bar-list i {
   background: linear-gradient(90deg, var(--ai-green), var(--ai-teal));
+}
+
+.dark-app.analytics-pro-page .kpi-card,
+.dark-app.analytics-pro-page .chart-panel,
+.dark-app.analytics-pro-page .alert-stack,
+.dark-app.analytics-pro-page .ledger-preview,
+.dark-app.analytics-pro-page .detail-panel {
+  border-color: rgba(73,255,182,0.18) !important;
+  background:
+    linear-gradient(145deg, rgba(0,240,138,0.065), transparent 46%),
+    rgba(3,17,15,0.90) !important;
+  box-shadow: inset 0 0 34px rgba(0,240,138,0.045) !important;
+  color: var(--ai-text) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-badge {
+  border: 1px solid rgba(73,255,182,0.18);
+  background: rgba(0,240,138,0.10) !important;
+  color: rgba(166,255,221,0.92);
+  box-shadow: inset 0 0 20px rgba(0,240,138,0.08);
+}
+
+.dark-app.analytics-pro-page .kpi-badge.badge-amber {
+  background: rgba(255,184,77,0.12) !important;
+  color: var(--ai-amber);
+  border-color: rgba(255,184,77,0.22);
+}
+
+.dark-app.analytics-pro-page .kpi-badge.badge-red {
+  background: rgba(255,77,87,0.11) !important;
+  color: #ff7a83;
+  border-color: rgba(255,77,87,0.22);
+}
+
+.dark-app.analytics-pro-page .kpi-card span,
+.dark-app.analytics-pro-page .chart-subtitle,
+.dark-app.analytics-pro-page .alert-row-body p,
+.dark-app.analytics-pro-page .ledger-list p {
+  color: rgba(244,255,249,0.62) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-card strong,
+.dark-app.analytics-pro-page .alert-row-body strong,
+.dark-app.analytics-pro-page .ledger-list strong {
+  color: rgba(244,255,249,0.90);
+}
+
+.dark-app.analytics-pro-page .kpi-card.material strong { color: #4f91ff; }
+.dark-app.analytics-pro-page .kpi-card.revenue strong { color: var(--ai-green); }
+.dark-app.analytics-pro-page .kpi-card.purity strong { color: var(--ai-amber); }
+.dark-app.analytics-pro-page .kpi-card.hazard strong { color: #ff7a83; }
+
+.dark-app.analytics-pro-page .kpi-trend,
+.dark-app.analytics-pro-page .status-pill {
+  border: 1px solid rgba(73,255,182,0.18);
+  background: rgba(255,255,255,0.055) !important;
+  color: rgba(166,255,221,0.92) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-trend.trend-down,
+.dark-app.analytics-pro-page .status-pill.quarantine {
+  border-color: rgba(255,77,87,0.24);
+  color: #ff7a83 !important;
+}
+
+.dark-app.analytics-pro-page .kpi-trend.trend-neutral,
+.dark-app.analytics-pro-page .status-pill.review {
+  border-color: rgba(255,184,77,0.24);
+  color: var(--ai-amber) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-progress-bar {
+  background: rgba(244,255,249,0.12);
+}
+
+.dark-app.analytics-pro-page .kpi-progress-bar i {
+  background: linear-gradient(90deg, var(--ai-green), var(--ai-teal)) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-card.purity .kpi-progress-bar i {
+  background: linear-gradient(90deg, var(--ai-amber), rgba(0,214,214,0.78)) !important;
+}
+
+.dark-app.analytics-pro-page .kpi-card.hazard .kpi-progress-bar i {
+  background: linear-gradient(90deg, #ff7a83, var(--ai-amber)) !important;
+}
+
+.dark-app.analytics-pro-page .chart-box {
+  border: 1px solid rgba(73,255,182,0.12);
+  border-radius: 16px;
+  padding: 10px;
+  background:
+    linear-gradient(rgba(73,255,182,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(73,255,182,0.035) 1px, transparent 1px),
+    rgba(1,9,8,0.38);
+  background-size: 100% 25%, 12.5% 100%, 100% 100%;
+}
+
+.dark-app.analytics-pro-page .alert-row,
+.dark-app.analytics-pro-page .ledger-list div,
+.dark-app.analytics-pro-page .belt-telemetry-list > div {
+  border-color: rgba(73,255,182,0.16) !important;
+  background: rgba(255,255,255,0.045) !important;
+  color: var(--ai-text) !important;
+}
+
+.dark-app.analytics-pro-page .alert-row:hover,
+.dark-app.analytics-pro-page .ledger-list div:hover,
+.dark-app.analytics-pro-page .belt-telemetry-list > div:hover {
+  border-color: rgba(73,255,182,0.32) !important;
+  background: rgba(0,240,138,0.085) !important;
+}
+
+.dark-app.analytics-pro-page .alert-row.review { border-left: 3px solid var(--ai-amber) !important; }
+.dark-app.analytics-pro-page .alert-row.success { border-left: 3px solid var(--ai-green) !important; }
+.dark-app.analytics-pro-page .alert-row.neutral { border-left: 3px solid var(--ai-teal) !important; }
+.dark-app.analytics-pro-page .alert-row.danger-row { border-left: 3px solid #ff7a83 !important; }
+
+.dark-app.analytics-pro-page .alert-row-icon {
+  background: rgba(0,240,138,0.10);
+  color: var(--ai-green);
+}
+
+.dark-app.analytics-pro-page .alert-row-value {
+  color: rgba(166,255,221,0.92) !important;
 }
 .dark-app .action-panel.review-required {
   border-color: rgba(255, 184, 77, 0.44) !important;

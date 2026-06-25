@@ -1477,15 +1477,15 @@ function initReviewModal() {
  ******************************************/
 function initAnalyticsCharts() {
   const palette = {
-    green: "#167647",
-    blue: "#2f6f8f",
-    amber: "#b7791f",
-    purple: "#8b5cf6",
-    slate: "#8aa0a8",
-    red: "#b42318",
-    orange: "#e67e22",
-    teal: "#1abc9c",
-    darkGreen: "#0d4f35"
+    green: "#00F08A",
+    blue: "#4F91FF",
+    amber: "#D8A448",
+    purple: "#7DDFA7",
+    slate: "#78938D",
+    red: "#D85E70",
+    orange: "#00D6D6",
+    teal: "#00D6D6",
+    darkGreen: "#08211D"
   };
 
   const compositionCanvas = document.getElementById("compositionChart");
@@ -1548,11 +1548,11 @@ function initAnalyticsCharts() {
   }
 
   const isLight = document.body.classList.contains("light");
-  const tickColor = isLight ? "#6c7b74" : "#6b8f7a";
-  const gridColor = isLight ? "#dce7e1" : "rgba(0, 232, 122, 0.1)";
-  const labelColor = isLight ? "#14221b" : "#f0faf5";
-  const legendColor = isLight ? "#6c7b74" : "#6b8f7a";
-  const donutBorderColor = isLight ? "#ffffff" : "#111815";
+  const tickColor = isLight ? "#6c7b74" : "rgba(244,255,249,0.62)";
+  const gridColor = isLight ? "#dce7e1" : "rgba(178,255,224,0.16)";
+  const labelColor = isLight ? "#14221b" : "rgba(244,255,249,0.88)";
+  const legendColor = isLight ? "#6c7b74" : "rgba(244,255,249,0.68)";
+  const donutBorderColor = isLight ? "#ffffff" : "rgba(4,15,13,0.92)";
 
   const chartDefaults = {
     responsive: true,
@@ -1575,14 +1575,14 @@ function initAnalyticsCharts() {
       datasets: [{
         data: [25, 20, 15, 10, 10, 8, 5, 5, 2],
         backgroundColor: [
-          palette.amber,
+          palette.green,
+          palette.teal,
           palette.blue,
           palette.purple,
+          palette.amber,
+          "#63CFA2",
           palette.slate,
-          palette.orange,
-          palette.green,
-          "#7f8c8d",
-          palette.teal,
+          "#2FA6A6",
           palette.red
         ],
         borderColor: donutBorderColor,
@@ -1617,7 +1617,9 @@ function initAnalyticsCharts() {
         datasets: [{
           label: "Resale Value",
           data: [540000, 152000, 107051, 15000, 21000],
-          backgroundColor: [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange],
+          backgroundColor: [palette.green, palette.teal, palette.blue, palette.purple, palette.amber],
+          borderColor: "rgba(4,15,13,0.92)",
+          borderWidth: 1,
           borderRadius: 6
         }]
       },
@@ -1654,11 +1656,11 @@ function initAnalyticsCharts() {
       data: {
         labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
         datasets: [
-          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.amber, backgroundColor: isLight ? "rgba(183, 121, 31, 0.04)" : "rgba(183, 121, 31, 0.08)", tension: 0.32, fill: true },
-          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.blue, backgroundColor: isLight ? "rgba(47, 111, 143, 0.04)" : "rgba(47, 111, 143, 0.08)", tension: 0.32, fill: true },
-          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.slate, backgroundColor: isLight ? "rgba(138, 160, 168, 0.04)" : "rgba(138, 160, 168, 0.08)", tension: 0.32, fill: true },
-          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.orange, backgroundColor: isLight ? "rgba(230, 126, 34, 0.04)" : "rgba(230, 126, 34, 0.08)", tension: 0.32, fill: true },
-          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.purple, backgroundColor: isLight ? "rgba(139, 92, 246, 0.04)" : "rgba(139, 92, 246, 0.08)", tension: 0.32, fill: true }
+          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.green, backgroundColor: isLight ? "rgba(0, 240, 138, 0.04)" : "rgba(0, 240, 138, 0.10)", tension: 0.32, fill: true },
+          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.teal, backgroundColor: isLight ? "rgba(0, 214, 214, 0.04)" : "rgba(0, 214, 214, 0.08)", tension: 0.32, fill: true },
+          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.purple, backgroundColor: isLight ? "rgba(125, 223, 167, 0.04)" : "rgba(125, 223, 167, 0.08)", tension: 0.32, fill: true },
+          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.amber, backgroundColor: isLight ? "rgba(216, 164, 72, 0.04)" : "rgba(216, 164, 72, 0.08)", tension: 0.32, fill: true },
+          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.blue, backgroundColor: isLight ? "rgba(79, 145, 255, 0.04)" : "rgba(79, 145, 255, 0.08)", tension: 0.32, fill: true }
         ]
       },
       options: {
