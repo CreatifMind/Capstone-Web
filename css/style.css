@@ -6375,7 +6375,7 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .kpi-card {
   display: grid;
-  grid-template-rows: auto auto auto minmax(48px, auto) auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   align-content: stretch;
 }
 
@@ -6385,6 +6385,7 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .kpi-progress-meta {
   align-self: end;
+  margin-top: auto;
 }
 
 .dark-app.analytics-pro-page .kpi-badge {
