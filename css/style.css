@@ -6362,6 +6362,23 @@ input:checked+.slider:before {
   box-shadow: inset 0 0 20px rgba(0,240,138,0.08);
 }
 
+.dark-app.analytics-pro-page .kpi-badge i {
+  color: currentColor;
+  font-size: 1.35rem;
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(0,240,138,0.28));
+}
+
+.dark-app.analytics-pro-page .kpi-badge.badge-blue {
+  color: #4f91ff;
+  background: rgba(79,145,255,0.12) !important;
+  border-color: rgba(79,145,255,0.24);
+}
+
+.dark-app.analytics-pro-page .kpi-badge.badge-green {
+  color: var(--ai-green);
+}
+
 .dark-app.analytics-pro-page .kpi-badge.badge-amber {
   background: rgba(255,184,77,0.12) !important;
   color: var(--ai-amber);
@@ -6391,6 +6408,32 @@ input:checked+.slider:before {
 .dark-app.analytics-pro-page .kpi-card.revenue strong { color: var(--ai-green); }
 .dark-app.analytics-pro-page .kpi-card.purity strong { color: var(--ai-amber); }
 .dark-app.analytics-pro-page .kpi-card.hazard strong { color: #ff7a83; }
+
+.dark-app.analytics-pro-page .kpi-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  margin-bottom: 7px;
+  color: rgba(244,255,249,0.58);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dark-app.analytics-pro-page .kpi-progress-meta span {
+  margin: 0;
+  color: rgba(244,255,249,0.58) !important;
+  font-size: inherit;
+}
+
+.dark-app.analytics-pro-page .kpi-progress-meta strong {
+  margin: 0;
+  color: rgba(166,255,221,0.92) !important;
+  font-size: 0.72rem;
+}
 
 .dark-app.analytics-pro-page .kpi-trend,
 .dark-app.analytics-pro-page .status-pill {
