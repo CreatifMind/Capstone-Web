@@ -6482,19 +6482,28 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-progress-bar {
-  background: rgba(244,255,249,0.12);
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(244,255,249,0.08);
+  background: rgba(244,255,249,0.10);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.28);
 }
 
 .dark-app.analytics-pro-page .kpi-progress-bar i {
+  min-width: 8px;
   background: linear-gradient(90deg, var(--ai-green), var(--ai-teal)) !important;
+  box-shadow: 0 0 16px rgba(0,240,138,0.34);
 }
 
 .dark-app.analytics-pro-page .kpi-card.purity .kpi-progress-bar i {
   background: linear-gradient(90deg, var(--ai-amber), rgba(0,214,214,0.78)) !important;
+  box-shadow: 0 0 16px rgba(255,184,77,0.34);
 }
 
 .dark-app.analytics-pro-page .kpi-card.hazard .kpi-progress-bar i {
   background: linear-gradient(90deg, #ff7a83, var(--ai-amber)) !important;
+  box-shadow: 0 0 16px rgba(255,122,131,0.28);
 }
 
 .dark-app.analytics-pro-page .chart-box {
