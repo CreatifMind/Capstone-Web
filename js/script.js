@@ -1497,8 +1497,7 @@ function initAnalyticsCharts() {
     if (!clockEl) return;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const dateStr = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-    clockEl.textContent = `${dateStr}  -  ${timeStr}`;
+    clockEl.textContent = timeStr;
   }
   updateClock();
   setInterval(updateClock, 1000);
