@@ -246,6 +246,45 @@
               <canvas id="resaleChart"></canvas>
             </div>
           </article>
+
+          <article class="panel chart-panel review-workload-panel drill-trigger bbox-card"
+            data-drill-target="detail-ledger" tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Review Workload</p>
+                <h2>Human Review Queue</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Operator workload by upload type and confidence risk.</p>
+            <div class="review-workload-viz" aria-label="Human review workload visualisation">
+              <div class="workload-meter">
+                <strong>8</strong>
+                <span>Pending reviews</span>
+              </div>
+              <div class="workload-bars">
+                <div class="workload-row">
+                  <span>Mixed batches</span>
+                  <strong>44%</strong>
+                  <i style="width: 44%"></i>
+                </div>
+                <div class="workload-row">
+                  <span>Low confidence scans</span>
+                  <strong>31%</strong>
+                  <i style="width: 31%"></i>
+                </div>
+                <div class="workload-row warning">
+                  <span>Hazard checks</span>
+                  <strong>18%</strong>
+                  <i style="width: 18%"></i>
+                </div>
+                <div class="workload-row quiet">
+                  <span>Operator corrections</span>
+                  <strong>7%</strong>
+                  <i style="width: 7%"></i>
+                </div>
+              </div>
+            </div>
+          </article>
         </section>
 
         <!-- Row 3 -->
@@ -303,21 +342,18 @@
               </div>
             </div>
             <p class="chart-subtitle">Batch processing throughput, queue load, and model review status.</p>
-            <div class="belt-telemetry-list" style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Single image uploads</span>
-                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active | 42/min</span>
+            <div class="belt-telemetry-list upload-health-list">
+              <div class="upload-health-row">
+                <span class="upload-health-name">Single image uploads</span>
+                <span class="health-chip active"><i></i><span>Active</span><strong>42/min</strong></span>
               </div>
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">ZIP batch ingestion</span>
-                <span class="status-pill cleared" style="padding:2px 8px; font-size:0.75rem;">Active | 11/min</span>
+              <div class="upload-health-row">
+                <span class="upload-health-name">ZIP batch ingestion</span>
+                <span class="health-chip active"><i></i><span>Active</span><strong>11/min</strong></span>
               </div>
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--light); border-radius:6px; border:1px solid var(--border);">
-                <span style="font-weight:600; font-size:0.825rem; color:var(--text);">Low confidence queue</span>
-                <span class="status-pill review" style="padding:2px 8px; font-size:0.75rem;">Review | 8 open</span>
+              <div class="upload-health-row">
+                <span class="upload-health-name">Low confidence queue</span>
+                <span class="health-chip review"><i></i><span>Review</span><strong>8 open</strong></span>
               </div>
             </div>
           </article>

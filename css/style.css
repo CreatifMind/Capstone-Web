@@ -6509,6 +6509,183 @@ input:checked+.slider:before {
 .dark-app.analytics-pro-page .alert-row-value {
   color: rgba(166,255,221,0.92) !important;
 }
+
+.dark-app.analytics-pro-page .review-workload-panel {
+  gap: 14px;
+}
+
+.dark-app.analytics-pro-page .review-workload-viz {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr);
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dark-app.analytics-pro-page .workload-meter {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 190px;
+  border: 1px solid rgba(73,255,182,0.16);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(0,240,138,0.18), transparent 58%),
+    rgba(1,9,8,0.36);
+}
+
+.dark-app.analytics-pro-page .workload-meter strong {
+  color: var(--ai-green);
+  font-size: clamp(2.6rem, 5vw, 4.25rem);
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+}
+
+.dark-app.analytics-pro-page .workload-meter span {
+  margin-top: 8px;
+  color: rgba(244,255,249,0.64);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dark-app.analytics-pro-page .workload-bars {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+
+.dark-app.analytics-pro-page .workload-row {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 44px;
+  padding: 11px 13px;
+  border: 1px solid rgba(73,255,182,0.16);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.045);
+}
+
+.dark-app.analytics-pro-page .workload-row span,
+.dark-app.analytics-pro-page .workload-row strong {
+  position: relative;
+  z-index: 1;
+}
+
+.dark-app.analytics-pro-page .workload-row span {
+  color: rgba(244,255,249,0.78);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.dark-app.analytics-pro-page .workload-row strong {
+  color: rgba(166,255,221,0.92);
+  font-size: 0.84rem;
+}
+
+.dark-app.analytics-pro-page .workload-row i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  min-width: 5px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, var(--ai-green), var(--ai-teal));
+  box-shadow: 0 0 14px rgba(0,240,138,0.24);
+}
+
+.dark-app.analytics-pro-page .workload-row.warning i {
+  background: linear-gradient(90deg, var(--ai-amber), #ff7a83);
+}
+
+.dark-app.analytics-pro-page .workload-row.quiet i {
+  background: linear-gradient(90deg, rgba(125,223,167,0.72), rgba(0,214,214,0.58));
+}
+
+.dark-app.analytics-pro-page .upload-health-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dark-app.analytics-pro-page .upload-health-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 54px;
+  padding: 12px 13px;
+  border: 1px solid rgba(73,255,182,0.16);
+  border-radius: 14px;
+  background:
+    linear-gradient(140deg, rgba(0,240,138,0.055), transparent 46%),
+    rgba(3,17,15,0.84);
+}
+
+.dark-app.analytics-pro-page .upload-health-name {
+  color: rgba(244,255,249,0.84) !important;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.dark-app.analytics-pro-page .health-chip {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 6px;
+  min-width: 86px;
+  padding: 7px 10px;
+  border: 1px solid rgba(73,255,182,0.20);
+  border-radius: 999px;
+  background: rgba(0,240,138,0.08);
+  color: rgba(166,255,221,0.95);
+}
+
+.dark-app.analytics-pro-page .health-chip i {
+  grid-row: 1 / span 2;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ai-green);
+  box-shadow: 0 0 0 5px rgba(0,240,138,0.10);
+}
+
+.dark-app.analytics-pro-page .health-chip span {
+  color: rgba(166,255,221,0.86) !important;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dark-app.analytics-pro-page .health-chip strong {
+  color: rgba(244,255,249,0.92) !important;
+  font-size: 0.73rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.dark-app.analytics-pro-page .health-chip.review {
+  border-color: rgba(255,184,77,0.28);
+  background: rgba(255,184,77,0.10);
+}
+
+.dark-app.analytics-pro-page .health-chip.review i {
+  background: var(--ai-amber);
+  box-shadow: 0 0 0 5px rgba(255,184,77,0.10);
+}
+
+.dark-app.analytics-pro-page .health-chip.review span {
+  color: rgba(255,212,134,0.94) !important;
+}
 .dark-app .action-panel.review-required {
   border-color: rgba(255, 184, 77, 0.44) !important;
   background: linear-gradient(135deg, rgba(255, 184, 77, 0.12), rgba(255, 77, 87, 0.10)), var(--ai-surface) !important;
