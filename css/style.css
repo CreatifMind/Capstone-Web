@@ -6275,3 +6275,38 @@ input:checked+.slider:before {
 .settings-toggle input { width: 18px; height: 18px; accent-color: var(--ai-green); }
 @media (max-width: 1180px) { .dark-app .result-workbench,.support-layout,.settings-grid { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .dark-landing .hero-headline { font-size: clamp(3.1rem,13vw,4.5rem); } .dark-landing .hero-section { padding-top: 118px; } .form-grid.two { grid-template-columns: 1fr; } .dark-app .stream-canvas-wrap { aspect-ratio: 4 / 3; } }
+
+/* New wide PurityLoop logo sizing */
+.dark-landing .nav-logo {
+  flex: 0 0 96px;
+  width: 96px;
+  display: flex;
+  align-items: center;
+}
+
+.dark-landing .nav-logo img {
+  width: 92px;
+  height: 52px;
+  max-height: none;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.dark-login .login-brand-badge img {
+  width: 118px;
+  height: 88px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+  .dark-landing .nav-logo {
+    flex: 0 0 72px;
+    width: 72px;
+  }
+
+  .dark-landing .nav-logo img {
+    width: 70px;
+    height: 50px;
+  }
+}
