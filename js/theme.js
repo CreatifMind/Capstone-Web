@@ -261,7 +261,15 @@ function initHeroBars() {
 function initLandingCharts() {
   if (typeof Chart === 'undefined') return;
   Chart.defaults.font.family = 'Inter, sans-serif';
-  Chart.defaults.color = '#6B7280';
+  Chart.defaults.color = 'rgba(244,255,249,0.62)';
+  const chartGrid = 'rgba(178, 255, 224, 0.16)';
+  const chartText = 'rgba(244,255,249,0.62)';
+  const mint = '#00F08A';
+  const teal = '#00D6D6';
+  const moss = '#7DDFA7';
+  const amber = '#D8A448';
+  const coral = '#D85E70';
+  const slate = '#78938D';
 
   // Forecast Line Chart
   const forecastEl = document.getElementById('landingForecastChart');
@@ -273,31 +281,31 @@ function initLandingCharts() {
         datasets: [{
           label: 'AI Forecast',
           data: [820, 870, 940, 1010, 1090, 1150, 1230, 1310],
-          borderColor: '#10B981',
-          backgroundColor: 'rgba(16,185,129,0.08)',
+          borderColor: mint,
+          backgroundColor: 'rgba(0,240,138,0.10)',
           borderWidth: 2.5,
           tension: 0.4,
           fill: true,
-          pointBackgroundColor: '#10B981',
+          pointBackgroundColor: mint,
           pointRadius: 4,
         }, {
           label: 'Actual',
           data: [800, 865, 920, 990, 1050, 1120, null, null],
-          borderColor: '#3B82F6',
+          borderColor: teal,
           backgroundColor: 'transparent',
           borderWidth: 2,
           tension: 0.4,
           borderDash: [6, 3],
-          pointBackgroundColor: '#3B82F6',
+          pointBackgroundColor: teal,
           pointRadius: 4,
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'top' } },
+        plugins: { legend: { position: 'top', labels: { color: chartText, boxWidth: 14 } } },
         scales: {
-          y: { beginAtZero: false, grid: { color: '#F3F4F6' }, ticks: { callback: v => v + ' t' } },
-          x: { grid: { display: false } }
+          y: { beginAtZero: false, grid: { color: chartGrid }, ticks: { color: chartText, callback: v => v + ' t' } },
+          x: { grid: { display: false }, ticks: { color: chartText } }
         }
       }
     });
@@ -312,14 +320,15 @@ function initLandingCharts() {
         labels: ['Plastic', 'Metal', 'Paper', 'Glass', 'Cardboard', 'Other'],
         datasets: [{
           data: [28, 22, 18, 14, 10, 8],
-          backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EF4444', '#6B7280'],
-          borderWidth: 0,
+          backgroundColor: [mint, teal, moss, amber, coral, slate],
+          borderColor: 'rgba(4,15,13,0.90)',
+          borderWidth: 2,
           hoverOffset: 6,
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'right' } },
+        plugins: { legend: { position: 'right', labels: { color: chartText, boxWidth: 14, padding: 14 } } },
         cutout: '68%',
       }
     });
@@ -335,7 +344,7 @@ function initLandingCharts() {
         datasets: [{
           label: 'Risk Score',
           data: [12, 8, 34, 19, 5],
-          backgroundColor: ['#10B981', '#10B981', '#EF4444', '#F59E0B', '#10B981'],
+          backgroundColor: [mint, teal, coral, amber, moss],
           borderRadius: 6,
         }]
       },
@@ -343,8 +352,8 @@ function initLandingCharts() {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, grid: { color: '#F3F4F6' } },
-          x: { grid: { display: false } }
+          y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText } },
+          x: { grid: { display: false }, ticks: { color: chartText } }
         }
       }
     });
@@ -360,16 +369,18 @@ function initLandingCharts() {
         datasets: [{
           label: 'Recovered Value ($k)',
           data: [210, 280, 320, 390],
-          backgroundColor: 'rgba(16,185,129,0.8)',
+          backgroundColor: 'rgba(0,240,138,0.62)',
+          borderColor: 'rgba(0,240,138,0.95)',
+          borderWidth: 1,
           borderRadius: 8,
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'top' } },
+        plugins: { legend: { position: 'top', labels: { color: chartText, boxWidth: 14 } } },
         scales: {
-          y: { beginAtZero: true, grid: { color: '#F3F4F6' }, ticks: { callback: v => '$' + v + 'k' } },
-          x: { grid: { display: false } }
+          y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: v => '$' + v + 'k' } },
+          x: { grid: { display: false }, ticks: { color: chartText } }
         }
       }
     });
