@@ -6508,7 +6508,12 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-progress-bar i {
+  position: static;
+  display: block;
+  height: 100%;
   min-width: 8px;
+  border-radius: inherit;
+  transform: none;
   background: linear-gradient(90deg, var(--ai-green), var(--ai-teal)) !important;
   box-shadow: 0 0 16px rgba(0,240,138,0.34);
 }
