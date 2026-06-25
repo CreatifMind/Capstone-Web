@@ -6373,6 +6373,20 @@ input:checked+.slider:before {
   color: var(--ai-text) !important;
 }
 
+.dark-app.analytics-pro-page .kpi-card {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(48px, auto) auto auto;
+  align-content: stretch;
+}
+
+.dark-app.analytics-pro-page .kpi-card > p {
+  min-height: 48px;
+}
+
+.dark-app.analytics-pro-page .kpi-progress-meta {
+  align-self: end;
+}
+
 .dark-app.analytics-pro-page .kpi-badge {
   position: relative;
   display: inline-flex;
