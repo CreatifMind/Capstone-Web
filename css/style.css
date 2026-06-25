@@ -6356,6 +6356,7 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6368,21 +6369,31 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-badge i {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
   width: 1em;
   height: 1em;
   color: currentColor;
   font-size: 1.35rem;
   line-height: 1;
   opacity: 1;
+  transform: translate(-50%, -50%);
   filter: drop-shadow(0 0 10px rgba(0,240,138,0.28));
 }
 
-.dark-app.analytics-pro-page .kpi-badge i::before {
+.dark-app.analytics-pro-page .kpi-badge i::before,
+.dark-app.analytics-pro-page .kpi-badge svg,
+.dark-app.analytics-pro-page .kpi-badge .svg-inline--fa {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   display: block;
+  width: 1em;
+  height: 1em;
   line-height: 1;
+  transform: translate(-50%, -50%);
 }
 
 .dark-app.analytics-pro-page .kpi-badge.badge-blue {
