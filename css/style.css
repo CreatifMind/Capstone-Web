@@ -7407,13 +7407,14 @@ video {
     top: 12px;
     min-height: 64px;
     border-radius: 18px;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: 12px;
   }
 
   .dark-landing .nav-actions {
     gap: 8px;
-    margin-left: 0;
+    margin-left: auto;
+    justify-content: flex-end;
   }
 
   .dark-landing .nav-actions .btn {
