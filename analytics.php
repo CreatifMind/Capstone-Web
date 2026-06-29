@@ -1,3 +1,8 @@
+<?php
+$pageTitle = 'PurityLoop AI | Operations Dashboard';
+$dataPage = 'analytics';
+$bodyClass = 'ops-pro-page analytics-pro-page lab-ui lab-app dark-ai dark-app';
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -5,7 +10,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>PurityLoop AI | Operations Dashboard</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
   <link
@@ -17,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 
-<body data-page="analytics" class="ops-pro-page analytics-pro-page lab-ui lab-app dark-ai dark-app">
+<body data-page="<?= htmlspecialchars($dataPage, ENT_QUOTES, 'UTF-8') ?>" class="<?= htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') ?>">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>

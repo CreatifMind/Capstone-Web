@@ -1,12 +1,17 @@
+<?php
+$pageTitle = 'PurityLoop AI | Intelligent Waste Sorting Platform';
+$pageDescription = 'PurityLoop AI uses YOLOv8 computer vision to automate waste sorting, detect contaminants, and power smarter recycling operations.';
+$bodyClass = 'landing-body lab-ui dark-ai dark-landing';
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PurityLoop AI | Intelligent Waste Sorting Platform</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
   <meta name="description"
-    content="PurityLoop AI uses YOLOv8 computer vision to automate waste sorting, detect contaminants, and power smarter recycling operations." />
+    content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
 
@@ -24,7 +29,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="landing-body lab-ui dark-ai dark-landing">
+<body class="<?= htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') ?>">
 
   <!-- ══════════════════════════════════════
        TOP NAVIGATION BAR

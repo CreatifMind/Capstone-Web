@@ -1,3 +1,7 @@
+<?php
+$pageTitle = 'PurityLoop AI | Mixed Image Upload';
+$bodyClass = 'ops-pro-page upload-pro-page lab-ui lab-app dark-ai dark-app';
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -5,7 +9,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>PurityLoop AI | Mixed Image Upload</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
   <link
@@ -15,7 +19,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="ops-pro-page upload-pro-page lab-ui lab-app dark-ai dark-app">
+<body class="<?= htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') ?>">
   <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>

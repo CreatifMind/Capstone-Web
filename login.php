@@ -1,11 +1,16 @@
+<?php
+$pageTitle = 'Login | PurityLoop AI Platform';
+$pageDescription = 'Sign in to the PurityLoop AI intelligent waste sorting platform.';
+$bodyClass = 'login-body premium-login lab-ui dark-ai dark-login';
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login | PurityLoop AI Platform</title>
-  <meta name="description" content="Sign in to the PurityLoop AI intelligent waste sorting platform." />
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
+  <meta name="description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
 
   <link rel="icon" href="assets/logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -16,7 +21,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="login-body premium-login lab-ui dark-ai dark-login">
+<body class="<?= htmlspecialchars($bodyClass, ENT_QUOTES, 'UTF-8') ?>">
 
   <div class="login-split">
 
