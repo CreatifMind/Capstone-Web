@@ -97,8 +97,8 @@ $bodyClass = 'landing-body lab-ui dark-ai dark-landing';
         </p>
 
         <div class="hero-btns">
-          <a href="#how" class="btn btn-lg">
-            <i class="fa-solid fa-route"></i> How It Works
+          <a href="#problem" class="btn btn-lg">
+            <i class="fa-solid fa-arrow-down"></i> Explore more
           </a>
           <a href="login.php" class="btn-outline btn-lg">
             Login
