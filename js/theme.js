@@ -74,7 +74,7 @@ function initLiveClock() {
 
 /* ── 3. ACTIVE NAV ITEM ── */
 function initActiveNav() {
-  const current = window.location.pathname.split('/').pop() || 'index.html';
+  const current = window.location.pathname.split('/').pop() || 'index.php';
   document.querySelectorAll('.nav-item').forEach(link => {
     const href = link.getAttribute('href');
     if (href && current.includes(href)) {

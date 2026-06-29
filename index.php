@@ -31,7 +31,7 @@
   ══════════════════════════════════════ -->
   <nav id="landingNav" class="landing-nav" role="navigation" aria-label="Main navigation">
     <!-- Logo -->
-    <a href="index.html" class="nav-logo">
+    <a href="index.php" class="nav-logo">
       <img src="assets/logo.png" alt="PurityLoop AI Logo" />
     </a>
 
@@ -48,7 +48,7 @@
     <!-- Actions -->
     <div class="nav-actions">
       <a href="#contact" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">Request Demo</a>
-      <a href="login.html" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
+      <a href="login.php" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
       <button id="navBurger" class="nav-burger" aria-label="Toggle menu"><i class="fa-solid fa-bars"></i></button>
     </div>
   </nav>
@@ -60,7 +60,7 @@
     <a href="#how" class="nav-link" role="menuitem">How It Works</a>
     <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
     <a href="#capstone" class="nav-link" role="menuitem">Technology</a>
-    <a href="login.html" class="btn" style="margin-top:8px;">Login</a>
+    <a href="login.php" class="btn" style="margin-top:8px;">Login</a>
   </div>
 
 
@@ -95,7 +95,7 @@
           <a href="#contact" class="btn btn-lg">
             <i class="fa-solid fa-calendar-check"></i> Request Demo
           </a>
-          <a href="login.html" class="btn-outline btn-lg">
+          <a href="login.php" class="btn-outline btn-lg">
             Login
           </a>
         </div>
@@ -619,7 +619,7 @@
         <p>Explore the full PurityLoop AI platform, from YOLOv8 inference to operations analytics. Built for real
           MRF use cases.</p>
         <div class="final-cta-btns">
-          <a href="login.html" class="btn btn-xl">
+          <a href="login.php" class="btn btn-xl">
             <i class="fa-solid fa-sign-in-alt"></i> Launch Platform
           </a>
           <a href="#analytics" class="btn-outline btn-xl">
@@ -653,7 +653,7 @@
       <a href="#how">How It Works</a>
       <a href="#analytics">Analytics</a>
       <a href="#capstone">Capstone</a>
-      <a href="login.html">Platform</a>
+      <a href="login.php">Platform</a>
     </div>
     <p class="footer-copy">© 2026 PurityLoop AI | Capstone Demonstration Project | Built with YOLOv8 +
       JavaScript</p>

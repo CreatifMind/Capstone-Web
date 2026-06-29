@@ -441,8 +441,8 @@ Improve all interactive elements in style.css:
 ```
 Please read .agents/skills/ui-ux-pro-max/SKILL.md §9 (Navigation).
 
-Add a mobile hamburger menu to all inner pages (upload.html, live-camera.html,
-alerts.html, analytics.html):
+Add a mobile hamburger menu to all inner pages (upload.php, live-camera.php,
+alerts.php, analytics.php):
 1. Add a hamburger button in the .topbar (visible only on mobile)
 2. Make .sidebar use position: fixed and slide in from the left on mobile
 3. Add an overlay backdrop when the sidebar is open
@@ -470,7 +470,7 @@ Add a toast notification system to js/script.js and style.css:
 ```
 Please read .agents/skills/ui-ux-pro-max/SKILL.md §2 and §8.
 
-Improve the upload interaction in upload.html and style.css:
+Improve the upload interaction in upload.php and style.css:
 1. Add drag-over visual state: green border, green-soft background, slight scale
 2. Add dragover / dragleave / drop event listeners in script.js
 3. Show a checkmark and filename after file selection
@@ -484,7 +484,7 @@ Improve the upload interaction in upload.html and style.css:
 ```
 Please read .agents/skills/ui-ux-pro-max/SKILL.md §7 (Animation) and §3 (Performance).
 
-Enhance the analytics.html KPI cards:
+Enhance the analytics.php KPI cards:
 1. Animate progress bars from 0 to target width on page load (1s ease-out)
 2. Add count-up animation to all numeric KPI values (1.2s duration)
 3. Use requestAnimationFrame, not setInterval
@@ -498,7 +498,7 @@ Enhance the analytics.html KPI cards:
 ```
 Please read .agents/skills/ui-ux-pro-max/SKILL.md §7 and §3.
 
-Replace the "Loading..." table row in alerts.html with a skeleton screen:
+Replace the "Loading..." table row in alerts.php with a skeleton screen:
 1. Add a shimmer animation keyframe to style.css
 2. Create .skeleton-cell with gradient shimmer effect
 3. Show 5 skeleton rows with varying cell widths while data loads
@@ -514,7 +514,7 @@ Please read .agents/skills/ui-ux-pro-max/SKILL.md.
 
 I am working on PurityLoop AI, an AI-based waste sorting dashboard.
 Tech stack: HTML + vanilla CSS + vanilla JS (no framework).
-Pages: login.html, upload.html, live-camera.html, alerts.html, analytics.html
+Pages: login.php, upload.php, live-camera.php, alerts.php, analytics.php
 CSS: css/style.css   JS: js/script.js
 
 Apply the design intelligence from the skill to make the following improvements.

@@ -114,7 +114,7 @@
 
     <div class="login-card">
       <div class="login-card-header">
-        <a href="index.html"
+        <a href="index.php"
           style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:0.8125rem;font-weight:600;margin-bottom:28px;text-decoration:none;">
           <i class="fa-solid fa-arrow-left"></i> Back to Home
         </a>
@@ -123,7 +123,7 @@
       </div>
 
       <!-- Login Form -->
-      <form id="loginForm" action="upload.html" method="get" novalidate>
+      <form id="loginForm" action="upload.php" method="get" novalidate>
 
         <div class="form-group">
           <label for="email">Email Address</label>
@@ -183,7 +183,7 @@
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in...';
         btn.disabled = true;
         window.setTimeout(() => {
-          window.location.href = 'upload.html';
+          window.location.href = 'upload.php';
         }, 350);
       });
     }

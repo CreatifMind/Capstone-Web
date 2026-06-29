@@ -391,7 +391,7 @@ function initUploadPage() {
       scanImageBtn.disabled = true;
       scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
       setTimeout(() => {
-        window.location.href = "result.html";
+        window.location.href = "result.php";
       }, 450);
     });
   }
@@ -477,7 +477,7 @@ function initUploadPage() {
 
     localStorage.setItem("purityloop_uploads", JSON.stringify(captures));
     stopWebcam();
-    window.location.href = "result.html";
+    window.location.href = "result.php";
   }
 
   function loadSimulatedUpload() {
@@ -491,7 +491,7 @@ function initUploadPage() {
       assetPath: "assets/items/" + randomName
     }];
     localStorage.setItem("purityloop_uploads", JSON.stringify(simulatedFiles));
-    window.location.href = "result.html";
+    window.location.href = "result.php";
   }
 
   function processSelectedFiles(files) {
@@ -660,7 +660,7 @@ function initUploadPage() {
  ******************************************/
 function initResultPage() {
   const canvas = document.getElementById("liveInferenceCanvas");
-  if (!canvas) return; // Not on the result.html page
+  if (!canvas) return; // Not on the result.php page
 
   const ctx2d = canvas.getContext("2d");
   const itemsScannedEl = document.getElementById("liveScanned");
@@ -747,7 +747,7 @@ function initResultPage() {
   // Redesign "Review Logs" link button
   if (reviewLogsBtn) {
     reviewLogsBtn.textContent = "Go to Verification Logs";
-    reviewLogsBtn.href = "alerts.html";
+    reviewLogsBtn.href = "alerts.php";
   }
 
   // Render Finder Grid and Load Active image

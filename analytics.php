@@ -25,7 +25,7 @@
     <!-- Collapsible Sidebar -->
     <aside id="appSidebar" class="sidebar">
       <div class="sidebar-header">
-        <a href="index.html" class="sidebar-logo">
+        <a href="index.php" class="sidebar-logo">
           <img src="assets/logo.png" alt="PurityLoop AI Logo" />
         </a>
         <button id="sidebarToggle" class="sidebar-toggle" aria-label="Collapse Sidebar">
@@ -35,27 +35,27 @@
 
       <nav class="sidebar-nav">
         <div class="sidebar-section-label">Platform</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload">
+        <a href="upload.php" class="nav-item" data-tooltip="Upload">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
           <span class="nav-item-label">Upload</span>
         </a>
-        <a href="result.html" class="nav-item" data-tooltip="Result">
+        <a href="result.php" class="nav-item" data-tooltip="Result">
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
           <span class="nav-item-label">Result</span>
         </a>
-        <a href="alerts.html" class="nav-item" data-tooltip="Log">
+        <a href="alerts.php" class="nav-item" data-tooltip="Log">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
           <span class="nav-item-label">Log</span>
         </a>
-        <a href="analytics.html" class="nav-item active" data-tooltip="Analytics">
+        <a href="analytics.php" class="nav-item active" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Analytics</span>
         </a>
-        <a href="submit-ticket.html" class="nav-item" data-tooltip="Submit Ticket">
+        <a href="submit-ticket.php" class="nav-item" data-tooltip="Submit Ticket">
           <i class="nav-item-icon fa-solid fa-ticket"></i>
           <span class="nav-item-label">Submit Ticket</span>
         </a>
-        <a href="settings.html" class="nav-item" data-tooltip="Settings">
+        <a href="settings.php" class="nav-item" data-tooltip="Settings">
           <i class="nav-item-icon fa-solid fa-gear"></i>
           <span class="nav-item-label">Settings</span>
         </a>
@@ -69,7 +69,7 @@
             <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
-        <a href="login.html" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+        <a href="login.php" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span class="logout-text">Logout</span>
         </a>
@@ -179,7 +179,7 @@
               </div>
             </div>
 
-            <a href="alerts.html" class="alert-row review">
+            <a href="alerts.php" class="alert-row review">
               <div class="alert-row-icon"><i class="fa-solid fa-bell"></i></div>
               <div class="alert-row-body">
                 <strong>8 Pending Reviews</strong>
@@ -296,7 +296,7 @@
                 <p class="eyebrow">Log Trail</p>
                 <h2>Recent Verification Ledger</h2>
               </div>
-              <a href="alerts.html" class="secondary-btn">Full Ledger</a>
+              <a href="alerts.php" class="secondary-btn">Full Ledger</a>
             </div>
 
             <div class="ledger-list" id="dashLedgerList">
@@ -559,7 +559,7 @@
                 <p class="eyebrow">Ledger Detail</p>
                 <h2>Recent Scan Verification Ledger</h2>
               </div>
-              <a href="alerts.html" class="secondary-btn">Open Verification Logs Page</a>
+              <a href="alerts.php" class="secondary-btn">Open Verification Logs Page</a>
             </div>
             <div class="table-wrap">
               <table class="ledger-table">

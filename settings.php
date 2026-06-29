@@ -18,23 +18,23 @@
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
     <aside id="appSidebar" class="sidebar">
       <div class="sidebar-header">
-        <a href="index.html" class="sidebar-logo"><img src="assets/logo.png" alt="PurityLoop AI Logo" /></a>
+        <a href="index.php" class="sidebar-logo"><img src="assets/logo.png" alt="PurityLoop AI Logo" /></a>
         <button id="sidebarToggle" class="sidebar-toggle" aria-label="Collapse Sidebar"><i
             class="fa-solid fa-angles-left"></i></button>
       </div>
       <nav class="sidebar-nav">
         <div class="sidebar-section-label">Platform</div>
-        <a href="upload.html" class="nav-item" data-tooltip="Upload"><i
+        <a href="upload.php" class="nav-item" data-tooltip="Upload"><i
             class="nav-item-icon fa-solid fa-cloud-arrow-up"></i><span class="nav-item-label">Upload</span></a>
-        <a href="result.html" class="nav-item" data-tooltip="Result"><i
+        <a href="result.php" class="nav-item" data-tooltip="Result"><i
             class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i><span class="nav-item-label">Result</span></a>
-        <a href="alerts.html" class="nav-item" data-tooltip="Log"><i
+        <a href="alerts.php" class="nav-item" data-tooltip="Log"><i
             class="nav-item-icon fa-solid fa-clipboard-check"></i><span class="nav-item-label">Log</span></a>
-        <a href="analytics.html" class="nav-item" data-tooltip="Analytics"><i
+        <a href="analytics.php" class="nav-item" data-tooltip="Analytics"><i
             class="nav-item-icon fa-solid fa-chart-line"></i><span class="nav-item-label">Analytics</span></a>
-        <a href="submit-ticket.html" class="nav-item" data-tooltip="Submit Ticket"><i
+        <a href="submit-ticket.php" class="nav-item" data-tooltip="Submit Ticket"><i
             class="nav-item-icon fa-solid fa-ticket"></i><span class="nav-item-label">Submit Ticket</span></a>
-        <a href="settings.html" class="nav-item active" data-tooltip="Settings"><i
+        <a href="settings.php" class="nav-item active" data-tooltip="Settings"><i
             class="nav-item-icon fa-solid fa-gear"></i><span class="nav-item-label">Settings</span></a>
       </nav>
       <div class="sidebar-footer">
@@ -45,7 +45,7 @@
             <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
-        <a href="login.html" class="logout-btn"><i class="fa-solid fa-right-from-bracket"></i><span
+        <a href="login.php" class="logout-btn"><i class="fa-solid fa-right-from-bracket"></i><span
             class="logout-text">Logout</span></a>
       </div>
     </aside>
