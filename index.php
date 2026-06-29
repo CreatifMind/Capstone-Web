@@ -317,39 +317,52 @@ $bodyClass = 'landing-body lab-ui dark-ai dark-landing';
             style="background:#111827;border-radius:12px;aspect-ratio:16/9;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
             <img src="assets/items/upload-result-reference.png" alt="Conveyor belt scan"
               style="width:100%;height:100%;object-fit:cover;opacity:0.85;" />
+            <div class="scan-line"></div>
+            <div class="scan-hud" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
             <!-- Bounding box overlays -->
             <div
-              style="position:absolute;top:30%;left:5%;width:22%;height:36%;border:2px solid #10B981;border-radius:4px;box-shadow:0 0 10px rgba(16,185,129,0.5);">
+              style="position:absolute;top:30%;left:2.5%;width:23.5%;height:31%;border:2px solid #39d12f;border-radius:4px;background:rgba(57,209,47,0.16);box-shadow:0 0 10px rgba(57,209,47,0.5);">
               <span
-                style="position:absolute;top:-1px;left:-1px;background:#10B981;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;letter-spacing:0.5px;">PLASTIC
+                style="position:absolute;top:-1px;left:-1px;background:#39d12f;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;letter-spacing:0.5px;white-space:nowrap;">PET_BOTTLE
                 97%</span>
             </div>
             <div
-              style="position:absolute;top:35%;left:30%;width:20%;height:32%;border:2px solid #10B981;border-radius:4px;box-shadow:0 0 10px rgba(16,185,129,0.5);">
+              style="position:absolute;top:38%;left:28.5%;width:18.5%;height:25%;border:2px solid #39d12f;border-radius:4px;background:rgba(57,209,47,0.16);box-shadow:0 0 10px rgba(57,209,47,0.5);">
               <span
-                style="position:absolute;top:-1px;left:-1px;background:#10B981;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;">METAL
+                style="position:absolute;top:-1px;left:-1px;background:#39d12f;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;white-space:nowrap;">ALUMINUM_CAN
                 98%</span>
             </div>
             <div
-              style="position:absolute;top:40%;left:55%;width:18%;height:28%;border:2px solid #EF4444;border-radius:4px;box-shadow:0 0 10px rgba(239,68,68,0.5);">
+              style="position:absolute;top:24.5%;left:50.5%;width:25.5%;height:39%;border:2px solid #39d12f;border-radius:4px;background:rgba(57,209,47,0.16);box-shadow:0 0 10px rgba(57,209,47,0.5);">
               <span
-                style="position:absolute;top:-1px;left:-1px;background:#EF4444;color:white;font-size:9px;font-weight:900;padding:2px 6px;">BATTERY
-                RISK</span>
+                style="position:absolute;top:-1px;left:-1px;background:#39d12f;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;white-space:nowrap;">CARDBOARD_BOX
+                96%</span>
+            </div>
+            <div
+              style="position:absolute;top:36.5%;left:79.5%;width:16%;height:30%;border:2px solid #39d12f;border-radius:4px;background:rgba(57,209,47,0.16);box-shadow:0 0 10px rgba(57,209,47,0.5);">
+              <span
+                style="position:absolute;top:-1px;left:-1px;background:#39d12f;color:#07120f;font-size:9px;font-weight:900;padding:2px 6px;white-space:nowrap;">GLASS_JAR
+                95%</span>
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
             <span
               style="background:#D1FAE5;color:#065F46;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">✓
-              Plastic</span>
+              PET Bottle</span>
             <span
               style="background:#D1FAE5;color:#065F46;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">✓
-              Metal</span>
+              Aluminum Can</span>
             <span
-              style="background:#FEF2F2;color:#EF4444;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">Risk
-              Battery</span>
+              style="background:#D1FAE5;color:#065F46;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">✓
+              Cardboard Box</span>
             <span
-              style="background:#EFF6FF;color:#3B82F6;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">↺
-              Glass</span>
+              style="background:#D1FAE5;color:#065F46;padding:4px 10px;border-radius:999px;font-size:0.6875rem;font-weight:700;">✓
+              Glass Jar</span>
           </div>
         </div>
       </div>
