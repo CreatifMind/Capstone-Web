@@ -231,6 +231,32 @@ textarea:focus-visible,
   color: var(--app-muted);
 }
 
+.upload-topbar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.upload-topbar-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(73,255,182,0.16);
+  border-radius: 999px;
+  background: rgba(0,240,138,0.065);
+  color: rgba(166,255,221,0.9);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.upload-topbar-chips i {
+  color: var(--ai-green);
+}
+
 .search-bar,
 .date-pill,
 .user-badge,
@@ -7333,6 +7359,16 @@ video {
     justify-content: flex-start;
   }
 
+  .dark-app .upload-topbar-chips {
+    gap: 6px;
+  }
+
+  .dark-app .upload-topbar-chips span {
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 0.68rem;
+  }
+
   .dark-app .result-workbench {
     grid-template-columns: 1fr;
   }
@@ -7346,6 +7382,14 @@ video {
 
   .dark-app .sidebar.collapsed {
     width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+  }
+
+  .dark-app .sidebar:not(.mobile-open) {
+    transform: translateX(-100%);
+  }
+
+  .dark-app .sidebar.mobile-open {
+    transform: translateX(0);
   }
 
   .dark-app .sidebar.collapsed .nav-item-label,

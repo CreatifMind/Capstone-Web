@@ -10,10 +10,11 @@ function initSidebar() {
   const toggle = document.getElementById('sidebarToggle');
   const mobileToggle = document.getElementById('mobileToggle');
   if (!sidebar) return;
+  const isMobileNav = () => window.matchMedia('(max-width: 1000px)').matches;
 
   // Restore saved state — suppress transitions so the layout snaps instantly (no jump)
   const saved = localStorage.getItem('pl_sidebar');
-  if (saved === 'collapsed') {
+  if (saved === 'collapsed' && !isMobileNav()) {
     document.documentElement.classList.add('no-transition');
     sidebar.classList.add('collapsed');
     // Remove the suppressor after one paint so future user-triggered transitions still animate
@@ -27,6 +28,12 @@ function initSidebar() {
   // Desktop collapse toggle
   if (toggle) {
     toggle.addEventListener('click', () => {
+      if (isMobileNav()) {
+        sidebar.classList.remove('mobile-open', 'collapsed');
+        if (overlay) overlay.classList.remove('active');
+        updateToggleIcon();
+        return;
+      }
       sidebar.classList.toggle('collapsed');
       localStorage.setItem('pl_sidebar', sidebar.classList.contains('collapsed') ? 'collapsed' : 'expanded');
       updateToggleIcon();
@@ -36,16 +43,19 @@ function initSidebar() {
   // Mobile open
   if (mobileToggle) {
     mobileToggle.addEventListener('click', () => {
+      sidebar.classList.remove('collapsed');
       sidebar.classList.add('mobile-open');
       if (overlay) overlay.classList.add('active');
+      updateToggleIcon();
     });
   }
 
   // Close overlay
   if (overlay) {
     overlay.addEventListener('click', () => {
-      sidebar.classList.remove('mobile-open');
+      sidebar.classList.remove('mobile-open', 'collapsed');
       overlay.classList.remove('active');
+      updateToggleIcon();
     });
   }
 
@@ -53,7 +63,7 @@ function initSidebar() {
     if (!toggle) return;
     const icon = toggle.querySelector('i');
     if (!icon) return;
-    icon.className = sidebar.classList.contains('collapsed')
+    icon.className = isMobileNav() || sidebar.classList.contains('collapsed')
       ? 'fa-solid fa-angles-right'
       : 'fa-solid fa-angles-left';
   }
