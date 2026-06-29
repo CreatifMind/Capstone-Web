@@ -63,7 +63,7 @@ function initSidebar() {
     if (!toggle) return;
     const icon = toggle.querySelector('i');
     if (!icon) return;
-    icon.className = isMobileNav() || sidebar.classList.contains('collapsed')
+    icon.className = sidebar.classList.contains('collapsed') || (isMobileNav() && !sidebar.classList.contains('mobile-open'))
       ? 'fa-solid fa-angles-right'
       : 'fa-solid fa-angles-left';
   }
