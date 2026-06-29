@@ -4885,6 +4885,22 @@ input:checked+.slider:before {
     width: 100%;
   }
 
+  .step-item .step-num {
+    order: 1;
+  }
+
+  .step-item .step-icon-wrap {
+    order: 2;
+  }
+
+  .step-item h3 {
+    order: 3;
+  }
+
+  .step-item p {
+    order: 4;
+  }
+
   .impact-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -7265,10 +7281,13 @@ video {
     top: 12px;
     min-height: 64px;
     border-radius: 18px;
+    justify-content: flex-start;
+    gap: 12px;
   }
 
   .dark-landing .nav-actions {
     gap: 8px;
+    margin-left: 0;
   }
 
   .dark-landing .nav-actions .btn {
@@ -7302,13 +7321,18 @@ video {
   }
 
   .dark-landing .hero-btns {
-    align-items: stretch;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
   }
 
   .dark-landing .hero-btns .btn,
   .dark-landing .hero-btns .btn-outline {
-    flex: 1 1 160px;
+    flex: 0 1 auto;
     justify-content: center;
+    min-height: 44px;
+    padding: 0 18px;
+    font-size: 0.95rem;
   }
 
   .dark-landing .hero-social-proof {
@@ -7399,8 +7423,21 @@ video {
   }
 
   .dark-landing .nav-actions .btn {
-    font-size: 0.8rem !important;
-    padding-inline: 12px !important;
+    min-height: 40px !important;
+    font-size: 0.82rem !important;
+    padding-inline: 14px !important;
+  }
+
+  .dark-landing .nav-burger {
+    width: 42px;
+    height: 42px;
+  }
+
+  .dark-landing .hero-btns .btn,
+  .dark-landing .hero-btns .btn-outline {
+    min-height: 42px;
+    padding-inline: 14px;
+    font-size: 0.88rem;
   }
 
   .dark-app .primary-btn,
