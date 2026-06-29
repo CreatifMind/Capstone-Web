@@ -163,6 +163,14 @@ $bodyClass = 'login-body premium-login lab-ui dark-ai dark-login';
 
       </form>
 
+      <div class="create-account-panel">
+        <div>
+          <span>First time user?</span>
+          <strong>Create an operator account</strong>
+        </div>
+        <a href="#" class="create-account-link">Create Account</a>
+      </div>
+
       <!-- Trust indicators -->
       <div class="login-trust-row">
         <span class="trust-badge"><i class="fa-solid fa-lock"></i> SSL Secured</span>
