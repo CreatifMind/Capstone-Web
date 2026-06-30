@@ -7659,3 +7659,32 @@ video {
     height: 44px;
   }
 }
+
+@media (max-width: 1000px) {
+  .dark-app .sidebar.mobile-open .sidebar-header {
+    position: relative;
+    justify-content: center;
+    padding: 16px 76px 16px 24px;
+  }
+
+  .dark-app .sidebar.mobile-open .sidebar-logo {
+    flex: 0 1 auto;
+    justify-content: center;
+    width: min(220px, 58vw);
+  }
+
+  .dark-app .sidebar.mobile-open .sidebar-logo img {
+    width: min(196px, 52vw);
+    height: 86px;
+    object-fit: contain;
+    object-position: center;
+  }
+
+  .dark-app .sidebar.mobile-open .sidebar-toggle {
+    position: absolute;
+    top: 50%;
+    right: 22px;
+    transform: translateY(-50%);
+    margin: 0;
+  }
+}
