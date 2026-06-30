@@ -88,11 +88,6 @@ $bodyClass = 'ops-pro-page upload-pro-page lab-ui lab-app dark-ai dark-app';
           <div class="topbar-title">
             <h1>Upload</h1>
             <p>Select an image, confirm the preview, then start the AI scan.</p>
-            <div class="upload-topbar-chips" aria-label="Upload scan status">
-              <span><i class="fa-solid fa-image"></i> JPG PNG WEBP</span>
-              <span><i class="fa-solid fa-bolt"></i> YOLOv8 ready</span>
-              <span><i class="fa-solid fa-shield-halved"></i> Human review enabled</span>
-            </div>
           </div>
         </div>
 
