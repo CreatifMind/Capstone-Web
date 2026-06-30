@@ -464,7 +464,6 @@ function initMotionEffects() {
   });
 
   const revealSelectors = [
-    '.landing-body section > *',
     '.hero-copy > *',
     '.hero-dashboard-card',
     '.feature-row',
@@ -486,6 +485,9 @@ function initMotionEffects() {
   revealItems.forEach((el, index) => {
     el.classList.add('motion-ready');
     el.style.setProperty('--motion-delay', `${Math.min(index % 8, 7) * 45}ms`);
+    if (el.getBoundingClientRect().top < window.innerHeight * 0.92) {
+      el.classList.add('is-visible');
+    }
   });
 
   if (reduceMotion || !('IntersectionObserver' in window)) {
