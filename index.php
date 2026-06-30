@@ -54,7 +54,10 @@ $bodyClass = 'landing-body lab-ui dark-ai dark-landing';
     <div class="nav-actions">
       <a href="#contact" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">Request Demo</a>
       <a href="login.php" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
-      <button id="navBurger" class="nav-burger" aria-label="Toggle menu"><i class="fa-solid fa-bars"></i></button>
+      <button id="navBurger" class="nav-burger" aria-label="Toggle menu" aria-expanded="false">
+        <span class="nav-burger-label">Menu</span>
+        <i class="fa-solid fa-bars"></i>
+      </button>
     </div>
   </nav>
 

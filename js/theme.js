@@ -157,7 +157,19 @@ function initLandingNav() {
   const burger = document.getElementById('navBurger');
   const menu = document.getElementById('mobileMenu');
   if (burger && menu) {
-    burger.addEventListener('click', () => menu.classList.toggle('open'));
+    const icon = burger.querySelector('i');
+    const setMenuState = isOpen => {
+      menu.classList.toggle('open', isOpen);
+      burger.classList.toggle('open', isOpen);
+      burger.setAttribute('aria-expanded', String(isOpen));
+      document.body.classList.toggle('landing-menu-open', isOpen);
+      if (icon) icon.className = isOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-bars';
+    };
+
+    burger.addEventListener('click', () => setMenuState(!menu.classList.contains('open')));
+    menu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => setMenuState(false));
+    });
   }
 }
 
