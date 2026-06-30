@@ -4330,69 +4330,123 @@ input:checked+.slider:before {
 
 /* - How It Works - */
 .steps-flow {
-  display: flex;
-  align-items: flex-start;
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  align-items: stretch;
+  gap: 12px;
   position: relative;
+  margin-top: 42px;
+  padding: 18px;
+  border: 1px solid rgba(73, 255, 182, 0.16);
+  border-radius: 26px;
+  background:
+    linear-gradient(90deg, rgba(0, 240, 138, 0.10), rgba(0, 214, 214, 0.04), rgba(0, 240, 138, 0.08)),
+    rgba(3, 15, 12, 0.64);
+  overflow: hidden;
+}
+
+.steps-flow::before {
+  content: "";
+  position: absolute;
+  left: 54px;
+  right: 54px;
+  top: 58px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--ai-green), var(--ai-teal));
+  opacity: 0.58;
+  box-shadow: 0 0 20px rgba(0, 240, 138, 0.28);
 }
 
 .step-item {
-  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 0 20px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 56px 16px 18px;
   position: relative;
+  z-index: 1;
+  border: 1px solid rgba(73, 255, 182, 0.12);
+  border-radius: 20px;
+  background: rgba(1, 9, 8, 0.44);
 }
 
 .step-connector {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 46px;
+  z-index: 2;
   display: flex;
   align-items: center;
-  margin-top: 28px;
-  color: var(--border);
-  font-size: 1.5rem;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(73, 255, 182, 0.28);
+  border-radius: 999px;
+  background: rgba(2, 8, 7, 0.94);
+  color: var(--ai-green);
+  font-size: 0.85rem;
+  box-shadow: 0 0 20px rgba(0, 240, 138, 0.18);
+}
+
+.step-connector:nth-of-type(2) {
+  left: calc(20% - 15px);
+}
+
+.step-connector:nth-of-type(4) {
+  left: calc(40% - 15px);
+}
+
+.step-connector:nth-of-type(6) {
+  left: calc(60% - 15px);
+}
+
+.step-connector:nth-of-type(8) {
+  left: calc(80% - 15px);
 }
 
 .step-num {
-  width: 56px;
-  height: 56px;
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  background: var(--primary);
-  color: white;
-  font-size: 1.125rem;
+  background: linear-gradient(135deg, var(--ai-green), var(--ai-teal));
+  color: #00130d;
+  font-size: 1rem;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
-  box-shadow: 0 0 0 8px var(--primary-xlight);
+  margin: 0;
+  box-shadow: 0 0 0 6px rgba(0, 240, 138, 0.10);
 }
 
 .step-icon-wrap {
-  width: 72px;
-  height: 72px;
-  border-radius: var(--radius-lg);
-  background: white;
-  border: 2px solid var(--border);
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: rgba(0, 240, 138, 0.09);
+  border: 1px solid rgba(73, 255, 182, 0.18);
+  color: var(--ai-green);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  font-size: 1.35rem;
   margin-bottom: 18px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .step-item h3 {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
   margin-bottom: 6px;
+  color: var(--ai-text);
 }
 
 .step-item p {
   font-size: 0.8125rem;
-  color: var(--muted);
+  color: rgba(244, 255, 249, 0.66);
   line-height: 1.5;
 }
 
@@ -4912,34 +4966,39 @@ input:checked+.slider:before {
   }
 
   .steps-flow {
-    flex-direction: column;
-    gap: 24px;
-    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(210px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    padding: 18px;
   }
 
   .step-connector {
-    display: none;
+    display: flex;
   }
 
   .step-item {
-    flex: 0 0 100%;
-    width: 100%;
+    width: auto;
+    scroll-snap-align: start;
   }
 
   .step-item .step-num {
-    order: 1;
+    order: initial;
   }
 
   .step-item .step-icon-wrap {
-    order: 2;
+    order: initial;
   }
 
   .step-item h3 {
-    order: 3;
+    order: initial;
   }
 
   .step-item p {
-    order: 4;
+    order: initial;
   }
 
   .impact-grid {
