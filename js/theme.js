@@ -424,11 +424,115 @@ function initPasswordToggle() {
 
 /* ── 13. PROGRESS BAR ANIMATIONS ── */
 function animateProgressBars() {
-  document.querySelectorAll('.kpi-progress-bar i').forEach(bar => {
-    const w = bar.style.width;
+  document.querySelectorAll('.kpi-progress-bar i, .kpi-progress-fill').forEach(bar => {
+    const w = bar.style.width || getComputedStyle(bar).width;
+    if (!bar.style.getPropertyValue('--target-width')) {
+      bar.style.setProperty('--target-width', bar.style.width || '100%');
+    }
     bar.style.width = '0%';
     bar.offsetHeight; // reflow
-    setTimeout(() => { bar.style.width = w; }, 100);
+    setTimeout(() => { bar.style.width = bar.style.getPropertyValue('--target-width') || w; }, 160);
+  });
+}
+
+/* ── 14. LIGHTWEIGHT MOTION SYSTEM ── */
+function initMotionEffects() {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.body.classList.add('page-loading');
+  requestAnimationFrame(() => {
+    document.body.classList.add('page-loaded');
+  });
+
+  document.querySelectorAll('a[href]').forEach(link => {
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || link.target === '_blank') return;
+    link.addEventListener('click', event => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      let nextUrl;
+      try {
+        nextUrl = new URL(href, window.location.href);
+      } catch {
+        return;
+      }
+      if (nextUrl.origin !== window.location.origin || nextUrl.pathname === window.location.pathname) return;
+      event.preventDefault();
+      document.body.classList.add('page-leaving');
+      setTimeout(() => {
+        window.location.href = nextUrl.href;
+      }, reduceMotion ? 0 : 180);
+    });
+  });
+
+  const revealSelectors = [
+    '.landing-body section > *',
+    '.hero-copy > *',
+    '.hero-dashboard-card',
+    '.feature-row',
+    '.problem-card',
+    '.tech-pill',
+    '.app-layout .topbar',
+    '.app-layout .ops-hero',
+    '.app-layout .panel',
+    '.app-layout .bbox-card',
+    '.app-layout .kpi-card',
+    '.app-layout .chart-panel',
+    '.app-layout .settings-card',
+    '.app-layout .ticket-status-panel'
+  ].join(',');
+
+  const revealItems = Array.from(document.querySelectorAll(revealSelectors))
+    .filter(el => !el.closest('.sidebar') && !el.classList.contains('motion-ready'));
+
+  revealItems.forEach((el, index) => {
+    el.classList.add('motion-ready');
+    el.style.setProperty('--motion-delay', `${Math.min(index % 8, 7) * 45}ms`);
+  });
+
+  if (reduceMotion || !('IntersectionObserver' in window)) {
+    revealItems.forEach(el => el.classList.add('is-visible'));
+    return;
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-visible');
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+
+  revealItems.forEach(el => observer.observe(el));
+}
+
+function initMetricCountUp() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const metrics = document.querySelectorAll('.kpi-card > strong, .ops-hero-card strong, [data-countup]');
+  metrics.forEach(metric => {
+    const original = metric.textContent.trim();
+    const numberMatch = original.match(/[\d,.]+/);
+    if (!numberMatch) return;
+    const numeric = Number(numberMatch[0].replace(/,/g, ''));
+    if (!Number.isFinite(numeric)) return;
+
+    const prefix = original.slice(0, numberMatch.index);
+    const suffix = original.slice(numberMatch.index + numberMatch[0].length);
+    const decimals = numberMatch[0].includes('.') ? numberMatch[0].split('.')[1].length : 0;
+    const duration = 760;
+    const startTime = performance.now();
+
+    const render = now => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = numeric * eased;
+      const formatted = decimals
+        ? value.toFixed(decimals)
+        : Math.round(value).toLocaleString('en-US');
+      metric.textContent = `${prefix}${formatted}${suffix}`;
+      if (progress < 1) requestAnimationFrame(render);
+      else metric.textContent = original;
+    };
+
+    requestAnimationFrame(render);
   });
 }
 
@@ -445,5 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initHeroBars();
   initLandingCharts();
   initPasswordToggle();
+  initMotionEffects();
+  initMetricCountUp();
   animateProgressBars();
 });

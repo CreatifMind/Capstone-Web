@@ -389,10 +389,12 @@ function initUploadPage() {
         return;
       }
       scanImageBtn.disabled = true;
+      scanImageBtn.classList.add("is-scanning");
+      if (uploadBox) uploadBox.classList.add("is-processing");
       scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
       setTimeout(() => {
         window.location.href = "result.php";
-      }, 450);
+      }, 720);
     });
   }
 
@@ -520,12 +522,16 @@ function initUploadPage() {
         previewReader.onload = function (e) {
           previewImage.src = e.target.result;
           previewContainer.style.display = "flex";
+          previewContainer.classList.remove("preview-visible");
+          requestAnimationFrame(() => previewContainer.classList.add("preview-visible"));
         };
         previewReader.readAsDataURL(firstFile);
       } else {
         // Fallback for non-image files (e.g. ZIP)
         previewImage.src = "assets/logo.png";
         previewContainer.style.display = "flex";
+        previewContainer.classList.remove("preview-visible");
+        requestAnimationFrame(() => previewContainer.classList.add("preview-visible"));
       }
     }
 
@@ -932,6 +938,8 @@ function initResultPage() {
     const actionPanel = document.getElementById("liveActionPanel");
 
     const boxes = getDetectedObjectsForFile(file.name);
+    document.body.classList.remove("result-detected");
+    requestAnimationFrame(() => document.body.classList.add("result-detected"));
 
     // Calculate overall purity (percentage of recyclables)
     let recyclableCount = 0;
@@ -1039,13 +1047,14 @@ function initResultPage() {
       listContainer.style.gap = "6px";
       listContainer.style.marginBottom = "10px";
 
-      boxes.forEach(box => {
+      boxes.forEach((box, index) => {
         const itemDiv = document.createElement("div");
         const isContaminant = box.label.toLowerCase().includes("contaminant") ||
           box.label.toLowerCase().includes("hazard") ||
           box.label.toLowerCase().includes("alert") ||
           box.label.toLowerCase().includes("trash");
         itemDiv.className = `material-row ${isContaminant ? "contaminant" : "recyclable"}`;
+        itemDiv.style.setProperty("--row-delay", `${index * 70}ms`);
         itemDiv.style.setProperty("--material-color", isContaminant ? "#ff4d57" : box.color);
 
         itemDiv.innerHTML = `
@@ -2274,7 +2283,7 @@ function initPasswordToggle() {
 
 /* KPI Progress Bars Animation */
 function animateProgressBars() {
-  document.querySelectorAll(".kpi-progress-bar i").forEach(bar => {
+  document.querySelectorAll(".kpi-progress-bar i, .kpi-progress-fill").forEach(bar => {
     const targetWidth = bar.style.width || "0%";
     bar.style.width = "0%";
 
@@ -2283,7 +2292,7 @@ function animateProgressBars() {
 
     setTimeout(() => {
       bar.style.width = targetWidth;
-    }, 100);
+    }, 160);
   });
 }
 

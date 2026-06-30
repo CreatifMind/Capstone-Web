@@ -7718,3 +7718,292 @@ video {
     margin: 0;
   }
 }
+
+/* ============================================================
+   Motion layer: subtle, lightweight interaction and page motion
+   ============================================================ */
+body.page-loading {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+body.page-loaded {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.page-leaving {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.motion-ready {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
+  transition-delay: var(--motion-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.motion-ready.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dark-ai .btn,
+.dark-ai .btn-outline,
+.dark-ai .primary-btn,
+.dark-ai .secondary-btn,
+.dark-ai .logout-btn,
+.dark-ai .upload-label,
+.dark-landing .nav-link,
+.dark-landing .nav-burger,
+.dark-app .nav-item,
+.dark-app .panel,
+.dark-app .bbox-card,
+.dark-app .stream-panel,
+.dark-app .mini-panel,
+.dark-app .kpi-card,
+.dark-app .chart-panel,
+.dark-app .settings-card,
+.dark-app .support-form,
+.dark-app .ticket-status-panel,
+.dark-app .upload-box,
+.dark-landing .problem-card,
+.dark-landing .feature-visual,
+.dark-landing .feature-content,
+.dark-landing .hero-dashboard-card {
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    color 220ms ease,
+    opacity 220ms ease;
+}
+
+.dark-ai .btn:hover,
+.dark-ai .btn-outline:hover,
+.dark-ai .primary-btn:hover,
+.dark-ai .secondary-btn:hover,
+.dark-ai .logout-btn:hover,
+.dark-ai .upload-label:hover,
+.dark-landing .nav-burger:hover {
+  transform: translateY(-2px);
+}
+
+.dark-ai .btn:active,
+.dark-ai .btn-outline:active,
+.dark-ai .primary-btn:active,
+.dark-ai .secondary-btn:active,
+.dark-ai .logout-btn:active,
+.dark-ai .upload-label:active,
+.dark-landing .nav-burger:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.dark-ai .btn:hover,
+.dark-ai .primary-btn:hover,
+.dark-ai .upload-label:hover {
+  box-shadow: 0 14px 34px rgba(0, 240, 138, 0.22);
+}
+
+.dark-app .nav-item::before {
+  transition:
+    height 220ms ease,
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.dark-app .nav-item:hover,
+.dark-app .nav-item.active {
+  transform: translateX(3px);
+}
+
+.dark-app .bbox-card:hover,
+.dark-app .panel:hover,
+.dark-app .stream-panel:hover,
+.dark-app .mini-panel:hover,
+.dark-app .kpi-card:hover,
+.dark-app .chart-panel:hover,
+.dark-app .settings-card:hover,
+.dark-app .support-form:hover,
+.dark-app .ticket-status-panel:hover {
+  transform: translateY(-3px);
+  border-color: rgba(73, 255, 182, 0.32) !important;
+  box-shadow: 0 18px 48px rgba(0, 240, 138, 0.08);
+}
+
+.dark-app .sidebar,
+.dark-app .main-content,
+.dark-app .topbar {
+  transition:
+    width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    margin-left 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 220ms ease;
+}
+
+.dark-landing .highlight {
+  text-shadow: 0 0 28px rgba(0, 240, 138, 0.28);
+  animation: aiTextGlow 3.6s ease-in-out infinite;
+}
+
+.dark-landing .hero-dashboard-card {
+  animation: dashboardFloat 6s ease-in-out infinite;
+}
+
+@keyframes aiTextGlow {
+  50% {
+    text-shadow: 0 0 38px rgba(0, 214, 214, 0.32);
+  }
+}
+
+@keyframes dashboardFloat {
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.dark-app .upload-box {
+  position: relative;
+  overflow: hidden;
+}
+
+.dark-app .upload-box.dragover,
+.dark-app .upload-box.is-processing {
+  border-color: rgba(0, 240, 138, 0.75) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 240, 138, 0.26),
+    0 0 36px rgba(0, 240, 138, 0.16);
+}
+
+.dark-app .upload-box.is-processing::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 138, 0.9), transparent);
+  transform: translateY(-50%);
+  animation: scanSweep 1.2s ease-in-out infinite;
+}
+
+.dark-app .upload-scan-btn.is-scanning {
+  cursor: wait;
+  opacity: 0.9;
+}
+
+#uploadPreviewContainer.preview-visible {
+  animation: previewIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes previewIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes scanSweep {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-70%);
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(70%);
+  }
+}
+
+.dark-app .stream-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.dark-app .stream-canvas-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0, 240, 138, 0.12), transparent);
+  opacity: 0.35;
+  transform: translateY(-100%);
+  animation: viewportScan 3.4s linear infinite;
+}
+
+@keyframes viewportScan {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.result-detected .stream-panel,
+.result-detected .action-panel {
+  animation: resultIn 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.result-detected .material-row {
+  animation: materialRowIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--row-delay, 0ms);
+}
+
+@keyframes resultIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes materialRowIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.kpi-progress-bar i,
+.kpi-progress-fill {
+  transition: width 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body,
+  .motion-ready {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
