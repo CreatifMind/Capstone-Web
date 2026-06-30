@@ -7444,45 +7444,56 @@ video {
   }
 
   .dark-landing .mobile-menu {
-    inset: 0;
-    top: 0;
-    min-height: 100svh;
-    padding: 150px 28px 42px;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border: 0;
-    border-radius: 0;
+    top: 112px;
+    left: 16px;
+    right: 16px;
+    bottom: auto;
+    min-height: 0;
+    max-height: min(390px, calc(100svh - 134px));
+    padding: 14px;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
+    border: 1px solid var(--ai-border-strong);
+    border-radius: 24px;
     background:
-      radial-gradient(circle at 50% 18%, rgba(0, 240, 138, 0.08), transparent 19rem),
-      linear-gradient(180deg, rgba(15, 18, 17, 0.98), rgba(9, 11, 11, 0.99));
+      radial-gradient(circle at 82% 10%, rgba(0, 240, 138, 0.14), transparent 12rem),
+      linear-gradient(180deg, rgba(5, 21, 18, 0.97), rgba(2, 8, 7, 0.98));
     color: var(--ai-text);
-    box-shadow: none;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
     backdrop-filter: blur(20px);
+    overflow-y: auto;
   }
 
   .dark-landing .mobile-menu .nav-link {
-    width: auto;
-    padding: 4px 12px;
-    border-radius: 999px;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 16px;
+    border: 1px solid rgba(73, 255, 182, 0.10);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.035);
     color: rgba(244,255,249,0.94);
-    font-size: clamp(1.8rem, 8.4vw, 2.55rem);
-    font-weight: 500;
-    line-height: 1.35;
-    text-align: center;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    text-align: left;
+    display: flex;
+    align-items: center;
   }
 
   .dark-landing .mobile-menu .nav-link:hover,
   .dark-landing .mobile-menu .nav-link.active {
-    background: transparent;
+    background: rgba(0, 240, 138, 0.10);
+    border-color: rgba(73, 255, 182, 0.28);
     color: var(--ai-green);
   }
 
   .dark-landing .mobile-menu .btn {
-    margin-top: 16px !important;
-    min-height: 44px;
+    margin-top: 4px !important;
+    min-height: 46px;
     padding: 0 24px;
-    border-radius: 999px;
+    border-radius: 16px;
+    justify-content: center;
   }
 
   .dark-landing .hero-section {
