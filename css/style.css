@@ -7790,6 +7790,69 @@ video {
   }
 }
 
+/* Final mobile landing nav button normalization. */
+@media (max-width: 768px) {
+  .dark-landing .landing-nav .nav-actions {
+    gap: 8px;
+  }
+
+  .dark-landing .landing-nav .nav-actions .btn,
+  .dark-landing .landing-nav .nav-actions .btn-outline,
+  .dark-landing .landing-nav .nav-burger {
+    min-height: 44px !important;
+    height: 44px;
+    border-radius: 18px;
+    padding: 0 14px !important;
+    font-size: 0.88rem !important;
+    font-weight: 800;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .dark-landing .landing-nav .nav-actions .btn-outline {
+    border-color: rgba(73, 255, 182, 0.34);
+    background: rgba(255, 255, 255, 0.045);
+    color: rgba(244, 255, 249, 0.9);
+    box-shadow: none;
+  }
+
+  .dark-landing .landing-nav .nav-actions .btn {
+    border-color: rgba(0, 240, 138, 0.58);
+    color: #00130d;
+  }
+
+  .dark-landing .landing-nav .nav-burger {
+    min-width: 88px;
+    border-color: rgba(244, 255, 249, 0.72);
+    background: rgba(244, 255, 249, 0.88);
+    color: #07130f;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dark-landing .landing-nav .nav-actions {
+    gap: 6px;
+  }
+
+  .dark-landing .landing-nav .nav-actions .btn,
+  .dark-landing .landing-nav .nav-actions .btn-outline,
+  .dark-landing .landing-nav .nav-burger {
+    min-height: 40px !important;
+    height: 40px;
+    border-radius: 16px;
+    padding-inline: 10px !important;
+    font-size: 0.78rem !important;
+  }
+
+  .dark-landing .landing-nav .nav-burger {
+    min-width: 76px;
+  }
+}
+
 @media (max-width: 1000px) {
   .dark-app .main-content {
     padding-top: var(--topbar-height);
