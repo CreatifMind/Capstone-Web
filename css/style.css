@@ -4967,38 +4967,82 @@ input:checked+.slider:before {
 
   .steps-flow {
     display: grid;
-    grid-template-columns: repeat(5, minmax(210px, 1fr));
-    gap: 12px;
+    grid-template-columns: 1fr;
+    gap: 8px;
     align-items: stretch;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x mandatory;
-    padding: 18px;
+    overflow: visible;
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .steps-flow::before {
+    left: 38px;
+    right: auto;
+    top: 52px;
+    bottom: 52px;
+    width: 2px;
+    height: auto;
+    background: linear-gradient(180deg, var(--ai-green), var(--ai-teal));
+    opacity: 0.4;
   }
 
   .step-connector {
-    display: flex;
+    position: relative;
+    inset: auto;
+    width: 28px;
+    height: 28px;
+    margin: -2px 0 -2px 24px;
+    transform: none;
+    font-size: 0.75rem;
+  }
+
+  .step-connector i {
+    transform: rotate(90deg);
   }
 
   .step-item {
     width: auto;
-    scroll-snap-align: start;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    column-gap: 14px;
+    align-items: center;
+    padding: 14px;
+    border-radius: 18px;
   }
 
   .step-item .step-num {
-    order: initial;
+    position: static;
+    grid-column: 1;
+    grid-row: 1;
+    width: 42px;
+    height: 42px;
+    font-size: 0.95rem;
   }
 
   .step-item .step-icon-wrap {
-    order: initial;
+    grid-column: 1;
+    grid-row: 2;
+    width: 42px;
+    height: 42px;
+    margin: 8px 0 0;
+    border-radius: 14px;
+    font-size: 1rem;
   }
 
   .step-item h3 {
-    order: initial;
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0 0 4px;
+    font-size: 0.98rem;
   }
 
   .step-item p {
-    order: initial;
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
   }
 
   .impact-grid {
