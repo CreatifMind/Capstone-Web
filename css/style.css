@@ -3833,10 +3833,6 @@ input:checked+.slider:before {
   display: none;
 }
 
-.nav-mobile-status {
-  display: none;
-}
-
 /* Mobile nav menu */
 .mobile-menu {
   display: none;
@@ -7409,53 +7405,15 @@ video {
 
   .dark-landing .landing-nav {
     top: 12px;
-    min-height: 76px;
+    min-height: 78px;
     border-radius: 18px;
     justify-content: space-between;
-    gap: 12px;
-  }
-
-  .dark-landing .nav-mobile-status {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1 1 160px;
-    min-width: 118px;
-    max-width: 210px;
-    height: 42px;
-    gap: 9px;
-    padding: 0 14px;
-    border: 1px solid rgba(73, 255, 182, 0.2);
-    border-radius: 999px;
-    background:
-      linear-gradient(135deg, rgba(0, 240, 138, 0.09), rgba(0, 214, 214, 0.05)),
-      rgba(255, 255, 255, 0.035);
-    color: rgba(210, 255, 239, 0.92);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
-  }
-
-  .dark-landing .nav-mobile-status .nav-status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--ai-green);
-    box-shadow: 0 0 16px rgba(0, 240, 138, 0.76);
-  }
-
-  .dark-landing .nav-mobile-status em {
-    padding-left: 9px;
-    border-left: 1px solid rgba(166, 255, 221, 0.24);
-    color: rgba(166, 255, 221, 0.72);
-    font-style: normal;
+    gap: 14px;
   }
 
   .dark-landing .nav-actions {
     gap: 8px;
-    margin-left: 0;
+    margin-left: auto;
     justify-content: flex-end;
   }
 
@@ -7708,59 +7666,27 @@ video {
 
 @media (max-width: 768px) {
   .dark-landing .nav-logo {
-    flex: 0 0 104px;
-    width: 104px;
+    flex: 0 0 132px;
+    width: 132px;
+    margin-left: clamp(10px, 4vw, 30px);
   }
 
   .dark-landing .nav-logo img {
-    width: 102px;
-    height: 62px;
-  }
-}
-
-@media (max-width: 620px) {
-  .dark-landing .landing-nav {
-    gap: 8px;
-  }
-
-  .dark-landing .nav-mobile-status {
-    flex-basis: 92px;
-    min-width: 70px;
-    max-width: 96px;
-    height: 40px;
-    padding-inline: 11px;
-  }
-
-  .dark-landing .nav-mobile-status strong {
-    display: none;
-  }
-
-  .dark-landing .nav-mobile-status em {
-    border-left: 0;
-    padding-left: 0;
+    width: 128px;
+    height: 70px;
   }
 }
 
 @media (max-width: 480px) {
   .dark-landing .nav-logo {
-    flex: 0 0 82px;
-    width: 82px;
+    flex: 0 0 106px;
+    width: 106px;
+    margin-left: 8px;
   }
 
   .dark-landing .nav-logo img {
-    width: 80px;
-    height: 54px;
-  }
-
-  .dark-landing .nav-mobile-status {
-    flex: 0 0 36px;
-    min-width: 36px;
-    max-width: 36px;
-    padding: 0;
-  }
-
-  .dark-landing .nav-mobile-status em {
-    display: none;
+    width: 102px;
+    height: 62px;
   }
 }
 
