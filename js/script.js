@@ -2284,14 +2284,17 @@ function initPasswordToggle() {
 /* KPI Progress Bars Animation */
 function animateProgressBars() {
   document.querySelectorAll(".kpi-progress-bar i, .kpi-progress-fill").forEach(bar => {
-    const targetWidth = bar.style.width || "0%";
+    const targetWidth = bar.style.getPropertyValue("--target-width") || bar.style.width || "0%";
+    if (!bar.style.getPropertyValue("--target-width")) {
+      bar.style.setProperty("--target-width", targetWidth);
+    }
     bar.style.width = "0%";
 
     // Force reflow
     bar.offsetHeight;
 
     setTimeout(() => {
-      bar.style.width = targetWidth;
+      bar.style.width = bar.style.getPropertyValue("--target-width") || targetWidth;
     }, 160);
   });
 }
