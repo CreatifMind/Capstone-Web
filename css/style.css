@@ -8057,3 +8057,38 @@ body.page-leaving {
     transform: none !important;
   }
 }
+
+/* Keep the landing hero dashboard preview visible on responsive layouts. */
+@media (max-width: 1180px) {
+  .dark-landing .hero-inner {
+    grid-template-columns: 1fr !important;
+    align-items: start;
+    gap: clamp(22px, 5vw, 36px);
+  }
+
+  .dark-landing .hero-visual {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+  }
+
+  .dark-landing .hero-dashboard-card {
+    display: block !important;
+    width: min(100%, 640px);
+    margin: 0 auto;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .dark-landing .hero-dashboard-card {
+    padding: 16px;
+  }
+
+  .dark-landing .hdc-metrics {
+    grid-template-columns: 1fr;
+  }
+}
