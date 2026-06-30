@@ -7854,6 +7854,11 @@ video {
 }
 
 @media (max-width: 1000px) {
+  body.app-sidebar-open {
+    overflow: hidden;
+    touch-action: none;
+  }
+
   .dark-app .main-content {
     padding-top: var(--topbar-height);
   }
@@ -7872,10 +7877,16 @@ video {
   }
 
   .dark-app .sidebar.mobile-open {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
     height: 100svh;
+    max-height: 100svh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    overscroll-behavior: contain;
   }
 
   .dark-app .sidebar.mobile-open .sidebar-header {

@@ -30,6 +30,7 @@ function initSidebar() {
     toggle.addEventListener('click', () => {
       if (isMobileNav()) {
         sidebar.classList.remove('mobile-open', 'collapsed');
+        document.body.classList.remove('app-sidebar-open');
         if (overlay) overlay.classList.remove('active');
         updateToggleIcon();
         return;
@@ -45,6 +46,7 @@ function initSidebar() {
     mobileToggle.addEventListener('click', () => {
       sidebar.classList.remove('collapsed');
       sidebar.classList.add('mobile-open');
+      document.body.classList.add('app-sidebar-open');
       if (overlay) overlay.classList.add('active');
       updateToggleIcon();
     });
@@ -54,10 +56,20 @@ function initSidebar() {
   if (overlay) {
     overlay.addEventListener('click', () => {
       sidebar.classList.remove('mobile-open', 'collapsed');
+      document.body.classList.remove('app-sidebar-open');
       overlay.classList.remove('active');
       updateToggleIcon();
     });
   }
+
+  window.addEventListener('resize', () => {
+    if (!isMobileNav()) {
+      sidebar.classList.remove('mobile-open');
+      document.body.classList.remove('app-sidebar-open');
+      if (overlay) overlay.classList.remove('active');
+      updateToggleIcon();
+    }
+  });
 
   function updateToggleIcon() {
     if (!toggle) return;
