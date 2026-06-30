@@ -39,6 +39,10 @@ $bodyClass = 'landing-body lab-ui dark-ai dark-landing';
     <a href="index.php" class="nav-logo">
       <img src="assets/logo.png" alt="PurityLoop AI Logo" />
     </a>
+    <div class="nav-mobile-status" aria-hidden="true">
+      <span></span>
+      AI
+    </div>
 
     <!-- Desktop Links -->
     <div class="nav-links">
