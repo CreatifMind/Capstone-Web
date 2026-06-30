@@ -183,8 +183,10 @@ $bodyClass = 'ops-pro-page lab-ui lab-app dark-ai dark-app';
               <div id="liveActionText">
                 Select an uploaded image to generate a sorting recommendation.
               </div>
-              <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify result</button>
-              <a href="alerts.php" class="secondary-btn full-btn">Open review logs</a>
+              <div class="action-button-stack">
+                <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify result</button>
+                <a href="alerts.php" class="secondary-btn full-btn">Open review logs</a>
+              </div>
             </section>
           </aside>
         </section>
