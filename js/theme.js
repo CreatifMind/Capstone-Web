@@ -463,47 +463,6 @@ function initMotionEffects() {
     });
   });
 
-  const revealSelectors = [
-    '.hero-copy > *',
-    '.hero-dashboard-card',
-    '.feature-row',
-    '.problem-card',
-    '.tech-pill',
-    '.app-layout .topbar',
-    '.app-layout .ops-hero',
-    '.app-layout .panel',
-    '.app-layout .bbox-card',
-    '.app-layout .kpi-card',
-    '.app-layout .chart-panel',
-    '.app-layout .settings-card',
-    '.app-layout .ticket-status-panel'
-  ].join(',');
-
-  const revealItems = Array.from(document.querySelectorAll(revealSelectors))
-    .filter(el => !el.closest('.sidebar') && !el.classList.contains('motion-ready'));
-
-  revealItems.forEach((el, index) => {
-    el.classList.add('motion-ready');
-    el.style.setProperty('--motion-delay', `${Math.min(index % 8, 7) * 45}ms`);
-    if (el.getBoundingClientRect().top < window.innerHeight * 0.92) {
-      el.classList.add('is-visible');
-    }
-  });
-
-  if (reduceMotion || !('IntersectionObserver' in window)) {
-    revealItems.forEach(el => el.classList.add('is-visible'));
-    return;
-  }
-
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add('is-visible');
-      observer.unobserve(entry.target);
-    });
-  }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
-
-  revealItems.forEach(el => observer.observe(el));
 }
 
 function initMetricCountUp() {
