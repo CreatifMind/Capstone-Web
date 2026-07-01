@@ -1,0 +1,676 @@
+import PageHtml from "@/components/PageHtml";
+
+const html = `
+<div class="app-layout">
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <!-- Collapsible Sidebar -->
+    <aside id="appSidebar" class="sidebar">
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo">
+          <img src="/assets/logo.png" alt="PurityLoop AI Logo" />
+        </a>
+        <button id="sidebarToggle" class="sidebar-toggle" aria-label="Collapse Sidebar">
+          <i class="fa-solid fa-angles-left"></i>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="sidebar-section-label">Platform</div>
+        <a href="/upload" class="nav-item" data-tooltip="Upload">
+          <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
+          <span class="nav-item-label">Upload</span>
+        </a>
+        <a href="/result" class="nav-item" data-tooltip="Result">
+          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
+          <span class="nav-item-label">Result</span>
+        </a>
+        <a href="/log" class="nav-item" data-tooltip="Log">
+          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
+          <span class="nav-item-label">Log</span>
+        </a>
+        <a href="/analytics" class="nav-item active" data-tooltip="Analytics">
+          <i class="nav-item-icon fa-solid fa-chart-line"></i>
+          <span class="nav-item-label">Analytics</span>
+        </a>
+        <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket">
+          <i class="nav-item-icon fa-solid fa-ticket"></i>
+          <span class="nav-item-label">Submit Ticket</span>
+        </a>
+        <a href="/settings" class="nav-item" data-tooltip="Settings">
+          <i class="nav-item-icon fa-solid fa-gear"></i>
+          <span class="nav-item-label">Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-row">
+          <div class="user-avatar">AD</div>
+          <div class="user-info">
+            <div class="user-name">Admin Operator</div>
+            <div class="user-role">MRF Review Mode</div>
+          </div>
+        </div>
+        <a href="/login" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="logout-text">Logout</span>
+        </a>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="mobileToggle" class="mobile-toggle" aria-label="Open navigation">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="topbar-title">
+            <h1>Analytics</h1>
+            <p>Track upload throughput, material recovery, contamination risk, and review workload.</p>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Search Bar -->
+          <div class="search-bar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
+          </div>
+
+          <!-- Live Clock / Date Pill -->
+          <div class="date-pill">
+            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
+            <span id="liveClock">00:00:00 AM</span>
+          </div>
+
+          <!-- Notification Button -->
+          <button class="topbar-icon-btn" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot"></span>
+          </button>
+
+          <!-- User Badge -->
+          <div class="user-badge">
+            <div class="user-badge-avatar">AD</div>
+            <span style="margin-left: 6px;">Admin Mode</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-body">
+        <!-- KPI ROW: 4 Cards -->
+        <section class="kpi-grid kpi-grid-four">
+          <article class="kpi-card material drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
+            <div class="kpi-icon-row">
+              <span class="kpi-badge badge-blue"><i class="fa-solid fa-recycle"></i></span>
+              <span class="kpi-trend trend-up">▲ 5.2%</span>
+            </div>
+            <span>Total Material Diverted</span>
+            <strong>1,500 <small>tons</small></strong>
+            <p>Year-to-date across uploaded image batches</p>
+            <div class="kpi-progress-meta"><span>YTD target progress</span><strong>72%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 72%"></span></div>
+          </article>
+
+          <article class="kpi-card revenue drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
+            <div class="kpi-icon-row">
+              <span class="kpi-badge badge-green"><i class="fa-solid fa-sack-dollar"></i></span>
+              <span class="kpi-trend trend-up">▲ 8.1%</span>
+            </div>
+            <span>Revenue Generated</span>
+            <strong>$842,500</strong>
+            <p>From recovered commodity resale</p>
+            <div class="kpi-progress-meta"><span>Annual revenue target</span><strong>84%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 84%"></span></div>
+          </article>
+
+          <article class="kpi-card purity drill-trigger bbox-card" data-drill-target="detail-purity" tabindex="0">
+            <div class="kpi-icon-row">
+              <span class="kpi-badge badge-amber"><i class="fa-solid fa-chart-simple"></i></span>
+              <span class="kpi-trend trend-down">▼ 0.5%</span>
+            </div>
+            <span>Average Purity Rate</span>
+            <strong>96.3%</strong>
+            <p>AI-verified recyclable sorting score</p>
+            <div class="kpi-progress-meta"><span>Purity threshold</span><strong>96.3%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 96.3%"></span></div>
+          </article>
+
+          <article class="kpi-card hazard drill-trigger bbox-card" data-drill-target="detail-contaminants" tabindex="0">
+            <div class="kpi-icon-row">
+              <span class="kpi-badge badge-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
+              <span class="kpi-trend trend-neutral">stable</span>
+            </div>
+            <span>Anomalies Blocked</span>
+            <strong>23</strong>
+            <p>Textile & battery hazard incidents</p>
+            <div class="kpi-progress-meta"><span>Monthly risk load</span><strong>23%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 23%"></span></div>
+          </article>
+        </section>
+
+        <!-- Row 2 -->
+        <section class="dashboard-row-3col">
+          <!-- System Alerts Panel -->
+          <article class="panel alert-stack bbox-card">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">System Alerts</p>
+                <h2>Live Status</h2>
+              </div>
+            </div>
+
+            <a href="/log" class="alert-row review">
+              <div class="alert-row-icon"><i class="fa-solid fa-bell"></i></div>
+              <div class="alert-row-body">
+                <strong>8 Pending Reviews</strong>
+                <p>Low confidence overrides awaiting human QA.</p>
+              </div>
+              <span class="alert-row-value">8</span>
+            </a>
+
+            <div class="alert-row success drill-trigger" data-drill-target="detail-purity" tabindex="0">
+              <div class="alert-row-icon"><i class="fa-solid fa-bullseye"></i></div>
+              <div class="alert-row-body">
+                <strong>AI Detection Precision</strong>
+                <p>Active camera classification score.</p>
+              </div>
+              <span class="alert-row-value">98.2%</span>
+            </div>
+
+            <div class="alert-row neutral drill-trigger" data-drill-target="detail-contaminants" tabindex="0">
+              <div class="alert-row-icon"><i class="fa-solid fa-ban"></i></div>
+              <div class="alert-row-body">
+                <strong>Anomalies Blocked</strong>
+                <p>Textile and battery hazard alerts.</p>
+              </div>
+              <span class="alert-row-value">23</span>
+            </div>
+
+            <div class="alert-row danger-row drill-trigger" data-drill-target="detail-purity" tabindex="0">
+              <div class="alert-row-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+              <div class="alert-row-body">
+                <strong>Mixed batch needs human review</strong>
+                <p>Glass confidence dropped below approval threshold.</p>
+              </div>
+              <span class="alert-row-value" style="color: var(--danger);">!</span>
+            </div>
+          </article>
+
+          <!-- Composition Donut Chart -->
+          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-composition"
+            tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Composition</p>
+                <h2>Material Mix</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Breakdown of all 9 material categories detected across uploaded images, 2026
+              YTD.
+            </p>
+            <div class="chart-box">
+              <canvas id="compositionChart"></canvas>
+            </div>
+          </article>
+
+          <!-- Commodity Resale Bar Chart -->
+          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Commodity Value</p>
+                <h2>Resale Value by Category</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Estimated revenue generated per material type based on current market rates.</p>
+            <div class="chart-box">
+              <canvas id="resaleChart"></canvas>
+            </div>
+          </article>
+
+          <article class="panel chart-panel review-workload-panel drill-trigger bbox-card"
+            data-drill-target="detail-ledger" tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Review Workload</p>
+                <h2>Human Review Queue</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Operator workload by upload type and confidence risk.</p>
+            <div class="review-workload-viz" aria-label="Human review workload visualisation">
+              <div class="workload-meter">
+                <strong>8</strong>
+                <span>Pending reviews</span>
+              </div>
+              <div class="workload-bars">
+                <div class="workload-row">
+                  <span>Mixed batches</span>
+                  <strong>44%</strong>
+                  <i style="width: 44%"></i>
+                </div>
+                <div class="workload-row">
+                  <span>Low confidence scans</span>
+                  <strong>31%</strong>
+                  <i style="width: 31%"></i>
+                </div>
+                <div class="workload-row warning">
+                  <span>Hazard checks</span>
+                  <strong>18%</strong>
+                  <i style="width: 18%"></i>
+                </div>
+                <div class="workload-row quiet">
+                  <span>Operator corrections</span>
+                  <strong>7%</strong>
+                  <i style="width: 7%"></i>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- Row 3 -->
+        <section class="dashboard-row-3col">
+          <!-- Recent Ledger Preview -->
+          <article class="panel ledger-preview bbox-card">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Log Trail</p>
+                <h2>Recent Verification Ledger</h2>
+              </div>
+              <a href="/log" class="secondary-btn">Full Ledger</a>
+            </div>
+
+            <div class="ledger-list" id="dashLedgerList">
+              <!-- Populated by js/script.js -->
+              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
+                <span class="status-pill cleared">Cleared</span>
+                <strong>Scan Verification</strong>
+                <p>10:42 AM | single-image-upload.jpg | Metal (98.7%)</p>
+              </div>
+              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
+                <span class="status-pill review">Review</span>
+                <strong>Manual Review Needed</strong>
+                <p>10:30 AM | mixed-batch.zip | Glass (82.0%)</p>
+              </div>
+              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
+                <span class="status-pill quarantine">Quarantine</span>
+                <strong>Battery Hazard</strong>
+                <p>10:25 AM | hazard-sample.png | Battery</p>
+              </div>
+            </div>
+          </article>
+
+          <!-- Yield Line Chart -->
+          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Yield</p>
+                <h2>Material Diverted Over Time</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Monthly tonnage recovered per material category, showing growth trend.</p>
+            <div class="chart-box">
+              <canvas id="yieldChart"></canvas>
+            </div>
+          </article>
+
+          <!-- Additional Analytics: Upload Processing Health -->
+          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-belt" tabindex="0">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Additional Analytics</p>
+                <h2>Upload Processing Health</h2>
+              </div>
+            </div>
+            <p class="chart-subtitle">Batch processing throughput, queue load, and model review status.</p>
+            <div class="belt-telemetry-list upload-health-list">
+              <div class="upload-health-row">
+                <span class="upload-health-name">Single image uploads</span>
+                <span class="health-chip active"><i></i><span>Active</span><strong>42/min</strong></span>
+              </div>
+              <div class="upload-health-row">
+                <span class="upload-health-name">ZIP batch ingestion</span>
+                <span class="health-chip active"><i></i><span>Active</span><strong>11/min</strong></span>
+              </div>
+              <div class="upload-health-row">
+                <span class="upload-health-name">Low confidence queue</span>
+                <span class="health-chip review"><i></i><span>Review</span><strong>8 open</strong></span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- DETAIL DOCK -->
+        <section class="detail-dock" id="analyticsDrillDetails" style="margin-top: 24px;">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Drill-through Details</p>
+              <h2>Dashboard Component Details</h2>
+            </div>
+            <p class="detail-hint">Select a dashboard card, chart, or list row above to inspect the diagnostic details.
+            </p>
+          </div>
+
+          <!-- YIELD DETAIL -->
+          <article class="panel detail-panel active" id="detail-yield">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Yield Detail</p>
+                <h2>Recyclable Yield Breakdown</h2>
+              </div>
+            </div>
+            <p class="detail-copy">Tonnage recovered by material across the past six months. Click a material row below
+              to
+              view specific sorting statistics.</p>
+            <div class="detail-grid five">
+              <button type="button" class="metric-tile" data-material-detail="Metal"><span>Metal</span><strong>450
+                  t</strong><small>$540,000 value</small></button>
+              <button type="button" class="metric-tile" data-material-detail="Plastic"><span>Plastic</span><strong>380
+                  t</strong><small>$152,000 value</small></button>
+              <button type="button" class="metric-tile" data-material-detail="Paper"><span>Paper</span><strong>150
+                  t</strong><small>$15,000 value</small></button>
+              <button type="button" class="metric-tile"
+                data-material-detail="Cardboard"><span>Cardboard</span><strong>140
+                  t</strong><small>$21,000 value</small></button>
+              <button type="button" class="metric-tile" data-material-detail="Glass"><span>Glass</span><strong>127
+                  t</strong><small>$107,051 value</small></button>
+            </div>
+            <div class="month-table">
+              <div><span>Jan</span><strong>920 t</strong></div>
+              <div><span>Feb</span><strong>955 t</strong></div>
+              <div><span>Mar</span><strong>1,020 t</strong></div>
+              <div><span>Apr</span><strong>1,090 t</strong></div>
+              <div><span>May</span><strong>1,160 t</strong></div>
+              <div><span>Jun</span><strong>1,247 t</strong></div>
+            </div>
+          </article>
+
+          <!-- REVENUE DETAIL -->
+          <article class="panel detail-panel" id="detail-resale">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Revenue Detail</p>
+                <h2>Estimated Resale Value Breakdown</h2>
+              </div>
+            </div>
+            <p class="detail-copy">Recovered tonnage multiplied by estimated commodity resale rates. Click any material
+              for detailed analysis.</p>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Tonnage</th>
+                    <th>Market Rate</th>
+                    <th>Estimated Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><button type="button" class="text-drill" data-material-detail="Metal">Metal</button></td>
+                    <td>450 t</td>
+                    <td>$1,200/t</td>
+                    <td class="positive">$540,000</td>
+                  </tr>
+                  <tr>
+                    <td><button type="button" class="text-drill" data-material-detail="Plastic">Plastic</button></td>
+                    <td>380 t</td>
+                    <td>$400/t</td>
+                    <td class="positive">$152,000</td>
+                  </tr>
+                  <tr>
+                    <td><button type="button" class="text-drill" data-material-detail="Glass">Glass</button></td>
+                    <td>127 t</td>
+                    <td>$843/t</td>
+                    <td class="positive">$107,051</td>
+                  </tr>
+                  <tr>
+                    <td><button type="button" class="text-drill" data-material-detail="Cardboard">Cardboard</button>
+                    </td>
+                    <td>140 t</td>
+                    <td>$150/t</td>
+                    <td class="positive">$21,000</td>
+                  </tr>
+                  <tr>
+                    <td><button type="button" class="text-drill" data-material-detail="Paper">Paper</button></td>
+                    <td>150 t</td>
+                    <td>$100/t</td>
+                    <td class="positive">$15,000</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- PURITY DETAIL -->
+          <article class="panel detail-panel" id="detail-purity">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Purity Detail</p>
+                <h2>Purity Analysis &amp; System Actions</h2>
+              </div>
+            </div>
+            <div class="detail-grid two">
+              <div class="formula-card">
+                <span>Formula</span>
+                <strong>Purity = Verified recyclable results / Total audited results x 100</strong>
+                <p>Average purity is calculated from verified, clean recyclable upload outcomes.</p>
+              </div>
+              <div class="action-card warning" style="border-left: 4px solid var(--amber);">
+                <span>System Alert</span>
+                <strong>Glass purity dropped by 4.2%</strong>
+                <p>High impurity count in mixed ZIP uploads. Review image quality and batch composition.</p>
+              </div>
+            </div>
+            <div class="bar-list">
+              <div><span>Single image uploads</span><strong>99.1%</strong><i style="width: 99.1%"></i></div>
+              <div><span>Clean ZIP batches</span><strong>95.0%</strong><i style="width: 95.0%"></i></div>
+              <div><span>Mixed material batches</span><strong>90.8%</strong><i style="width: 90.8%"></i></div>
+              <div><span>Hazard review uploads</span><strong>88.8%</strong><i style="width: 88.8%"></i></div>
+            </div>
+          </article>
+
+          <!-- COMPOSITION DETAIL -->
+          <article class="panel detail-panel" id="detail-composition">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Composition Detail</p>
+                <h2>Material Composition Details</h2>
+              </div>
+            </div>
+            <div class="detail-grid two">
+              <div>
+                <h3>Recyclables Breakdown</h3>
+                <div class="bar-list compact">
+                  <button type="button" data-material-detail="Metal"><span>Metal</span><strong>25% | 450 t</strong><i
+                      style="width: 25%"></i></button>
+                  <button type="button" data-material-detail="Plastic"><span>Plastic</span><strong>20% | 380
+                      t</strong><i style="width: 20%"></i></button>
+                  <button type="button" data-material-detail="Glass"><span>Glass</span><strong>15% | 127 t</strong><i
+                      style="width: 15%"></i></button>
+                  <button type="button" data-material-detail="Paper"><span>Paper</span><strong>10% | 150 t</strong><i
+                      style="width: 10%"></i></button>
+                  <button type="button" data-material-detail="Cardboard"><span>Cardboard</span><strong>10% | 140
+                      t</strong><i style="width: 10%"></i></button>
+                </div>
+              </div>
+              <div>
+                <h3>Contaminants &amp; Hazards</h3>
+                <div class="bar-list compact danger-bars">
+                  <button type="button" data-material-detail="Food Organics"><span>Food Organics</span><strong>8% |
+                      1,420
+                      incidents</strong><i style="width: 8%"></i></button>
+                  <button type="button" data-material-detail="General Trash"><span>General Trash</span><strong>5% | 950
+                      incidents</strong><i style="width: 5%"></i></button>
+                  <button type="button" data-material-detail="Textile"><span>Textile</span><strong>5% | 780
+                      incidents</strong><i style="width: 5%"></i></button>
+                  <button type="button" data-material-detail="Battery"><span>Battery</span><strong>2% | 210
+                      incidents</strong><i style="width: 2%"></i></button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- CONTAMINANTS DETAIL -->
+          <article class="panel detail-panel" id="detail-contaminants">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Contaminant Detail</p>
+                <h2>Hazard &amp; Contaminant Logs</h2>
+              </div>
+            </div>
+            <div class="detail-grid four">
+              <button type="button" class="metric-tile danger" data-material-detail="Food Organics"><span>Food
+                  Organics</span><strong>1,420</strong><small>Medium Severity</small></button>
+              <button type="button" class="metric-tile danger" data-material-detail="General Trash"><span>General
+                  Trash</span><strong>950</strong><small>Low Severity</small></button>
+              <button type="button" class="metric-tile danger"
+                data-material-detail="Textile"><span>Textile</span><strong>780</strong><small>High
+                  Severity</small></button>
+              <button type="button" class="metric-tile danger"
+                data-material-detail="Battery"><span>Battery</span><strong>210</strong><small>Critical Fire
+                  Risk</small></button>
+            </div>
+          </article>
+
+          <!-- LEDGER PREVIEW DETAIL -->
+          <article class="panel detail-panel" id="detail-ledger">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Ledger Detail</p>
+                <h2>Recent Scan Verification Ledger</h2>
+              </div>
+              <a href="/log" class="secondary-btn">Open Verification Logs Page</a>
+            </div>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Upload Source</th>
+                    <th>Material</th>
+                    <th>Weight</th>
+                    <th>AI Confidence</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>10:42 AM</td>
+                    <td><button type="button" class="text-drill" data-belt-detail="SINGLE-IMAGE">single-image-upload.jpg</button>
+                    </td>
+                    <td><button type="button" class="text-drill" data-material-detail="Metal">Metal</button></td>
+                    <td>18.4 kg</td>
+                    <td class="positive">98.7%</td>
+                    <td><span class="status-pill cleared">Cleared</span></td>
+                  </tr>
+                  <tr>
+                    <td>10:30 AM</td>
+                    <td><button type="button" class="text-drill" data-belt-detail="ZIP-BATCH">mixed-batch.zip</button>
+                    </td>
+                    <td><button type="button" class="text-drill" data-material-detail="Glass">Glass</button></td>
+                    <td>14.5 kg</td>
+                    <td class="warning-text">82.0%</td>
+                    <td><span class="status-pill review">Review Needed</span></td>
+                  </tr>
+                  <tr>
+                    <td>10:25 AM</td>
+                    <td><button type="button" class="text-drill" data-belt-detail="QUARANTINE-UPLOAD">hazard-sample.png</button>
+                    </td>
+                    <td><button type="button" class="text-drill" data-material-detail="General Trash">General
+                        Trash</button></td>
+                    <td>12.0 kg</td>
+                    <td class="danger-text">42.1%</td>
+                    <td><span class="status-pill quarantine">Quarantine</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- MATERIAL DEEP DIVE -->
+          <article class="panel detail-panel material-detail-output" id="detail-material">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Material Deep Dive</p>
+                <h2><span data-material-title>Material</span> Details</h2>
+                <p data-material-subtitle class="detail-copy">Select a material to inspect tonnage, value, purity, and
+                  distribution.</p>
+              </div>
+            </div>
+            <div class="detail-grid three">
+              <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong
+                  data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
+              <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong
+                  data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
+              <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong
+                  data-material-purity>0%</strong><small data-material-status>AI-verified sorting score</small></div>
+            </div>
+            <div class="detail-grid two">
+              <div>
+                <h3 data-material-trend-title>30-Day Recovery Trend</h3>
+                <div class="spark-bars" data-material-trend></div>
+              </div>
+              <div>
+                <h3 data-material-zone-title>Distribution by Upload Source</h3>
+                <div class="bar-list compact" data-material-zones></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- AI UPLOAD DIAGNOSTICS -->
+          <article class="panel detail-panel belt-detail-output" id="detail-belt">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">AI Upload Diagnostics</p>
+                <h2>Upload Source: <span data-belt-id>Upload queue</span></h2>
+                <p class="detail-copy" data-belt-insight>Uploaded images are processed by the classifier and routed to
+                  human review when confidence or contamination risk requires a decision.</p>
+              </div>
+            </div>
+
+            <div class="detail-grid three">
+              <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h
+                  equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
+              <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4
+                  Active</strong><small data-belt-max-speed>Core Model</small></div>
+              <div class="metric-tile static"><span>Review State</span><strong
+                  data-belt-action>Operational</strong><small>Human validation available</small></div>
+            </div>
+
+            <div class="detail-grid two">
+              <div class="detail-card">
+                <h3>Upload and Compute Diagnostics</h3>
+                <dl class="detail-list">
+                  <div>
+                    <dt>Input channel</dt>
+                    <dd data-belt-scanner>Web upload</dd>
+                  </div>
+                  <div>
+                    <dt>Compute Core Temp</dt>
+                    <dd data-belt-motor>42°C</dd>
+                  </div>
+                  <div>
+                    <dt>File policy</dt>
+                    <dd data-belt-air>100 MB batch limit</dd>
+                  </div>
+                </dl>
+              </div>
+              <div class="detail-card">
+                <h3>Model Reliability and Material Mix</h3>
+                <div class="bar-list compact" data-belt-uptime></div>
+                <div class="bar-list compact" data-belt-composition></div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+  </div>
+`;
+
+export default function Page() {
+  return <PageHtml bodyClass="ops-pro-page analytics-pro-page lab-ui dark-ai dark-app" dataPage="analytics" html={html} />;
+}

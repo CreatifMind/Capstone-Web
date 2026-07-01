@@ -1,6 +1,8 @@
 .DS_Store
 Thumbs.db
 node_modules/
+.next/
 .vercel/
 dist/
 build/
+dragon.png
