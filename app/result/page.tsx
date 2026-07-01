@@ -155,20 +155,28 @@ const html = `
               </div>
             </section>
 
-            <section class="mini-panel action-panel bbox-card" id="liveActionPanel">
-              <div class="panel-heading-row">
-                <h3>Recommended action</h3>
-                <span>Human check</span>
-              </div>
-              <div id="liveActionText">
-                Select an uploaded image to generate a sorting recommendation.
-              </div>
-              <div class="action-button-stack">
-                <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify result</button>
-                <a href="/log" class="secondary-btn full-btn">Open review logs</a>
-              </div>
-            </section>
           </aside>
+
+          <section class="mini-panel action-panel bbox-card" id="liveActionPanel">
+            <div class="panel-heading-row">
+              <h3>Recommended action</h3>
+              <span>Human check</span>
+            </div>
+            <div id="liveActionText" class="recommendation-detail">
+              <strong>Waiting for scan result</strong>
+              <p>Select an uploaded image to generate a sorting recommendation.</p>
+              <ul class="recommendation-list">
+                <li><span>Next step</span><strong>Run image classification.</strong></li>
+                <li><span>Operator check</span><strong>Confirm detected materials.</strong></li>
+                <li><span>Risk logic</span><strong>Human review appears if confidence or contamination risk is low.</strong></li>
+                <li><span>Ledger action</span><strong>Approve verified scans into the review log.</strong></li>
+              </ul>
+            </div>
+            <div class="action-button-stack">
+              <button type="button" id="activeBeltDetailBtn" class="primary-btn full-btn">Verify result</button>
+              <a href="/log" class="secondary-btn full-btn">Open review logs</a>
+            </div>
+          </section>
         </section>
 
         <section class="upload-review-board">

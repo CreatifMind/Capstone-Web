@@ -1009,6 +1009,12 @@ function initResultPage() {
           <p>
             Lithium battery detected in this upload. Extract the battery and place it in fire-safe quarantine storage. Reject the contaminated record after review.
           </p>
+          <ul class="recommendation-list">
+            <li><span>Next step</span><strong>Stop recovery routing and isolate the item immediately.</strong></li>
+            <li><span>Operator check</span><strong>Confirm battery label, confidence score, and bounding box position.</strong></li>
+            <li><span>Risk logic</span><strong>Hazardous material overrides recyclable recovery actions.</strong></li>
+            <li><span>Ledger action</span><strong>Send to human review and mark the upload as quarantined.</strong></li>
+          </ul>
         `;
       } else if (hasContaminant) {
         if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card review-required";
@@ -1025,6 +1031,12 @@ function initResultPage() {
           <p>
             Contamination rate is ${100 - purityPct}%. Remove or verify the highlighted material${uniqContaminants.length > 1 ? "s" : ""}: <em>${uniqContaminants.join(", ") || "mixed contaminants"}</em>.
           </p>
+          <ul class="recommendation-list">
+            <li><span>Next step</span><strong>Route the upload to manual review before final approval.</strong></li>
+            <li><span>Operator check</span><strong>Inspect the highlighted contaminant and confirm material category.</strong></li>
+            <li><span>Risk logic</span><strong>Purity is below 100%, so automated acceptance is blocked.</strong></li>
+            <li><span>Ledger action</span><strong>Record correction or rejection after human validation.</strong></li>
+          </ul>
         `;
       } else {
         if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card recovery-clear";
@@ -1033,6 +1045,12 @@ function initResultPage() {
           <p>
             100% recyclable purity. No contaminants or hazards were detected. Verify this result to add it to the review ledger.
           </p>
+          <ul class="recommendation-list">
+            <li><span>Next step</span><strong>Approve and route to multi-stream recovery.</strong></li>
+            <li><span>Operator check</span><strong>Confirm PET bottle, aluminum can, cardboard box, and glass jar labels.</strong></li>
+            <li><span>Risk logic</span><strong>All detected materials are recyclable and above the confidence threshold.</strong></li>
+            <li><span>Ledger action</span><strong>Save as a cleared scan after human verification.</strong></li>
+          </ul>
         `;
       }
       actionText.innerHTML = badgeHtml;

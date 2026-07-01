@@ -509,25 +509,6 @@ function initMetricCountUp() {
   });
 }
 
-function initBackToTop() {
-  const button = document.getElementById('backToTop');
-  if (!button) return;
-
-  const updateVisibility = () => {
-    button.classList.toggle('is-visible', window.scrollY > 420);
-  };
-
-  if (!button.dataset.bound) {
-    button.addEventListener('click', () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    window.addEventListener('scroll', updateVisibility, { passive: true });
-    button.dataset.bound = 'true';
-  }
-
-  updateVisibility();
-}
-
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
   initSidebar();
@@ -544,7 +525,6 @@ function initPurityLoopTheme() {
   initMotionEffects();
   initMetricCountUp();
   animateProgressBars();
-  initBackToTop();
 }
 
 window.initPurityLoopTheme = initPurityLoopTheme;

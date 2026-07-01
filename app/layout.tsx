@@ -35,9 +35,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         {children}
-        <button id="backToTop" className="back-to-top" type="button" aria-label="Go back to top">
-          <i className="fa-solid fa-arrow-up" aria-hidden="true"></i>
-        </button>
         <Script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js" strategy="afterInteractive" />
         <Script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" strategy="afterInteractive" />
         <Script
