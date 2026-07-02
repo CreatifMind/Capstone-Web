@@ -106,7 +106,7 @@ const html = `
       </div>
 
       <!-- Login Form -->
-      <form id="loginForm" action="/upload" method="get" novalidate>
+      <form id="loginForm" action="/upload" method="post" novalidate>
 
         <div class="form-group">
           <label for="email">Email Address</label>

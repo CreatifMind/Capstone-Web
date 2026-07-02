@@ -96,16 +96,34 @@ function initLiveClock() {
 
 /* ── 3. ACTIVE NAV ITEM ── */
 function initActiveNav() {
-  const current = window.location.pathname.split('/').pop() || '/';
+  const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
   document.querySelectorAll('.nav-item').forEach(link => {
-    const href = link.getAttribute('href');
-    if (href && current.includes(href)) {
+    const href = (link.getAttribute('href') || '').replace(/\/$/, '') || '/';
+    if (href !== '/' && currentPath === href) {
       link.classList.add('active');
     }
   });
 }
 
-/* ── 4. TOAST NOTIFICATIONS ── */
+/* ── 4. TOPBAR ACCOUNT ACTIONS ── */
+function initTopbarAccountActions() {
+  const topbarRight = document.querySelector('.topbar-right');
+  const userBadge = topbarRight?.querySelector('.user-badge');
+  if (!topbarRight || !userBadge || topbarRight.querySelector('.topbar-account-actions')) return;
+
+  const actions = document.createElement('div');
+  actions.className = 'topbar-account-actions';
+  actions.innerHTML = `
+    <a href="/login" class="topbar-logout-btn" aria-label="Logout">
+      <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+      <span>Logout</span>
+    </a>
+  `;
+
+  userBadge.insertAdjacentElement('afterend', actions);
+}
+
+/* ── 5. TOAST NOTIFICATIONS ── */
 window.showToast = function (message, type = 'success') {
   let container = document.getElementById('toastContainer');
   if (!container) {
@@ -129,7 +147,7 @@ window.showToast = function (message, type = 'success') {
   }, 3800);
 };
 
-/* ── 5. LANDING PAGE NAVBAR SCROLL ── */
+/* ── 6. LANDING PAGE NAVBAR SCROLL ── */
 function initLandingNav() {
   const nav = document.getElementById('landingNav');
   if (!nav) return;
@@ -185,14 +203,14 @@ function initLandingNav() {
   }
 }
 
-/* ── 6. AOS INIT ── */
+/* ── 7. AOS INIT ── */
 function initAOS() {
   if (typeof AOS !== 'undefined') {
     AOS.init({ duration: 700, easing: 'ease-out-cubic', once: true, offset: 80 });
   }
 }
 
-/* ── 7. GSAP HERO PARALLAX ── */
+/* ── 8. GSAP HERO PARALLAX ── */
 function initGSAP() {
   if (typeof gsap === 'undefined') return;
   if (typeof ScrollTrigger !== 'undefined') {
@@ -242,7 +260,7 @@ function initCountUp() {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       const el = entry.target;
-      const item = items.find(i => i.id === el.id);
+      const item = (Array.isArray(items) ? items : []).find(i => i.id === el.id);
       if (!item) return;
       const cu = new CountUp.CountUp(el, item.end, {
         suffix: item.suffix,
@@ -434,7 +452,38 @@ function initPasswordToggle() {
   });
 }
 
-/* ── 13. PROGRESS BAR ANIMATIONS ── */
+/* ── 12A. LOGIN DEMO FLOW ── */
+function initLoginForm() {
+  const form = document.getElementById('loginForm');
+  if (!form || form.dataset.loginReady === 'true') return;
+  form.dataset.loginReady = 'true';
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+    const emailValue = email?.value?.trim();
+    const passwordValue = password?.value?.trim();
+
+    if (!emailValue || !passwordValue) {
+      window.showToast?.('Enter an email and password to access demo mode.', 'warning');
+      return;
+    }
+
+    try {
+      sessionStorage.setItem('purityloop_demo_user', JSON.stringify({
+        email: emailValue,
+        signedInAt: new Date().toISOString()
+      }));
+    } catch (error) {
+      // Demo login should still route even if sessionStorage is unavailable.
+    }
+
+    window.location.assign('/upload');
+  });
+}
+
+/* ── 14. PROGRESS BAR ANIMATIONS ── */
 function animateProgressBars() {
   document.querySelectorAll('.kpi-progress-bar i, .kpi-progress-fill').forEach(bar => {
     const w = bar.style.width || getComputedStyle(bar).width;
@@ -447,34 +496,10 @@ function animateProgressBars() {
   });
 }
 
-/* ── 14. LIGHTWEIGHT MOTION SYSTEM ── */
+/* ── 15. LIGHTWEIGHT MOTION SYSTEM ── */
 function initMotionEffects() {
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.body.classList.add('page-loading');
-  requestAnimationFrame(() => {
-    document.body.classList.add('page-loaded');
-  });
-
-  document.querySelectorAll('a[href]').forEach(link => {
-    const href = link.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || link.target === '_blank') return;
-    link.addEventListener('click', event => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      let nextUrl;
-      try {
-        nextUrl = new URL(href, window.location.href);
-      } catch {
-        return;
-      }
-      if (nextUrl.origin !== window.location.origin || nextUrl.pathname === window.location.pathname) return;
-      event.preventDefault();
-      document.body.classList.add('page-leaving');
-      setTimeout(() => {
-        window.location.href = nextUrl.href;
-      }, reduceMotion ? 0 : 180);
-    });
-  });
-
+  document.body.classList.remove('page-loading', 'page-leaving');
+  document.body.classList.add('page-loaded');
 }
 
 function initMetricCountUp() {
@@ -514,6 +539,7 @@ function initPurityLoopTheme() {
   initSidebar();
   initLiveClock();
   initActiveNav();
+  initTopbarAccountActions();
   initLandingNav();
   initAOS();
   initGSAP();
@@ -522,6 +548,7 @@ function initPurityLoopTheme() {
   initHeroBars();
   initLandingCharts();
   initPasswordToggle();
+  initLoginForm();
   initMotionEffects();
   initMetricCountUp();
   animateProgressBars();

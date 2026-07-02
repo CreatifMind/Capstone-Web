@@ -4,8 +4,14 @@
 
 html {
   scroll-behavior: smooth;
+  background: #010806;
 }
 
 body {
   margin: 0;
+  min-height: 100vh;
+  color: #f4fff9;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(0, 240, 138, 0.10), transparent 28rem),
+    linear-gradient(180deg, #010806 0%, #020f0b 54%, #000504 100%);
 }

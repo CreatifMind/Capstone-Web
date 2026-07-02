@@ -7,13 +7,17 @@ export async function uploadImageToSupabase(file: File) {
   }
 
   const path = `${Date.now()}-${file.name}`;
-  const { error } = await supabase.storage.from("scan-images").upload(path, file, {
-    cacheControl: "3600",
-    upsert: false
-  });
+  try {
+    const { error } = await supabase.storage.from("scan-images").upload(path, file, {
+      cacheControl: "3600",
+      upsert: false
+    });
 
-  if (error) throw error;
+    if (error) return URL.createObjectURL(file);
 
-  const { data } = supabase.storage.from("scan-images").getPublicUrl(path);
-  return data.publicUrl;
+    const { data } = supabase.storage.from("scan-images").getPublicUrl(path);
+    return data.publicUrl || URL.createObjectURL(file);
+  } catch {
+    return URL.createObjectURL(file);
+  }
 }

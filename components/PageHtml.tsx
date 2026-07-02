@@ -10,14 +10,19 @@ type PageHtmlProps = {
 
 export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
   useEffect(() => {
-    document.body.className = bodyClass;
-    if (dataPage) {
-      document.body.setAttribute("data-page", dataPage);
-    } else {
-      document.body.removeAttribute("data-page");
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+    try {
+      document.body.className = bodyClass;
+      if (dataPage) {
+        document.body.setAttribute("data-page", dataPage);
+      } else {
+        document.body.removeAttribute("data-page");
+      }
+      window.dispatchEvent(new CustomEvent("purityloop:page-ready"));
+    } catch {
+      // Keep rendering even if a browser extension or restricted context blocks DOM updates.
     }
-    window.dispatchEvent(new CustomEvent("purityloop:page-ready"));
   }, [bodyClass, dataPage, html]);
 
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className={bodyClass} data-page={dataPage} dangerouslySetInnerHTML={{ __html: html }} />;
 }

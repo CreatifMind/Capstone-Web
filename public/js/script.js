@@ -7,6 +7,37 @@ const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100 MB total upload
 const MAX_TOTAL_FILES = 50;
 const DEFAULT_SCAN_ASSET = "/assets/items/upload-result-reference.png";
 
+function plSafeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function plSafeJsonParse(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.warn("PurityLoop: invalid stored JSON ignored.", error);
+    return fallback;
+  }
+}
+
+function plSetJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn("PurityLoop: unable to save local state.", key, error);
+  }
+}
+
+function plSafeFiles(files) {
+  if (!files) return [];
+  try {
+    return Array.from(files).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
 const detectionResults = {
   battery: {
@@ -280,7 +311,8 @@ function detectWasteTypeFromFileName(name) {
 function getAuditLedger() {
   const localLedger = localStorage.getItem("purityloop_audit_ledger");
   if (localLedger) {
-    return JSON.parse(localLedger);
+    const parsedLedger = plSafeJsonParse(localLedger, []);
+    if (Array.isArray(parsedLedger)) return parsedLedger;
   }
   // Default mock ledger, based on uploaded images rather than physical stations
   const mockLedger = [
@@ -292,12 +324,12 @@ function getAuditLedger() {
     { id: "LOG-9816", time: "09:58 AM", source: "battery_hazard_upload.jpg", sourceKey: "QUARANTINE-UPLOAD", category: "Battery", weight: "8.0 kg", confidence: "54.1%", status: "Quarantined" },
     { id: "LOG-9815", time: "09:42 AM", source: "glass_jar_upload.webp", sourceKey: "SINGLE-IMAGE", category: "Glass", weight: "11.3 kg", confidence: "96.7%", status: "Cleared" }
   ];
-  localStorage.setItem("purityloop_audit_ledger", JSON.stringify(mockLedger));
+  plSetJson("purityloop_audit_ledger", mockLedger);
   return mockLedger;
 }
 
 function saveAuditLedger(ledger) {
-  localStorage.setItem("purityloop_audit_ledger", JSON.stringify(ledger));
+  plSetJson("purityloop_audit_ledger", plSafeArray(ledger));
 }
 
 function getLogSourceLabel(log) {
@@ -477,7 +509,7 @@ function initUploadPage() {
       dataUrl: dataUrl
     }];
 
-    localStorage.setItem("purityloop_uploads", JSON.stringify(captures));
+    plSetJson("purityloop_uploads", captures);
     stopWebcam();
     window.location.href = "/result";
   }
@@ -492,15 +524,19 @@ function initUploadPage() {
       isSimulation: true,
       assetPath: "/assets/items/" + randomName
     }];
-    localStorage.setItem("purityloop_uploads", JSON.stringify(simulatedFiles));
+    plSetJson("purityloop_uploads", simulatedFiles);
     window.location.href = "/result";
   }
 
   function processSelectedFiles(files) {
-    const list = Array.from(files);
+    const list = plSafeFiles(files);
+    if (!list.length) {
+      alert("No files selected.");
+      return;
+    }
 
     // Validate sizes and types
-    let totalSize = list.reduce((s, f) => s + f.size, 0);
+    let totalSize = list.reduce((s, f) => s + Number(f.size || 0), 0);
     if (list.length > MAX_TOTAL_FILES) {
       alert(`Too many files selected. Maximum is ${MAX_TOTAL_FILES} files.`);
       return;
@@ -510,13 +546,13 @@ function initUploadPage() {
       return;
     }
 
-    fileName.textContent = `Selected: ${list[0].name}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`;
+    fileName.textContent = `Selected: ${list[0].name || "selected file"}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`;
 
     // Render Preview Thumbnail & Checkmark
     const previewContainer = document.getElementById("uploadPreviewContainer");
     const previewImage = document.getElementById("uploadPreviewImage");
     if (previewContainer && previewImage) {
-      const firstFile = list.find(f => f.type.startsWith("image/"));
+      const firstFile = list.find(f => String(f.type || "").startsWith("image/"));
       if (firstFile) {
         const previewReader = new FileReader();
         previewReader.onload = function (e) {
@@ -538,17 +574,17 @@ function initUploadPage() {
     // Compress images asynchronously using canvas to fit localStorage limits
     let loadedCount = 0;
     const compressedList = [];
-    const imageFiles = list.filter(f => f.type.startsWith("image/"));
+    const imageFiles = list.filter(f => String(f.type || "").startsWith("image/"));
 
     if (imageFiles.length === 0) {
       // Just zip/other files
       const simpleMetadata = list.map(f => ({
-        name: f.name,
-        size: f.size,
-        type: f.name.endsWith(".zip") ? "ZIP" : "File",
+        name: f.name || "uploaded-file",
+        size: Number(f.size || 0),
+        type: String(f.name || "").endsWith(".zip") ? "ZIP" : "File",
         resultAssetPath: DEFAULT_SCAN_ASSET
       }));
-      localStorage.setItem("purityloop_uploads", JSON.stringify(simpleMetadata));
+      plSetJson("purityloop_uploads", simpleMetadata);
       if (scanImageBtn) scanImageBtn.disabled = false;
       return;
     }
@@ -580,15 +616,15 @@ function initUploadPage() {
           const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
 
           compressedList.push({
-            name: file.name,
-            size: file.size,
+            name: file.name || "uploaded-image",
+            size: Number(file.size || 0),
             dataUrl: dataUrl,
             resultAssetPath: DEFAULT_SCAN_ASSET
           });
 
           loadedCount++;
           if (loadedCount === imageFiles.length) {
-            localStorage.setItem("purityloop_uploads", JSON.stringify(compressedList));
+            plSetJson("purityloop_uploads", compressedList);
             if (scanImageBtn) scanImageBtn.disabled = false;
           }
         };
@@ -684,7 +720,7 @@ function initResultPage() {
   const rawUploads = localStorage.getItem("purityloop_uploads");
 
   if (rawUploads) {
-    uploads = JSON.parse(rawUploads);
+    uploads = plSafeArray(plSafeJsonParse(rawUploads, []));
   }
 
   // Ensure "Active_Scan_Viewport.jpg" is always at the top of the list so it is the default loaded scan!
@@ -695,17 +731,19 @@ function initResultPage() {
       size: 145000,
       assetPath: DEFAULT_SCAN_ASSET
     });
-    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+    plSetJson("purityloop_uploads", uploads);
   } else {
     // If it exists but isn't index 0, move it to index 0
     const idx = uploads.findIndex(item => item.name === "Active_Scan_Viewport.jpg");
-    uploads[idx].assetPath = DEFAULT_SCAN_ASSET;
-    uploads[idx].resultAssetPath = DEFAULT_SCAN_ASSET;
+    if (idx >= 0) {
+      uploads[idx].assetPath = DEFAULT_SCAN_ASSET;
+      uploads[idx].resultAssetPath = DEFAULT_SCAN_ASSET;
+    }
     if (idx > 0) {
       const item = uploads.splice(idx, 1)[0];
       uploads.unshift(item);
     }
-    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+    plSetJson("purityloop_uploads", uploads);
   }
 
   // Fallback default simulation list if nothing else is left
@@ -718,7 +756,7 @@ function initResultPage() {
       { name: "Cardboard_Box_Package.jpg", size: 89000, assetPath: "/assets/items/cardboard.png" },
       { name: "Organics_BananaPeel_Contaminant.png", size: 52000, assetPath: "/assets/items/food-waste.png" }
     ];
-    localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+    plSetJson("purityloop_uploads", uploads);
   }
 
   let activeIndex = 0;
@@ -791,6 +829,8 @@ function initResultPage() {
 
       // Show toast notification
       showToast(`Audit verified. ${result.category} was added to the review ledger.`, "success");
+      approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Verified & Added to Log';
+      approveBtn.classList.add("is-confirmed");
 
       // Mark row in queue as processed
       activeFile.processed = true;
@@ -836,7 +876,7 @@ function initResultPage() {
         if (activeIndex >= uploads.length) activeIndex = uploads.length - 1;
       }
 
-      localStorage.setItem("purityloop_uploads", JSON.stringify(uploads));
+      plSetJson("purityloop_uploads", uploads);
 
       // Re-render the grid WITHOUT switching the active image
       renderFinderGrid();
@@ -1399,8 +1439,12 @@ function initReviewModal() {
         activeLogId = button.dataset.logid;
         activeRow = button.closest("tr");
 
-        const ledger = getAuditLedger();
+        const ledger = plSafeArray(getAuditLedger());
         const activeLog = ledger.find(l => l.id === activeLogId);
+        if (!activeLog) {
+          showToast("Unable to find this audit record.", "warning");
+          return;
+        }
 
         if (reviewTitle) reviewTitle.textContent = "Audit Record: " + activeLog.id;
         if (reviewDescription) {
@@ -1460,8 +1504,13 @@ function initReviewModal() {
   if (clearButton) {
     clearButton.addEventListener("click", function () {
       if (activeLogId) {
-        const ledger = getAuditLedger();
+        const ledger = plSafeArray(getAuditLedger());
         const activeLog = ledger.find(l => l.id === activeLogId);
+        if (!activeLog) {
+          showToast("Unable to find this audit record.", "warning");
+          closeModal();
+          return;
+        }
 
         const reclassifySelect = document.getElementById("reclassifySelect");
         const chosenCategory = reclassifySelect ? reclassifySelect.value : activeLog.category;
@@ -1487,8 +1536,13 @@ function initReviewModal() {
   if (quarantineButton) {
     quarantineButton.addEventListener("click", function () {
       if (activeLogId) {
-        const ledger = getAuditLedger();
+        const ledger = plSafeArray(getAuditLedger());
         const activeLog = ledger.find(l => l.id === activeLogId);
+        if (!activeLog) {
+          showToast("Unable to find this audit record.", "warning");
+          closeModal();
+          return;
+        }
         activeLog.status = "Quarantined";
         saveAuditLedger(ledger);
         buildLedgerTable();
@@ -1720,9 +1774,9 @@ function drawFallbackAnalyticsCharts(palette) {
   if (composition) {
     const { ctx, width, height } = prepareCanvas(composition);
     const labels = ["Metal", "Plastic", "Glass", "Paper", "Cardboard", "Food Organics", "General Trash", "Textile", "Battery"];
-    const values = [25, 20, 15, 10, 10, 8, 5, 5, 2];
+    const values = plSafeArray([25, 20, 15, 10, 10, 8, 5, 5, 2]);
     const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange, palette.green, "#7f8c8d", palette.teal, palette.red];
-    const total = values.reduce((sum, value) => sum + value, 0);
+    const total = values.reduce((sum, value) => sum + value, 0) || 1;
     const radius = Math.min(width, height) * 0.28;
     const centerX = width * 0.5;
     const centerY = height * 0.43;
@@ -2033,16 +2087,34 @@ function activateDetailPanel(targetId) {
 
 function renderSparkBars(container, values, color) {
   if (!container) return;
-  const max = Math.max(...values);
-  container.innerHTML = values
+  const safeValues = plSafeArray(values).map(value => Number(value)).filter(Number.isFinite);
+  if (!safeValues.length) {
+    container.innerHTML = "";
+    return;
+  }
+  const max = Math.max(...safeValues, 1);
+  container.innerHTML = safeValues
     .map(value => `<span style="height:${Math.max(12, (value / max) * 100)}%; background:${color}" title="${value}"></span>`)
     .join("");
 }
 
 function renderBarRows(container, rows, color, suffix = "") {
   if (!container) return;
-  const max = Math.max(...rows.map(row => row[1]));
-  container.innerHTML = rows
+  const safeRows = plSafeArray(rows)
+    .map(row => Array.isArray(row) ? row : ["No data", 0])
+    .map(([label, value]) => [label, Number(value) || 0]);
+  if (!safeRows.length) {
+    container.innerHTML = `
+      <div>
+        <span>No analytics data available</span>
+        <strong>0${suffix}</strong>
+        <i style="width:0%; background:${color}"></i>
+      </div>
+    `;
+    return;
+  }
+  const max = Math.max(...safeRows.map(row => row[1]), 1);
+  container.innerHTML = safeRows
     .map(([label, value]) => `
       <div>
         <span>${label}</span>
@@ -2206,6 +2278,43 @@ function showToast(message, type = "success") {
   }, 3500);
 }
 
+/*****************************************
+ * SUBMIT TICKET PAGE                    *
+ *****************************************/
+function initSubmitTicketPage() {
+  const submitBtn = document.getElementById("submitTicketBtn");
+  if (!submitBtn || submitBtn.dataset.ticketReady === "true") return;
+  submitBtn.dataset.ticketReady = "true";
+
+  submitBtn.addEventListener("click", () => {
+    const title = document.getElementById("ticketTitle");
+    const description = document.getElementById("ticketDescription");
+
+    if (!title?.value.trim() || !description?.value.trim()) {
+      showToast("Add a ticket title and description before submitting.", "warning");
+      return;
+    }
+
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+
+    setTimeout(() => {
+      showToast("Ticket submitted. Status set to Open for operator review.", "success");
+      title.value = "";
+      description.value = "";
+      const image = document.getElementById("ticketImage");
+      if (image) image.value = "";
+      submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Ticket Submitted';
+
+      setTimeout(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }, 1800);
+    }, 420);
+  });
+}
+
 /* Mobile Sidebar Navigation & Toggle */
 function initMobileNav() {
   const toggleBtn = document.getElementById("sidebarToggle");
@@ -2338,6 +2447,7 @@ function initPurityLoopApp() {
   animateProgressBars();
   initUploadPage();
   initResultPage();
+  initSubmitTicketPage();
   initReviewModal();
   initAnalyticsCharts();
   initDrillThrough();

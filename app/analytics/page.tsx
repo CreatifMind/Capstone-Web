@@ -229,7 +229,10 @@ const html = `
               <canvas id="resaleChart"></canvas>
             </div>
           </article>
+        </section>
 
+        <!-- Row 3 -->
+        <section class="dashboard-row-3col analytics-operational-row">
           <article class="panel chart-panel review-workload-panel drill-trigger bbox-card"
             data-drill-target="detail-ledger" tabindex="0">
             <div class="section-heading compact">
@@ -268,10 +271,7 @@ const html = `
               </div>
             </div>
           </article>
-        </section>
 
-        <!-- Row 3 -->
-        <section class="dashboard-row-3col">
           <!-- Recent Ledger Preview -->
           <article class="panel ledger-preview bbox-card">
             <div class="section-heading compact">
@@ -316,30 +316,6 @@ const html = `
             </div>
           </article>
 
-          <!-- Additional Analytics: Upload Processing Health -->
-          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-belt" tabindex="0">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Additional Analytics</p>
-                <h2>Upload Processing Health</h2>
-              </div>
-            </div>
-            <p class="chart-subtitle">Batch processing throughput, queue load, and model review status.</p>
-            <div class="belt-telemetry-list upload-health-list">
-              <div class="upload-health-row">
-                <span class="upload-health-name">Single image uploads</span>
-                <span class="health-chip active"><i></i><span>Active</span><strong>42/min</strong></span>
-              </div>
-              <div class="upload-health-row">
-                <span class="upload-health-name">ZIP batch ingestion</span>
-                <span class="health-chip active"><i></i><span>Active</span><strong>11/min</strong></span>
-              </div>
-              <div class="upload-health-row">
-                <span class="upload-health-name">Low confidence queue</span>
-                <span class="health-chip review"><i></i><span>Review</span><strong>8 open</strong></span>
-              </div>
-            </div>
-          </article>
         </section>
 
         <!-- DETAIL DOCK -->

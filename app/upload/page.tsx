@@ -18,7 +18,7 @@ const html = `
 
       <nav class="sidebar-nav">
         <div class="sidebar-section-label">Platform</div>
-        <a href="/upload" class="nav-item" data-tooltip="Upload">
+        <a href="/upload" class="nav-item active" data-tooltip="Upload">
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
           <span class="nav-item-label">Upload</span>
         </a>

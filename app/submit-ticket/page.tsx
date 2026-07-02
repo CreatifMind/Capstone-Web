@@ -91,7 +91,7 @@ const html = `
               <textarea id="ticketDescription" rows="6"
                 placeholder="Describe what happened, which upload was affected, and what action is needed."></textarea>
             </div>
-            <button type="button" class="primary-btn"><i class="fa-solid fa-paper-plane"></i> Submit Ticket</button>
+            <button type="button" class="primary-btn" id="submitTicketBtn"><i class="fa-solid fa-paper-plane"></i> Submit Ticket</button>
           </form>
 
           <aside class="ticket-status-panel panel bbox-card">
