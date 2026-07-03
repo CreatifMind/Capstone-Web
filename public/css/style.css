@@ -556,6 +556,50 @@ html.no-transition *::after {
   transition: none !important;
 }
 
+@media (min-width: 1001px) {
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) {
+    width: var(--sidebar-collapsed) !important;
+    min-width: var(--sidebar-collapsed);
+    max-width: var(--sidebar-collapsed);
+    flex: 0 0 var(--sidebar-collapsed);
+  }
+
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .sidebar-header {
+    justify-content: center;
+    padding: 0;
+  }
+
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .sidebar-logo,
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .sidebar-logo-text,
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .sidebar-section-label,
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .nav-item-label,
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .logout-text,
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .user-info {
+    display: none !important;
+  }
+
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .sidebar-toggle {
+    margin: 0 auto;
+  }
+
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .nav-item {
+    position: relative;
+    justify-content: center;
+    gap: 0;
+  }
+
+  html.sidebar-state-collapsed .app-layout .sidebar:not(.mobile-open) .logout-btn {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px auto 0 auto;
+  }
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
@@ -4735,6 +4779,8 @@ input:checked+.slider:before {
 .final-cta-inner {
   max-width: 700px;
   margin: 0 auto;
+  padding: 30px;
+  border-radius: 30px;
 }
 
 .final-cta h2 {
@@ -4756,6 +4802,13 @@ input:checked+.slider:before {
   justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .final-cta-inner {
+    padding: 22px;
+    border-radius: 24px;
+  }
 }
 
 /* - Footer - */
@@ -4860,18 +4913,24 @@ input:checked+.slider:before {
 
 @media (max-width: 1000px) {
   .sidebar {
-    position: fixed;
+    position: sticky;
     top: 0;
     left: 0;
-    bottom: 0;
+    align-self: flex-start;
     height: 100svh;
-    transform: translateX(-100%);
-    width: var(--sidebar-width) !important;
-    transition: transform var(--transition);
+    width: 0 !important;
+    min-width: 0;
+    max-width: 0;
+    flex: 0 0 0;
+    transform: none;
+    transition: width var(--transition), flex-basis var(--transition);
   }
 
   .sidebar.mobile-open {
-    transform: translateX(0);
+    width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    min-width: min(var(--sidebar-width), calc(100vw - 40px));
+    max-width: 360px;
+    flex: 0 0 min(var(--sidebar-width), calc(100vw - 40px));
   }
 
   .main-content {
@@ -6296,23 +6355,99 @@ input:checked+.slider:before {
 .dark-login .login-card { border: 1px solid var(--ai-border); border-radius: 28px; background: rgba(8,20,17,0.88); box-shadow: var(--ai-glow); color: var(--ai-text); }
 
 @media (min-width: 901px) {
+  body.login-body.premium-login {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
   body.login-body.premium-login > .login-body.premium-login {
     width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
     flex: 1 1 auto;
   }
 
   .dark-login .login-split {
     width: 100vw;
     max-width: none;
+    height: 100dvh;
+    min-height: 100dvh;
     margin: 0;
+  }
+
+  .dark-login .login-visual {
+    min-height: 0;
+    padding-top: clamp(28px, 5vh, 52px);
+    padding-bottom: clamp(22px, 4vh, 52px);
   }
 
   .dark-login .login-split > .login-card {
     width: 100%;
     max-width: none;
+    height: 100dvh;
+    min-height: 0;
     justify-self: stretch;
     border-radius: 0;
     border-right: 0;
+    overflow: hidden;
+    padding-top: clamp(20px, 4vh, 42px);
+    padding-bottom: clamp(18px, 3.6vh, 42px);
+  }
+
+  .dark-login .login-brand-badge {
+    margin-bottom: clamp(20px, 4vh, 42px);
+  }
+
+  .dark-login .login-headline {
+    margin-bottom: clamp(12px, 2.2vh, 20px);
+  }
+
+  .dark-login .login-desc {
+    margin-bottom: clamp(16px, 3vh, 30px);
+  }
+
+  .dark-login .login-checklist {
+    gap: clamp(8px, 1.4vh, 14px);
+    margin-bottom: clamp(12px, 2vh, 24px);
+  }
+
+  .dark-login .login-illustration {
+    padding-top: clamp(10px, 2vh, 20px);
+  }
+
+  .dark-login .login-card-header {
+    margin-bottom: clamp(14px, 2.6vh, 28px);
+  }
+
+  .dark-login .form-group {
+    margin-bottom: clamp(12px, 2vh, 18px);
+  }
+
+  .dark-login .form-group label {
+    margin-bottom: 6px;
+  }
+
+  .dark-login .form-group input,
+  .dark-login .password-wrap input {
+    height: clamp(42px, 7.5vh, 48px);
+  }
+
+  .dark-login .login-form-options {
+    margin-bottom: clamp(12px, 2.2vh, 20px);
+  }
+
+  .dark-login .create-account-panel {
+    margin-top: clamp(10px, 1.8vh, 16px);
+    padding: clamp(10px, 1.8vh, 14px) 16px;
+  }
+
+  .dark-login .login-trust-row {
+    margin-top: clamp(12px, 2.2vh, 22px);
+  }
+
+  .dark-login .small-note {
+    margin-top: clamp(10px, 1.8vh, 16px);
   }
 }
 
@@ -7615,20 +7750,27 @@ video {
 
 @media (max-width: 1000px) {
   .dark-app .sidebar {
-    width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    width: 0 !important;
+    min-width: 0;
     max-width: 360px;
+    flex: 0 0 0;
+    transform: none;
   }
 
   .dark-app .sidebar.collapsed {
-    width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    width: 0 !important;
   }
 
   .dark-app .sidebar:not(.mobile-open) {
-    transform: translateX(-100%);
+    transform: none;
   }
 
   .dark-app .sidebar.mobile-open {
-    transform: translateX(0);
+    width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    min-width: min(var(--sidebar-width), calc(100vw - 40px));
+    max-width: 360px;
+    flex: 0 0 min(var(--sidebar-width), calc(100vw - 40px));
+    transform: none;
   }
 
   .dark-app .sidebar.collapsed .nav-item-label,
@@ -8020,8 +8162,8 @@ video {
 
 @media (max-width: 1000px) {
   body.app-sidebar-open {
-    overflow: hidden;
-    touch-action: none;
+    overflow: auto;
+    touch-action: auto;
   }
 
   .dark-app .main-content {
@@ -8042,10 +8184,10 @@ video {
   }
 
   .dark-app .sidebar.mobile-open {
-    position: fixed;
+    position: sticky;
     top: 0;
     left: 0;
-    bottom: 0;
+    align-self: flex-start;
     height: 100svh;
     max-height: 100svh;
     display: flex;
@@ -8115,6 +8257,11 @@ video {
   .dark-app .sidebar.mobile-open .logout-btn {
     min-height: 44px;
     margin-top: 8px !important;
+  }
+
+  .sidebar-overlay,
+  .sidebar-overlay.active {
+    display: none;
   }
 }
 
@@ -8644,6 +8791,15 @@ body.page-loaded {
   flex: 0 0 auto;
 }
 
+.dark-app .topbar-right > .search-bar,
+.dark-app .topbar-right > .date-pill,
+.dark-app .topbar-right > .topbar-icon-btn,
+.dark-app .topbar-right > .user-badge,
+.dark-app .topbar-right .topbar-logout-btn {
+  min-height: 44px;
+  border-radius: 999px;
+}
+
 .topbar-logout-btn {
   display: inline-flex;
   align-items: center;
@@ -8685,7 +8841,7 @@ body.page-loaded {
 
 @media (max-width: 640px) {
   .dark-app .topbar {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .dark-app .topbar-right {
@@ -8706,5 +8862,100 @@ body.page-loaded {
 
   .topbar-logout-btn span {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .dark-app .topbar {
+    align-items: center !important;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .dark-app .topbar-left {
+    flex: 1 1 auto;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .dark-app .topbar-title h1 {
+    max-width: 11ch;
+    font-size: 1rem;
+  }
+
+  .dark-app .topbar-title p {
+    display: none;
+  }
+
+  .dark-app .topbar-right {
+    display: flex !important;
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .dark-app .topbar-right .search-bar {
+    display: none !important;
+  }
+
+  .dark-app .topbar-right .date-pill {
+    display: inline-flex !important;
+    min-width: 96px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: 0.68rem;
+  }
+
+  .dark-app .topbar-right .topbar-icon-btn,
+  .dark-app .topbar-right .user-badge,
+  .dark-app .topbar-right .topbar-logout-btn {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+  }
+
+  .dark-app .topbar-right .user-badge {
+    justify-content: center;
+  }
+
+  .dark-app .topbar-right .user-badge span,
+  .dark-app .topbar-right .topbar-logout-btn span {
+    display: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .dark-app .topbar {
+    padding-inline: 8px;
+  }
+
+  .dark-app .topbar-title h1 {
+    max-width: 8ch;
+  }
+
+  .dark-app .topbar-right {
+    gap: 4px;
+  }
+
+  .dark-app .topbar-right .date-pill {
+    min-width: 88px;
+    padding-inline: 6px;
+    font-size: 0.64rem;
+  }
+
+  .dark-app .mobile-toggle,
+  .dark-app .topbar-right .topbar-icon-btn,
+  .dark-app .topbar-right .user-badge,
+  .dark-app .topbar-right .topbar-logout-btn {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
   }
 }

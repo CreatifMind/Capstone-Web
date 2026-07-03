@@ -47,6 +47,28 @@ const html = `
             <p>Report model, upload, or facility workflow issues to the support queue.</p>
           </div>
         </div>
+
+        <div class="topbar-right">
+          <div class="search-bar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
+          </div>
+
+          <div class="date-pill">
+            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
+            <span id="liveClock">00:00:00 AM</span>
+          </div>
+
+          <button class="topbar-icon-btn" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot"></span>
+          </button>
+
+          <div class="user-badge">
+            <div class="user-badge-avatar">AD</div>
+            <span style="margin-left: 6px;">Admin Mode</span>
+          </div>
+        </div>
       </header>
 
       <div class="page-body">

@@ -1,3 +1,5 @@
+create extension if not exists pgcrypto;
+
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   name text,
@@ -10,6 +12,14 @@ create table if not exists scan_results (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references users(id) on delete set null,
   image_url text,
+  storage_provider text default 'google_drive',
+  drive_file_id text,
+  drive_file_name text,
+  drive_web_url text,
+  upload_status text default 'uploaded',
+  processing_status text default 'pending',
+  total_images integer,
+  source_type text default 'image',
   overall_status text,
   contamination_risk text,
   recommended_action text,
@@ -17,6 +27,16 @@ create table if not exists scan_results (
   overall_confidence numeric,
   created_at timestamp with time zone default now()
 );
+
+alter table scan_results
+add column if not exists storage_provider text default 'google_drive',
+add column if not exists drive_file_id text,
+add column if not exists drive_file_name text,
+add column if not exists drive_web_url text,
+add column if not exists upload_status text default 'uploaded',
+add column if not exists processing_status text default 'pending',
+add column if not exists total_images integer,
+add column if not exists source_type text default 'image';
 
 create table if not exists detected_materials (
   id uuid primary key default gen_random_uuid(),
@@ -33,5 +53,5 @@ create table if not exists detected_materials (
   created_at timestamp with time zone default now()
 );
 
--- Create this public bucket in Supabase Storage if uploaded scan images should be persisted online:
--- scan-images
+-- Google Drive stores uploaded files for the planned flow.
+-- Supabase stores file references, scan status, YOLOv8 result summaries, and detected material rows.

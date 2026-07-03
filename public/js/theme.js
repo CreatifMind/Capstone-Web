@@ -11,10 +11,13 @@ function initSidebar() {
   const mobileToggle = document.getElementById('mobileToggle');
   if (!sidebar) return;
   const isMobileNav = () => window.matchMedia('(max-width: 1000px)').matches;
+  if (sidebar.dataset.sidebarReady === 'true') return;
+  sidebar.dataset.sidebarReady = 'true';
 
   // Restore saved state — suppress transitions so the layout snaps instantly (no jump)
   const saved = localStorage.getItem('pl_sidebar');
   if (saved === 'collapsed' && !isMobileNav()) {
+    document.documentElement.classList.add('sidebar-state-collapsed');
     document.documentElement.classList.add('no-transition');
     sidebar.classList.add('collapsed');
     // Remove the suppressor after one paint so future user-triggered transitions still animate
@@ -37,6 +40,7 @@ function initSidebar() {
       }
       sidebar.classList.toggle('collapsed');
       localStorage.setItem('pl_sidebar', sidebar.classList.contains('collapsed') ? 'collapsed' : 'expanded');
+      document.documentElement.classList.toggle('sidebar-state-collapsed', sidebar.classList.contains('collapsed'));
       updateToggleIcon();
     });
   }
@@ -45,6 +49,7 @@ function initSidebar() {
   if (mobileToggle) {
     mobileToggle.addEventListener('click', () => {
       sidebar.classList.remove('collapsed');
+      document.documentElement.classList.remove('sidebar-state-collapsed');
       sidebar.classList.add('mobile-open');
       document.body.classList.add('app-sidebar-open');
       if (overlay) overlay.classList.add('active');
@@ -56,16 +61,31 @@ function initSidebar() {
   if (overlay) {
     overlay.addEventListener('click', () => {
       sidebar.classList.remove('mobile-open', 'collapsed');
+      document.documentElement.classList.remove('sidebar-state-collapsed');
       document.body.classList.remove('app-sidebar-open');
       overlay.classList.remove('active');
       updateToggleIcon();
     });
   }
 
+  sidebar.querySelectorAll('.nav-item').forEach(link => {
+    link.addEventListener('click', () => {
+      const isCollapsed = sidebar.classList.contains('collapsed') || document.documentElement.classList.contains('sidebar-state-collapsed');
+      if (!isMobileNav() && isCollapsed) {
+        document.documentElement.classList.add('no-transition');
+        window.clearTimeout(window.__plSidebarTransitionTimer);
+        window.__plSidebarTransitionTimer = window.setTimeout(() => {
+          document.documentElement.classList.remove('no-transition');
+        }, 700);
+      }
+    });
+  });
+
   window.addEventListener('resize', () => {
     if (!isMobileNav()) {
       sidebar.classList.remove('mobile-open');
       document.body.classList.remove('app-sidebar-open');
+      document.documentElement.classList.toggle('sidebar-state-collapsed', sidebar.classList.contains('collapsed'));
       if (overlay) overlay.classList.remove('active');
       updateToggleIcon();
     }
