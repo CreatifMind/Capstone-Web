@@ -33,12 +33,24 @@ const html = `
 
   <!-- Mobile Menu -->
   <div id="mobileMenu" class="mobile-menu" role="menu">
-    <a href="#hero" class="nav-link" role="menuitem">Home</a>
-    <a href="#features" class="nav-link" role="menuitem">Features</a>
-    <a href="#how" class="nav-link" role="menuitem">How It Works</a>
-    <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
-    <a href="#capstone" class="nav-link" role="menuitem">Technology</a>
-    <a href="/login" class="btn" style="margin-top:8px;">Login</a>
+    <div class="mobile-menu-header">
+      <a href="/" class="mobile-menu-logo" aria-label="PurityLoop AI home">
+        <img src="/assets/logo.png" alt="PurityLoop AI Logo" />
+      </a>
+      <button id="mobileMenuClose" class="mobile-menu-close" type="button" aria-label="Close menu">
+        <span>Menu</span>
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="mobile-menu-links">
+      <a href="#hero" class="nav-link" role="menuitem">Home</a>
+      <a href="#features" class="nav-link" role="menuitem">Features</a>
+      <a href="#how" class="nav-link" role="menuitem">How It Works</a>
+      <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
+      <a href="#capstone" class="nav-link" role="menuitem">Technology</a>
+      <a href="/login" class="nav-link" role="menuitem">Login</a>
+      <a href="#contact" class="nav-link" role="menuitem">Explore Now</a>
+    </div>
   </div>
 
 
