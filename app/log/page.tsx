@@ -87,7 +87,7 @@ const html = `
 
           <div class="user-badge review-badge">
             <div class="user-badge-avatar">QA</div>
-            <span>8 pending</span>
+            <span>0 pending</span>
           </div>
         </div>
       </header>
@@ -103,18 +103,18 @@ const html = `
           <div class="ops-status-stack">
             <div class="ops-status-card cleared">
               <span>Verified</span>
-              <strong>142</strong>
-              <small>Clean recyclable results</small>
+              <strong>0</strong>
+              <small>No verified scans yet</small>
             </div>
             <div class="ops-status-card review">
               <span>Needs review</span>
-              <strong>8</strong>
-              <small>Low confidence or mixed batch</small>
+              <strong>0</strong>
+              <small>No review scans yet</small>
             </div>
             <div class="ops-status-card quarantine">
               <span>Rejected</span>
-              <strong>3</strong>
-              <small>Hazard or contamination risk</small>
+              <strong>0</strong>
+              <small>No rejected scans yet</small>
             </div>
           </div>
         </section>
@@ -251,7 +251,7 @@ const html = `
 
             <div class="detail-grid three">
               <div class="metric-tile static"><span data-material-kpi-one>Total flagged</span><strong
-                  data-material-tonnage>0</strong><small>Current mock dataset</small></div>
+                  data-material-tonnage>0</strong><small>Current saved scans</small></div>
               <div class="metric-tile static"><span data-material-kpi-two>Market value</span><strong
                   data-material-value>$0</strong><small data-material-rate>Estimated</small></div>
               <div class="metric-tile static"><span data-material-kpi-three>Risk rating</span><strong

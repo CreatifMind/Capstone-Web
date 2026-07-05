@@ -1,5 +1,5 @@
 import { DEMO_MODE, USE_SUPABASE, isSupabaseConfigured } from "./config";
-import { mockDetectedMaterials, mockScanLogs, mockScanResult, type DetectedMaterial, type ScanResult } from "./mock-data";
+import type { DetectedMaterial, ScanResult } from "./mock-data";
 import { supabase } from "./supabase";
 import { uploadImageToSupabase } from "./storage";
 import { safeArray, safeId, safeJsonParse } from "./utils";
@@ -7,6 +7,9 @@ import { safeArray, safeId, safeJsonParse } from "./utils";
 const latestScanKey = "purityloop_latest_scan";
 const logsKey = "purityloop_scan_logs";
 const settingsKey = "purityloop_settings";
+const scanResultsTable = "mock_scan_results";
+const detectedMaterialsTable = "mock_detected_materials";
+const scanResultSelect = "*, detected_materials:mock_detected_materials(*)";
 
 function canUseSupabase() {
   return USE_SUPABASE && !DEMO_MODE && isSupabaseConfigured && supabase;
@@ -35,69 +38,41 @@ function toFiniteNumber(value: unknown, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function normalizeDetectedMaterials(value: unknown, fallback: DetectedMaterial[] = mockDetectedMaterials): DetectedMaterial[] {
-  const fallbackMaterials = safeArray<DetectedMaterial>(fallback);
-  const mockMaterials = safeArray<DetectedMaterial>(mockDetectedMaterials);
-  const source = safeArray<Partial<DetectedMaterial>>(value);
-  const normalized = source.map((material, index) => {
-    const fallbackMaterial =
-      fallbackMaterials[index % Math.max(fallbackMaterials.length, 1)] ||
-      mockMaterials[index % Math.max(mockMaterials.length, 1)] || {
-        material_name: `Detected material ${index + 1}`,
-        category: "Unknown",
-        confidence: 0,
-        recyclable_status: "Unknown",
-        contaminant_status: "Unknown",
-        bbox_x: 0,
-        bbox_y: 0,
-        bbox_width: 0,
-        bbox_height: 0
-      };
-    return {
-      ...fallbackMaterial,
-      ...material,
-      material_name: material.material_name || material.category || fallbackMaterial.material_name || `Detected material ${index + 1}`,
-      category: material.category || fallbackMaterial.category || "Unknown",
-      confidence: toFiniteNumber(material.confidence, fallbackMaterial.confidence),
-      recyclable_status: material.recyclable_status || fallbackMaterial.recyclable_status || "Unknown",
-      contaminant_status: material.contaminant_status || fallbackMaterial.contaminant_status || "Unknown",
-      bbox_x: toFiniteNumber(material.bbox_x, fallbackMaterial.bbox_x),
-      bbox_y: toFiniteNumber(material.bbox_y, fallbackMaterial.bbox_y),
-      bbox_width: toFiniteNumber(material.bbox_width, fallbackMaterial.bbox_width),
-      bbox_height: toFiniteNumber(material.bbox_height, fallbackMaterial.bbox_height)
-    };
-  });
-
-  return normalized.length ? normalized : fallbackMaterials;
+function normalizeDetectedMaterials(value: unknown): DetectedMaterial[] {
+  return safeArray<Partial<DetectedMaterial>>(value).map((material, index) => ({
+    material_name: material.material_name || material.category || `Detected material ${index + 1}`,
+    category: material.category || "Unknown",
+    confidence: toFiniteNumber(material.confidence),
+    recyclable_status: material.recyclable_status || "Unknown",
+    contaminant_status: material.contaminant_status || "Unknown",
+    bbox_x: toFiniteNumber(material.bbox_x),
+    bbox_y: toFiniteNumber(material.bbox_y),
+    bbox_width: toFiniteNumber(material.bbox_width),
+    bbox_height: toFiniteNumber(material.bbox_height)
+  }));
 }
 
-function normalizeScanResult(value: unknown, fallback: ScanResult = mockScanResult): ScanResult {
-  const fallbackResult = fallback && typeof fallback === "object" && !Array.isArray(fallback) ? fallback : mockScanResult;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return fallbackResult;
+function normalizeScanResult(value: unknown): ScanResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Partial<ScanResult>;
-  const detectedMaterials = normalizeDetectedMaterials(candidate.detected_materials, fallbackResult.detected_materials);
+  if (!candidate.id) return null;
 
   return {
-    ...fallbackResult,
-    ...candidate,
-    id: candidate.id || fallbackResult.id || safeId("scan"),
-    image_url: candidate.image_url || fallbackResult.image_url,
-    overall_status: candidate.overall_status || fallbackResult.overall_status,
-    contamination_risk: candidate.contamination_risk || fallbackResult.contamination_risk,
-    recommended_action: candidate.recommended_action || fallbackResult.recommended_action,
+    id: candidate.id,
+    image_url: candidate.image_url || "",
+    source_name: candidate.source_name || "",
+    overall_status: candidate.overall_status || "Unknown",
+    contamination_risk: candidate.contamination_risk || "Unknown",
+    recommended_action: candidate.recommended_action || "No recommendation available.",
     human_review_required: Boolean(candidate.human_review_required),
-    overall_confidence: toFiniteNumber(candidate.overall_confidence, fallbackResult.overall_confidence),
-    created_at: candidate.created_at || fallbackResult.created_at || new Date().toISOString(),
-    detected_materials: detectedMaterials
+    overall_confidence: toFiniteNumber(candidate.overall_confidence),
+    created_at: candidate.created_at || new Date().toISOString(),
+    detected_materials: normalizeDetectedMaterials(candidate.detected_materials)
   };
 }
 
 function normalizeScanResults(value: unknown): ScanResult[] {
-  const normalized = safeArray<unknown>(value).map((item, index) =>
-    normalizeScanResult(item, mockScanLogs[index] || mockScanResult)
-  );
-  const fallbackLogs = safeArray<ScanResult>(mockScanLogs).map(item => normalizeScanResult(item));
-  return normalized.length ? normalized : fallbackLogs;
+  return safeArray<unknown>(value).map(normalizeScanResult).filter((item): item is ScanResult => Boolean(item));
 }
 
 export async function loginUser(email?: string) {
@@ -113,16 +88,17 @@ export { uploadImageToSupabase };
 
 export async function saveScanResult(result: Partial<ScanResult>) {
   const payload = normalizeScanResult({
-    ...mockScanResult,
     ...result,
     id: result.id || safeId("scan"),
     created_at: result.created_at || new Date().toISOString(),
     detected_materials: normalizeDetectedMaterials(result.detected_materials)
   });
 
+  if (!payload) throw new Error("Invalid scan result");
+
   if (canUseSupabase() && supabase) {
     const { data, error } = await supabase
-      .from("scan_results")
+      .from(scanResultsTable)
       .insert({
         image_url: payload.image_url,
         overall_status: payload.overall_status,
@@ -136,7 +112,7 @@ export async function saveScanResult(result: Partial<ScanResult>) {
 
     if (!error && data) {
       await saveDetectedMaterials(data.id, payload.detected_materials);
-      return normalizeScanResult({ ...data, detected_materials: payload.detected_materials }, payload);
+      return normalizeScanResult({ ...data, detected_materials: payload.detected_materials }) || payload;
     }
   }
 
@@ -147,11 +123,11 @@ export async function saveScanResult(result: Partial<ScanResult>) {
 }
 
 export async function saveDetectedMaterials(scanResultId: string, materials: DetectedMaterial[]) {
-  const safeMaterials = normalizeDetectedMaterials(materials, []);
-  if (!safeMaterials.length) return false;
+  const safeMaterials = normalizeDetectedMaterials(materials);
+  if (!scanResultId || !safeMaterials.length) return false;
 
   if (canUseSupabase() && supabase) {
-    const { error } = await supabase.from("detected_materials").insert(
+    const { error } = await supabase.from(detectedMaterialsTable).insert(
       safeMaterials.map(material => ({
         scan_result_id: scanResultId,
         material_name: material.material_name,
@@ -170,53 +146,65 @@ export async function saveDetectedMaterials(scanResultId: string, materials: Det
   return false;
 }
 
-export async function getLatestScanResult(): Promise<ScanResult> {
+export async function getLatestScanResult(): Promise<ScanResult | null> {
   if (canUseSupabase() && supabase) {
     const { data, error } = await supabase
-      .from("scan_results")
-      .select("*, detected_materials(*)")
+      .from(scanResultsTable)
+      .select(scanResultSelect)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     if (!error && data) return normalizeScanResult(data);
   }
 
-  return normalizeScanResult(safeJsonParse<unknown>(getStorageItem(latestScanKey), mockScanResult));
+  return normalizeScanResult(safeJsonParse<unknown>(getStorageItem(latestScanKey), null));
 }
 
-export async function getScanResultById(id: string): Promise<ScanResult> {
+export async function getScanResultById(id: string): Promise<ScanResult | null> {
+  if (!id) return null;
+
   if (canUseSupabase() && supabase) {
     const { data, error } = await supabase
-      .from("scan_results")
-      .select("*, detected_materials(*)")
+      .from(scanResultsTable)
+      .select(scanResultSelect)
       .eq("id", id)
-      .single();
+      .maybeSingle();
     if (!error && data) return normalizeScanResult(data);
   }
   const logs = safeArray<ScanResult>(await getScanLogs());
-  return logs.find(item => item.id === id) || mockScanResult;
+  return logs.find(item => item.id === id) || null;
 }
 
 export async function getScanLogs(): Promise<ScanResult[]> {
   if (canUseSupabase() && supabase) {
     const { data, error } = await supabase
-      .from("scan_results")
-      .select("*, detected_materials(*)")
+      .from(scanResultsTable)
+      .select(scanResultSelect)
       .order("created_at", { ascending: false });
     if (!error && data) return normalizeScanResults(data);
   }
-  return normalizeScanResults(safeJsonParse<unknown>(getStorageItem(logsKey), mockScanLogs));
+  return normalizeScanResults(safeJsonParse<unknown>(getStorageItem(logsKey), []));
 }
 
 export async function getAnalyticsData() {
   const logs = safeArray<ScanResult>(await getScanLogs());
+  const materials = logs.flatMap(log => safeArray<DetectedMaterial>(log.detected_materials));
+  const recyclable = materials.filter(material => material.recyclable_status === "Recyclable").length;
+  const contaminated = materials.filter(material => material.contaminant_status !== "Clean").length;
+  const reviewRequired = logs.filter(log => log.human_review_required).length;
+
   return {
     scanCount: logs.length,
-    recyclableRecoveryRate: 96.3,
-    contaminationRate: 3.7,
-    averageConfidence:
-      logs.reduce((sum, item) => sum + Number(item.overall_confidence || 0), 0) / Math.max(logs.length, 1),
-    carbonImpactKg: 578
+    materialCount: materials.length,
+    recyclableCount: recyclable,
+    nonRecyclableCount: Math.max(materials.length - recyclable, 0),
+    reviewRequired,
+    contaminationCount: contaminated,
+    recyclableRecoveryRate: materials.length ? (recyclable / materials.length) * 100 : 0,
+    contaminationRate: materials.length ? (contaminated / materials.length) * 100 : 0,
+    averageConfidence: logs.length
+      ? logs.reduce((sum, item) => sum + Number(item.overall_confidence || 0), 0) / logs.length
+      : 0
   };
 }
 

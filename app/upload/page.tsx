@@ -115,7 +115,7 @@ const html = `
                 style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
                 <i class="fa-solid fa-file-image"></i> Choose Image
               </label>
-              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" style="display: none;" />
+              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp,.zip,application/zip" style="display: none;" />
               <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
                 No file selected</p>
 

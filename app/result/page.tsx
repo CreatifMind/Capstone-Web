@@ -110,11 +110,11 @@ const html = `
               <small>Estimated purity</small>
             </div>
             <div>
-              <span id="liveMarketValue">$0.00</span>
+              <span id="liveMarketValue">No data</span>
               <small>Recoverable value</small>
             </div>
             <div>
-              <span id="liveCO2Offset">0.0 kg</span>
+              <span id="liveCO2Offset">No data</span>
               <small>CO2 offset</small>
             </div>
           </div>
@@ -287,7 +287,7 @@ const html = `
 
             <div class="detail-grid three">
               <div class="metric-tile static"><span data-material-kpi-one>Total flagged</span><strong
-                  data-material-tonnage>0</strong><small>Current mock dataset</small></div>
+                  data-material-tonnage>0</strong><small>Current saved scans</small></div>
               <div class="metric-tile static"><span data-material-kpi-two>Market value</span><strong
                   data-material-value>$0</strong><small data-material-rate>Estimated</small></div>
               <div class="metric-tile static"><span data-material-kpi-three>Risk rating</span><strong

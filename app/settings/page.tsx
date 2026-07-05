@@ -78,7 +78,7 @@ const html = `
             <h2>Operator account</h2>
             <div class="settings-row"><span>Name</span><strong>Admin Operator</strong></div>
             <div class="settings-row"><span>Role</span><strong>MRF Review Supervisor</strong></div>
-            <div class="settings-row"><span>Facility</span><strong>PurityLoop Demo MRF</strong></div>
+            <div class="settings-row"><span>Facility</span><strong>Not configured</strong></div>
           </article>
 
           <article class="settings-card panel bbox-card">
@@ -110,8 +110,8 @@ const html = `
           <article class="settings-card panel bbox-card wide">
             <p class="eyebrow">System</p>
             <h2>Preferences</h2>
-            <div class="settings-row"><span>Model</span><strong>YOLOv8 active</strong></div>
-            <div class="settings-row"><span>Default result page</span><strong>Active_Scan_Viewport</strong></div>
+            <div class="settings-row"><span>Model</span><strong>Mock model flow</strong></div>
+            <div class="settings-row"><span>Default result page</span><strong>Latest saved scan</strong></div>
             <div class="settings-row"><span>Theme</span><strong>Dark premium AI recycling</strong></div>
           </article>
         </section>

@@ -38,6 +38,254 @@ function plSafeFiles(files) {
   }
 }
 
+const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
+const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
+const PL_UPLOADS_KEY = "purityloop_uploads";
+let plSelectedUploadFiles = [];
+
+function plConfig() {
+  return window.__PURITYLOOP_CONFIG__ || {};
+}
+
+function plUseSupabase() {
+  const config = plConfig();
+  return Boolean(config.useSupabase && config.supabaseUrl && config.supabaseAnonKey);
+}
+
+function plApiBaseUrl() {
+  return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
+}
+
+function plNormalizeCategory(value) {
+  const text = String(value || "Unknown").trim();
+  if (!text) return "Unknown";
+  return text
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function plNormalizeStatus(value) {
+  return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function plIsClean(material) {
+  return plNormalizeStatus(material?.contaminant_status) === "clean";
+}
+
+function plIsRecyclable(material) {
+  return plNormalizeStatus(material?.recyclable_status) === "recyclable";
+}
+
+function plConfidencePercent(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return 0;
+  return numeric <= 1 ? numeric * 100 : numeric;
+}
+
+function plNormalizeMaterial(material) {
+  return {
+    material_name: material?.material_name || material?.category || "Detected material",
+    category: plNormalizeCategory(material?.category),
+    confidence: Number(material?.confidence || 0),
+    recyclable_status: material?.recyclable_status || "unknown",
+    contaminant_status: material?.contaminant_status || "unknown",
+    bbox_x: Number(material?.bbox_x || 0),
+    bbox_y: Number(material?.bbox_y || 0),
+    bbox_width: Number(material?.bbox_width || 0),
+    bbox_height: Number(material?.bbox_height || 0)
+  };
+}
+
+function plDisplayableImageUrl(value) {
+  const url = String(value || "");
+  if (url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/assets/")) {
+    return url;
+  }
+  return "";
+}
+
+function plNormalizeScan(scan) {
+  if (!scan || !scan.id) return null;
+  const sourceName = scan.source_name || scan.drive_file_name || scan.image_url || "Uploaded image";
+  return {
+    ...scan,
+    image_url: plDisplayableImageUrl(scan.image_url),
+    source_name: sourceName,
+    overall_status: scan.overall_status || "review_required",
+    contamination_risk: scan.contamination_risk || "unknown",
+    recommended_action: scan.recommended_action || "Human review recommended before sorting.",
+    human_review_required: Boolean(scan.human_review_required),
+    overall_confidence: Number(scan.overall_confidence || 0),
+    created_at: scan.created_at || new Date().toISOString(),
+    detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
+  };
+}
+
+async function plRefreshScanResultsFromSupabase() {
+  if (!plUseSupabase()) return false;
+  const config = plConfig();
+  try {
+    const url = `${String(config.supabaseUrl).replace(/\/$/, "")}/rest/v1/mock_scan_results?select=*,detected_materials:mock_detected_materials(*)&order=created_at.desc`;
+    const response = await fetch(url, {
+      headers: {
+        apikey: config.supabaseAnonKey,
+        Authorization: `Bearer ${config.supabaseAnonKey}`
+      }
+    });
+    if (!response.ok) return false;
+    const scans = plSafeArray(await response.json()).map(plNormalizeScan).filter(Boolean);
+    plSetScanResults(scans);
+    return true;
+  } catch (error) {
+    console.warn("PurityLoop: Supabase scan refresh failed.", error);
+    return false;
+  }
+}
+
+function plGetScanResults() {
+  return plSafeArray(plSafeJsonParse(localStorage.getItem(PL_SCAN_LOGS_KEY), [])).map(plNormalizeScan).filter(Boolean);
+}
+
+function plSetScanResults(scans) {
+  const safeScans = plSafeArray(scans).filter(scan => scan && scan.id);
+  plSetJson(PL_SCAN_LOGS_KEY, safeScans);
+  if (safeScans[0]) plSetJson(PL_LATEST_SCAN_KEY, safeScans[0]);
+}
+
+function plSaveScanResult(scan) {
+  if (!scan || !scan.id) return null;
+  const scans = plGetScanResults().filter(item => item.id !== scan.id);
+  const next = [scan, ...scans];
+  plSetScanResults(next);
+  return scan;
+}
+
+function plGetScanResultById(id) {
+  if (!id) return null;
+  return plGetScanResults().find(scan => scan.id === id) || null;
+}
+
+function plGetLatestScanResult() {
+  return plGetScanResults()[0] || null;
+}
+
+function plGetRequestedScanResult() {
+  const params = new URLSearchParams(window.location.search);
+  return plGetScanResultById(params.get("scanId")) || plGetLatestScanResult();
+}
+
+function plNumberFromPercent(value) {
+  const numeric = parseFloat(String(value || "").replace("%", ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function plIsContaminantLabel(label) {
+  const text = String(label || "").toLowerCase();
+  return text.includes("alert") || text.includes("hazard") || text.includes("trash") || text.includes("textile") || text.includes("contaminant") || text.includes("manual review");
+}
+
+function plMaterialCategoryFromLabel(label) {
+  const text = String(label || "").toLowerCase();
+  if (text.includes("battery")) return "Battery";
+  if (text.includes("food") || text.includes("organic")) return "Food Organics";
+  if (text.includes("trash")) return "General Trash";
+  if (text.includes("textile") || text.includes("fabric")) return "Textile";
+  if (text.includes("glass") || text.includes("jar")) return "Glass";
+  if (text.includes("cardboard") || text.includes("box")) return "Cardboard";
+  if (text.includes("paper")) return "Paper";
+  if (text.includes("metal") || text.includes("can") || text.includes("aluminum")) return "Metal";
+  if (text.includes("plastic") || text.includes("pet") || text.includes("bottle") || text.includes("film")) return "Plastic";
+  return "Unknown";
+}
+
+function plMaterialStatus(category, label) {
+  if (plIsContaminantLabel(label) || ["Battery", "Food Organics", "General Trash", "Textile"].includes(category)) {
+    return { recyclable_status: "Non-Recyclable", contaminant_status: "Contaminated" };
+  }
+  return { recyclable_status: "Recyclable", contaminant_status: "Clean" };
+}
+
+function plBoxesToMaterials(boxes) {
+  return plSafeArray(boxes).map(box => {
+    const category = plMaterialCategoryFromLabel(box.label);
+    const status = plMaterialStatus(category, box.label);
+    return {
+      material_name: String(box.label || category).replace(" Alert", "").replace(" Contaminant", ""),
+      category,
+      confidence: plNumberFromPercent(box.confidence),
+      recyclable_status: status.recyclable_status,
+      contaminant_status: status.contaminant_status,
+      bbox_x: Math.round(Number(box.x || 0) * 100),
+      bbox_y: Math.round(Number(box.y || 0) * 100),
+      bbox_width: Math.round(Number(box.w || 0) * 100),
+      bbox_height: Math.round(Number(box.h || 0) * 100)
+    };
+  });
+}
+
+function plMaterialsToBoxes(materials) {
+  return plSafeArray(materials).map(material => {
+    const isContaminant = !plIsClean(material);
+    return {
+      label: material.material_name || material.category || "Detected material",
+      confidence: `${Math.round(plConfidencePercent(material.confidence))}%`,
+      color: isContaminant ? "#ff8000" : (detectionResults[String(material.category || "").toLowerCase().replace(" ", "_")]?.color || "#39d12f"),
+      x: Number(material.bbox_x || 0) / 100,
+      y: Number(material.bbox_y || 0) / 100,
+      w: Number(material.bbox_width || 0) / 100,
+      h: Number(material.bbox_height || 0) / 100
+    };
+  });
+}
+
+function plFormatScanTime(scan) {
+  const date = new Date(scan?.created_at || Date.now());
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function plScanToLedger(scan) {
+  const materials = plSafeArray(scan?.detected_materials);
+  const firstMaterial = materials[0] || {};
+  return {
+    id: scan.id,
+    scanId: scan.id,
+    time: plFormatScanTime(scan),
+    source: scan.source_name || "Uploaded image",
+    sourceKey: scan.source_name && scan.source_name.toLowerCase().endsWith(".zip") ? "ZIP-BATCH" : plNormalizeStatus(scan.overall_status) === "quarantined" ? "QUARANTINE-UPLOAD" : "SINGLE-IMAGE",
+    category: firstMaterial.category || "Unknown",
+    weight: scan.source_size ? formatFileSize(scan.source_size) : "N/A",
+    confidence: `${Math.round(plConfidencePercent(scan.overall_confidence))}%`,
+    status: plNormalizeStatus(scan.overall_status) === "accepted" ? "Cleared" : plNormalizeStatus(scan.overall_status) === "quarantined" ? "Quarantined" : "Review Needed"
+  };
+}
+
+function plGetAnalyticsSummary() {
+  const scans = plGetScanResults();
+  const materials = scans.flatMap(scan => plSafeArray(scan.detected_materials));
+  const categoryCounts = materials.reduce((acc, material) => {
+    const category = material.category || "Unknown";
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+  const recyclableCount = materials.filter(plIsRecyclable).length;
+  const contaminationCount = materials.filter(material => !plIsClean(material)).length;
+  const reviewCount = scans.filter(scan => scan.human_review_required || scan.overall_status === "Human Review Required").length;
+  const avgConfidence = scans.length
+    ? scans.reduce((sum, scan) => sum + plConfidencePercent(scan.overall_confidence), 0) / scans.length
+    : 0;
+  return {
+    scans,
+    materials,
+    categoryLabels: Object.keys(categoryCounts),
+    categoryValues: Object.values(categoryCounts),
+    recyclableCount,
+    nonRecyclableCount: Math.max(materials.length - recyclableCount, 0),
+    contaminationCount,
+    reviewCount,
+    avgConfidence
+  };
+}
+
 /* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
 const detectionResults = {
   battery: {
@@ -301,35 +549,24 @@ function detectWasteTypeFromFileName(name) {
   if (fileLower.includes("glass") || fileLower.includes("jar") || fileLower.includes("bottle_g")) return detectionResults.glass;
   if (fileLower.includes("textile") || fileLower.includes("cloth") || fileLower.includes("shirt") || fileLower.includes("fabric")) return detectionResults.textile;
 
-  // Random fallback for simulated variety
-  const keys = Object.keys(detectionResults);
-  const randomKey = keys[Math.floor(Math.random() * (keys.length - 1))];
-  return detectionResults[randomKey];
+  return detectionResults.unknown;
 }
 
-/* Local storage initialization for ledger records */
 function getAuditLedger() {
-  const localLedger = localStorage.getItem("purityloop_audit_ledger");
-  if (localLedger) {
-    const parsedLedger = plSafeJsonParse(localLedger, []);
-    if (Array.isArray(parsedLedger)) return parsedLedger;
-  }
-  // Default mock ledger, based on uploaded images rather than physical stations
-  const mockLedger = [
-    { id: "LOG-9821", time: "10:42 AM", source: "batch_metal_can_042.jpg", sourceKey: "SINGLE-IMAGE", category: "Metal", weight: "18.4 kg", confidence: "98.7%", status: "Cleared" },
-    { id: "LOG-9820", time: "10:30 AM", source: "glass_mixed_batch.zip", sourceKey: "ZIP-BATCH", category: "Glass", weight: "14.5 kg", confidence: "82.0%", status: "Review Needed" },
-    { id: "LOG-9819", time: "10:25 AM", source: "trash_contamination_set.zip", sourceKey: "ZIP-BATCH", category: "General Trash", weight: "12.0 kg", confidence: "42.1%", status: "Quarantined" },
-    { id: "LOG-9818", time: "10:14 AM", source: "metal_recovery_sample.png", sourceKey: "SINGLE-IMAGE", category: "Metal", weight: "19.2 kg", confidence: "99.2%", status: "Cleared" },
-    { id: "LOG-9817", time: "10:05 AM", source: "plastic_bottle_upload.jpg", sourceKey: "SINGLE-IMAGE", category: "Plastic", weight: "15.1 kg", confidence: "98.1%", status: "Cleared" },
-    { id: "LOG-9816", time: "09:58 AM", source: "battery_hazard_upload.jpg", sourceKey: "QUARANTINE-UPLOAD", category: "Battery", weight: "8.0 kg", confidence: "54.1%", status: "Quarantined" },
-    { id: "LOG-9815", time: "09:42 AM", source: "glass_jar_upload.webp", sourceKey: "SINGLE-IMAGE", category: "Glass", weight: "11.3 kg", confidence: "96.7%", status: "Cleared" }
-  ];
-  plSetJson("purityloop_audit_ledger", mockLedger);
-  return mockLedger;
+  return plGetScanResults().map(plScanToLedger);
 }
 
 function saveAuditLedger(ledger) {
-  plSetJson("purityloop_audit_ledger", plSafeArray(ledger));
+  const scans = plGetScanResults();
+  plSafeArray(ledger).forEach(log => {
+    const scan = scans.find(item => item.id === log.scanId || item.id === log.id);
+    if (scan) {
+      scan.overall_status = log.status === "Quarantined" ? "Quarantined" : log.status === "Review Needed" ? "Human Review Required" : "Accepted";
+      scan.human_review_required = log.status === "Review Needed";
+      if (log.category && scan.detected_materials?.[0]) scan.detected_materials[0].category = log.category;
+    }
+  });
+  plSetScanResults(scans);
 }
 
 function getLogSourceLabel(log) {
@@ -358,12 +595,49 @@ function getUploadSourceDisplayName(sourceKey) {
   return labels[sourceKey] || "Uploaded image";
 }
 
+async function plRunBackendPrediction(file) {
+  const apiBaseUrl = plApiBaseUrl();
+  if (!apiBaseUrl) throw new Error("Backend API URL is not configured.");
+  if (!file || !String(file.type || "").startsWith("image/")) throw new Error("Upload one image file.");
+
+  const formData = new FormData();
+  formData.append("file", file, file.name || "uploaded-image.jpg");
+
+  const response = await fetch(`${apiBaseUrl}/api/predict`, {
+    method: "POST",
+    body: formData
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || "AI scan failed. Check backend and try again.");
+  }
+
+  const scan = plNormalizeScan({
+    id: payload.scan_result_id,
+    image_url: URL.createObjectURL(file),
+    source_name: file.name || "Uploaded image",
+    source_size: Number(file.size || 0),
+    overall_status: payload.overall_status,
+    contamination_risk: payload.contamination_risk,
+    recommended_action: payload.recommended_action,
+    human_review_required: payload.human_review_required,
+    overall_confidence: payload.overall_confidence,
+    created_at: new Date().toISOString(),
+    detected_materials: payload.detected_materials
+  });
+  if (!scan) throw new Error("Backend did not return a scan id.");
+  plSaveScanResult(scan);
+  return scan;
+}
+
 /*****************************************
  * 1. IMAGE UPLOAD & WEBCAM CAPTURE PAGE *
  *****************************************/
 function initUploadPage() {
   const fileUpload = document.getElementById("fileUpload");
   if (!fileUpload) return; // Not on upload page
+  if (fileUpload.dataset.uploadReady === "true") return;
+  fileUpload.dataset.uploadReady = "true";
 
   const fileName = document.getElementById("fileName");
   const scanImageBtn = document.getElementById("scanImageBtn");
@@ -414,9 +688,9 @@ function initUploadPage() {
   });
 
   if (scanImageBtn) {
-    scanImageBtn.addEventListener("click", () => {
-      const storedUploads = localStorage.getItem("purityloop_uploads");
-      if (!storedUploads) {
+    scanImageBtn.addEventListener("click", async () => {
+      const uploadFile = plSelectedUploadFiles[0];
+      if (!uploadFile) {
         showToast("Choose an image before scanning.", "warning");
         return;
       }
@@ -424,9 +698,17 @@ function initUploadPage() {
       scanImageBtn.classList.add("is-scanning");
       if (uploadBox) uploadBox.classList.add("is-processing");
       scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
-      setTimeout(() => {
-        window.location.href = "/result";
-      }, 720);
+      try {
+        const scan = await plRunBackendPrediction(uploadFile);
+        localStorage.removeItem(PL_UPLOADS_KEY);
+        window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
+      } catch (error) {
+        showToast(error.message || "AI scan failed. Check backend and try again.", "error");
+        scanImageBtn.disabled = false;
+        scanImageBtn.classList.remove("is-scanning");
+        if (uploadBox) uploadBox.classList.remove("is-processing");
+        scanImageBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image';
+      }
     });
   }
 
@@ -468,13 +750,11 @@ function initUploadPage() {
         })
         .catch(err => {
           console.error("Camera access error:", err);
-          alert("Webcam access not allowed or unavailable. Loading simulation scanning mode instead.");
           stopWebcam();
-          loadSimulatedUpload();
+          showToast("Webcam access not allowed or unavailable.", "warning");
         });
     } else {
-      alert("Browser camera api not supported. Triggering file simulation.");
-      loadSimulatedUpload();
+      showToast("Browser camera api not supported.", "warning");
     }
   }
 
@@ -500,36 +780,25 @@ function initUploadPage() {
     // Draw mirrored if front facing, but environment usually is fine
     ctx.drawImage(webcamVideo, 0, 0, 640, 480);
 
-    // Compress to small JPEG dataURL (approx 25KB) to fit localStorage
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-
-    const captures = [{
-      name: "Camera_Snapshot_" + Date.now().toString().slice(-4) + ".jpg",
-      size: Math.round(dataUrl.length * 0.75), // approximate byte size
-      dataUrl: dataUrl
-    }];
-
-    plSetJson("purityloop_uploads", captures);
-    stopWebcam();
-    window.location.href = "/result";
-  }
-
-  function loadSimulatedUpload() {
-    // Falls back to camera demo by simulating snapshot
-    const names = ["aluminum-can.png", "plastic-bottle.png", "glass-jar.png", "battery.png"];
-    const randomName = names[Math.floor(Math.random() * names.length)];
-    const simulatedFiles = [{
-      name: "Simulation_" + randomName,
-      size: 52000,
-      isSimulation: true,
-      assetPath: "/assets/items/" + randomName
-    }];
-    plSetJson("purityloop_uploads", simulatedFiles);
-    window.location.href = "/result";
+    canvas.toBlob(async blob => {
+      if (!blob) {
+        showToast("Camera capture failed.", "error");
+        return;
+      }
+      const file = new File([blob], "Camera_Snapshot_" + Date.now().toString().slice(-4) + ".jpg", { type: "image/jpeg" });
+      try {
+        const scan = await plRunBackendPrediction(file);
+        stopWebcam();
+        window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
+      } catch (error) {
+        showToast(error.message || "AI scan failed. Check backend and try again.", "error");
+      }
+    }, "image/jpeg", 0.9);
   }
 
   function processSelectedFiles(files) {
     const list = plSafeFiles(files);
+    plSelectedUploadFiles = [];
     if (!list.length) {
       alert("No files selected.");
       return;
@@ -577,17 +846,12 @@ function initUploadPage() {
     const imageFiles = list.filter(f => String(f.type || "").startsWith("image/"));
 
     if (imageFiles.length === 0) {
-      // Just zip/other files
-      const simpleMetadata = list.map(f => ({
-        name: f.name || "uploaded-file",
-        size: Number(f.size || 0),
-        type: String(f.name || "").endsWith(".zip") ? "ZIP" : "File",
-        resultAssetPath: DEFAULT_SCAN_ASSET
-      }));
-      plSetJson("purityloop_uploads", simpleMetadata);
-      if (scanImageBtn) scanImageBtn.disabled = false;
+      showToast("Direct backend test supports one image file first.", "warning");
+      if (scanImageBtn) scanImageBtn.disabled = true;
       return;
     }
+
+    plSelectedUploadFiles = [imageFiles[0]];
 
     imageFiles.forEach(file => {
       const reader = new FileReader();
@@ -624,7 +888,7 @@ function initUploadPage() {
 
           loadedCount++;
           if (loadedCount === imageFiles.length) {
-            plSetJson("purityloop_uploads", compressedList);
+            plSetJson(PL_UPLOADS_KEY, compressedList);
             if (scanImageBtn) scanImageBtn.disabled = false;
           }
         };
@@ -715,51 +979,22 @@ function initResultPage() {
   const activeBeltDetailBtn = document.getElementById("activeBeltDetailBtn");
   const reviewLogsBtn = document.querySelector(".action-panel a");
 
-  // Load uploads from storage
-  let uploads = [];
-  const rawUploads = localStorage.getItem("purityloop_uploads");
-
-  if (rawUploads) {
-    uploads = plSafeArray(plSafeJsonParse(rawUploads, []));
-  }
-
-  // Ensure "Active_Scan_Viewport.jpg" is always at the top of the list so it is the default loaded scan!
-  const hasViewportItem = uploads.some(item => item.name === "Active_Scan_Viewport.jpg");
-  if (!hasViewportItem) {
-    uploads.unshift({
-      name: "Active_Scan_Viewport.jpg",
-      size: 145000,
-      assetPath: DEFAULT_SCAN_ASSET
-    });
-    plSetJson("purityloop_uploads", uploads);
-  } else {
-    // If it exists but isn't index 0, move it to index 0
-    const idx = uploads.findIndex(item => item.name === "Active_Scan_Viewport.jpg");
-    if (idx >= 0) {
-      uploads[idx].assetPath = DEFAULT_SCAN_ASSET;
-      uploads[idx].resultAssetPath = DEFAULT_SCAN_ASSET;
-    }
-    if (idx > 0) {
-      const item = uploads.splice(idx, 1)[0];
-      uploads.unshift(item);
-    }
-    plSetJson("purityloop_uploads", uploads);
-  }
-
-  // Fallback default simulation list if nothing else is left
-  if (uploads.length <= 1) {
-    uploads = [
-      { name: "Active_Scan_Viewport.jpg", size: 145000, assetPath: DEFAULT_SCAN_ASSET },
-      { name: "Recycled_PET_PlasticBottle.jpg", size: 45000, assetPath: "/assets/items/plastic-bottle.png" },
-      { name: "Crushed_SodaCan_Metal.png", size: 34000, assetPath: "/assets/items/aluminum-can.png" },
-      { name: "Waste_Battery_Hazard.jpg", size: 28000, assetPath: "/assets/items/battery.png" },
-      { name: "Cardboard_Box_Package.jpg", size: 89000, assetPath: "/assets/items/cardboard.png" },
-      { name: "Organics_BananaPeel_Contaminant.png", size: 52000, assetPath: "/assets/items/food-waste.png" }
-    ];
-    plSetJson("purityloop_uploads", uploads);
-  }
+  const scans = plGetScanResults();
+  let uploads = scans.map(scan => ({
+    name: scan.source_name || scan.id,
+    size: scan.source_size || 0,
+    dataUrl: scan.image_url && scan.image_url.startsWith("data:") ? scan.image_url : "",
+    assetPath: scan.image_url && !scan.image_url.startsWith("data:") ? scan.image_url : "",
+    scanId: scan.id
+  }));
+  const requestedScan = plGetRequestedScanResult();
 
   let activeIndex = 0;
+  if (requestedScan) {
+    const requestedIndex = uploads.findIndex(upload => upload.scanId === requestedScan.id);
+    activeIndex = requestedIndex >= 0 ? requestedIndex : 0;
+  }
+  let activeScan = requestedScan || scans[0] || null;
   let activeImageObj = null;
 
   // Keep page headings aligned with the upload-to-result workflow
@@ -796,7 +1031,11 @@ function initResultPage() {
 
   // Render Finder Grid and Load Active image
   renderFinderGrid();
-  loadActiveImage();
+  if (activeScan) {
+    loadActiveImage();
+  } else {
+    renderEmptyResult();
+  }
 
   // Redraw canvas on window resize to stay responsive
   window.addEventListener('resize', () => {
@@ -807,33 +1046,15 @@ function initResultPage() {
   const approveBtn = document.getElementById("verifyApproveBtn");
   if (approveBtn) {
     approveBtn.addEventListener("click", () => {
-      const activeFile = uploads[activeIndex];
-      if (!activeFile) return;
-      const result = detectWasteTypeFromFileName(activeFile.name);
-
-      // Save to audit log ledger
-      const currentLedger = getAuditLedger();
-      const newLog = {
-        id: "LOG-" + Math.floor(1000 + Math.random() * 9000),
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        source: activeFile.name,
-        sourceKey: activeFile.name && activeFile.name.toLowerCase().endsWith(".zip") ? "ZIP-BATCH" : "SINGLE-IMAGE",
-        category: result.category,
-        weight: result.weight,
-        confidence: result.confidence,
-        status: result.statusClass === "safe" ? "Cleared" : result.statusClass === "danger" ? "Quarantined" : "Review Needed"
-      };
-
-      currentLedger.unshift(newLog);
-      saveAuditLedger(currentLedger);
+      if (!activeScan) return;
+      activeScan.overall_status = plNormalizeStatus(activeScan.overall_status) === "quarantined" ? "Quarantined" : "Accepted";
+      activeScan.human_review_required = activeScan.overall_status !== "Accepted";
+      plSaveScanResult(activeScan);
 
       // Show toast notification
-      showToast(`Audit verified. ${result.category} was added to the review ledger.`, "success");
-      approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Verified & Added to Log';
+      showToast("Audit verified. Scan result saved.", "success");
+      approveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Verified';
       approveBtn.classList.add("is-confirmed");
-
-      // Mark row in queue as processed
-      activeFile.processed = true;
       renderFinderGrid();
     });
   }
@@ -843,50 +1064,8 @@ function initResultPage() {
   let autoScanInterval = null;
 
   function startAutoScanSimulation() {
-    if (autoScanInterval) clearInterval(autoScanInterval);
-    autoScanInterval = setInterval(() => {
-      const itemsList = [
-        { prefix: "SCAN_PlasticBottle_", names: ["plastic-bottle.png"] },
-        { prefix: "SCAN_AluminiumCan_", names: ["aluminum-can.png"] },
-        { prefix: "SCAN_GlassJar_", names: ["glass-jar.png"] },
-        { prefix: "SCAN_BatteryHazard_", names: ["battery.png"] },
-        { prefix: "SCAN_OrganicPeel_", names: ["food-waste.png"] },
-        { prefix: "SCAN_TextileScrap_", names: ["textile.png"] },
-        { prefix: "SCAN_CardboardBox_", names: ["cardboard.png"] },
-        { prefix: "SCAN_PaperCrumpled_", names: ["crumpled-paper.png"] },
-        { prefix: "SCAN_CoffeeCup_", names: ["coffee-cup.png"] }
-      ];
-      const choice = itemsList[Math.floor(Math.random() * itemsList.length)];
-      const randomId = Math.floor(1000 + Math.random() * 9000);
-      const filename = `${choice.prefix}${randomId}.jpg`;
-
-      const newScan = {
-        name: filename,
-        size: Math.floor(12000 + Math.random() * 45000),
-        assetPath: `/assets/items/${choice.names[0]}`,
-        isNewGlow: true
-      };
-
-      uploads.push(newScan);
-
-      // Keep max 24 items in queue folder to prevent memory bloat
-      if (uploads.length > 24) {
-        uploads.shift();
-        // Clamp activeIndex but DON'T change the active view
-        if (activeIndex >= uploads.length) activeIndex = uploads.length - 1;
-      }
-
-      plSetJson("purityloop_uploads", uploads);
-
-      // Re-render the grid WITHOUT switching the active image
-      renderFinderGrid();
-
-      // Scroll content pane to bottom to reveal new scan
-      const contentPane = document.querySelector(".finder-content-pane");
-      if (contentPane) {
-        contentPane.scrollTop = contentPane.scrollHeight;
-      }
-    }, 4000);
+    showToast("Upload a file to create scan data.", "warning");
+    if (autoScanCheckbox) autoScanCheckbox.checked = false;
   }
 
   function stopAutoScanSimulation() {
@@ -913,8 +1092,14 @@ function initResultPage() {
     grid.innerHTML = "";
     if (countText) countText.textContent = `${uploads.length} item(s)`;
 
+    if (!uploads.length) {
+      grid.innerHTML = `<div class="feed-empty">No uploaded images yet.</div>`;
+      return;
+    }
+
     uploads.forEach((file, index) => {
-      const fileResult = detectWasteTypeFromFileName(file.name);
+      const scan = plGetScanResultById(file.scanId);
+      const fileResult = scan ? { statusClass: plNormalizeStatus(scan.overall_status) === "quarantined" ? "danger" : scan.human_review_required ? "warning" : "safe" } : detectWasteTypeFromFileName(file.name);
       let tagColor = "green";
       if (fileResult.statusClass === "danger") tagColor = "red";
       if (fileResult.statusClass === "warning") tagColor = "yellow";
@@ -941,6 +1126,10 @@ function initResultPage() {
 
       card.addEventListener("click", () => {
         activeIndex = index;
+        activeScan = plGetScanResultById(file.scanId);
+        if (activeScan) {
+          window.history.replaceState(null, "", `/result?scanId=${encodeURIComponent(activeScan.id)}`);
+        }
         const cards = grid.querySelectorAll(".finder-file-card");
         cards.forEach(c => c.classList.remove("active"));
         card.classList.add("active");
@@ -953,6 +1142,10 @@ function initResultPage() {
 
   function loadActiveImage() {
     const activeFile = uploads[activeIndex];
+    if (!activeFile || !activeScan) {
+      renderEmptyResult();
+      return;
+    }
     if (activeBeltTitle) activeBeltTitle.textContent = activeFile.name;
 
     activeImageObj = new Image();
@@ -968,8 +1161,49 @@ function initResultPage() {
       drawCanvasFrame();
     };
 
-    const result = detectWasteTypeFromFileName(activeFile.name);
+    const result = {
+      ...detectWasteTypeFromFileName(activeFile.name),
+      confidence: `${Math.round(plConfidencePercent(activeScan.overall_confidence))}%`,
+      statusClass: plNormalizeStatus(activeScan.overall_status) === "quarantined" ? "danger" : activeScan.human_review_required ? "warning" : "safe",
+      status: activeScan.overall_status,
+      instruction: activeScan.recommended_action
+    };
     updateResultDetails(result, activeFile);
+  }
+
+  function renderEmptyResult() {
+    activeImageObj = null;
+    if (activeBeltTitle) activeBeltTitle.textContent = "No scan selected";
+    if (itemsScannedEl) itemsScannedEl.textContent = "0 items";
+    if (itemsPurityEl) itemsPurityEl.textContent = "0%";
+    const marketValueEl = document.getElementById("liveMarketValue");
+    const co2OffsetEl = document.getElementById("liveCO2Offset");
+    if (marketValueEl) marketValueEl.textContent = "No data";
+    if (co2OffsetEl) co2OffsetEl.textContent = "No data";
+    if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">No scan selected. Upload an image to generate results.</div>`;
+    if (actionText) {
+      actionText.innerHTML = `
+        <strong>No results yet</strong>
+        <p>Upload an image and run a scan to create model output.</p>
+      `;
+    }
+    if (canvas && ctx2d) {
+      const parent = canvas.parentElement;
+      const rect = parent?.getBoundingClientRect?.() || { width: 640, height: 360 };
+      canvas.width = rect.width || 640;
+      canvas.height = rect.height || Math.round(canvas.width * (9 / 16));
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      ctx2d.fillStyle = "rgba(4, 15, 13, 0.86)";
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+      ctx2d.fillStyle = "rgba(244,255,249,0.62)";
+      ctx2d.font = "600 15px 'IBM Plex Sans', Arial";
+      ctx2d.textAlign = "center";
+      ctx2d.fillText("No scan data", canvas.width / 2, canvas.height / 2);
+    }
+  }
+
+  function getActiveBoxes() {
+    return activeScan ? plMaterialsToBoxes(activeScan.detected_materials) : [];
   }
 
   function updateResultDetails(result, file) {
@@ -977,7 +1211,7 @@ function initResultPage() {
     const purityVal = document.getElementById("livePurity");
     const actionPanel = document.getElementById("liveActionPanel");
 
-    const boxes = getDetectedObjectsForFile(file.name);
+    const boxes = getActiveBoxes();
     document.body.classList.remove("result-detected");
     requestAnimationFrame(() => document.body.classList.add("result-detected"));
 
@@ -1003,7 +1237,7 @@ function initResultPage() {
       }
     });
 
-    const purityPct = Math.round((recyclableCount / boxes.length) * 100);
+    const purityPct = boxes.length ? Math.round((recyclableCount / boxes.length) * 100) : 0;
 
     if (scannedVal) scannedVal.textContent = `${boxes.length} items`;
     if (purityVal) {
@@ -1029,12 +1263,10 @@ function initResultPage() {
       }
     }
 
-    const marketValue = (recyclableCount * 0.05).toFixed(2);
-    const co2Offset = (recyclableCount * 0.2).toFixed(1);
     const marketValueEl = document.getElementById("liveMarketValue");
     const co2OffsetEl = document.getElementById("liveCO2Offset");
-    if (marketValueEl) marketValueEl.textContent = `$${marketValue}`;
-    if (co2OffsetEl) co2OffsetEl.textContent = `${co2Offset} kg`;
+    if (marketValueEl) marketValueEl.textContent = "No data";
+    if (co2OffsetEl) co2OffsetEl.textContent = "No data";
 
     // Next Steps Action Guide Generator
     if (actionText) {
@@ -1184,8 +1416,7 @@ function initResultPage() {
     ctx2d.globalAlpha = 1.0;
 
     // - 4. Draw all bounding boxes (NANDO AI static style) -
-    const activeFile = uploads[activeIndex];
-    const boxes = getDetectedObjectsForFile(activeFile.name);
+    const boxes = getActiveBoxes();
 
     boxes.forEach(box => {
       const boxX = drawX + drawW * box.x;
@@ -1380,6 +1611,25 @@ function initReviewModal() {
     const ledger = getAuditLedger();
     tableBody.innerHTML = "";
 
+    const statusCards = document.querySelectorAll(".ops-status-card strong");
+    if (statusCards[0]) statusCards[0].textContent = String(ledger.filter(log => log.status === "Cleared").length);
+    if (statusCards[1]) statusCards[1].textContent = String(ledger.filter(log => log.status === "Review Needed").length);
+    if (statusCards[2]) statusCards[2].textContent = String(ledger.filter(log => log.status === "Quarantined").length);
+
+    const reviewBadge = document.querySelector(".review-badge span");
+    if (reviewBadge) reviewBadge.textContent = `${ledger.filter(log => log.status === "Review Needed").length} pending`;
+
+    if (!ledger.length) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6">
+            <div class="feed-empty">No scan history yet. Upload an image to create review logs.</div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
     ledger.forEach(log => {
       const tr = document.createElement("tr");
       tr.id = `row-${log.id}`;
@@ -1416,6 +1666,10 @@ function initReviewModal() {
         </td>
       `;
 
+      tr.addEventListener("click", () => {
+        if (log.scanId) window.location.href = `/result?scanId=${encodeURIComponent(log.scanId)}`;
+      });
+
       // Set up drill event listeners inside the rows
       const drills = tr.querySelectorAll(".text-drill");
       drills.forEach(btn => {
@@ -1451,7 +1705,7 @@ function initReviewModal() {
           reviewDescription.textContent = "Review this uploaded image result. Overrides update the material category and final audit status.";
         }
 
-        // Load correct mock image asset into snapshot box
+        // Load matching image asset into snapshot box
         const snapshotFeed = document.querySelector(".review-snapshot .snapshot-feed");
         if (snapshotFeed) {
           snapshotFeed.innerHTML = `
@@ -1583,12 +1837,42 @@ function initAnalyticsCharts() {
   updateClock();
   setInterval(updateClock, 1000);
 
+  const summary = plGetAnalyticsSummary();
+
+  const kpiCards = document.querySelectorAll(".kpi-card");
+  if (kpiCards[0]) {
+    kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Detected Materials");
+    kpiCards[0].querySelector("strong").innerHTML = `${summary.materials.length}`;
+    kpiCards[0].querySelector("p").textContent = summary.materials.length ? "From saved scan results" : "No scan data yet";
+  }
+  if (kpiCards[1]) {
+    kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Revenue Data");
+    kpiCards[1].querySelector("strong").textContent = "No data";
+    kpiCards[1].querySelector("p").textContent = "No resale formula or value field saved";
+  }
+  if (kpiCards[2]) {
+    kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Average Confidence");
+    kpiCards[2].querySelector("strong").textContent = `${summary.avgConfidence.toFixed(1)}%`;
+    kpiCards[2].querySelector("p").textContent = summary.scans.length ? "From saved scans" : "No scan data yet";
+  }
+  if (kpiCards[3]) {
+    kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Contaminated Items");
+    kpiCards[3].querySelector("strong").textContent = String(summary.contaminationCount);
+    kpiCards[3].querySelector("p").textContent = summary.contaminationCount ? "From saved detected materials" : "No contamination data yet";
+  }
+
+  document.querySelectorAll(".kpi-trend").forEach(item => { item.textContent = summary.scans.length ? "saved data" : "no data"; });
+  document.querySelectorAll(".kpi-progress-fill").forEach(item => { item.style.width = summary.scans.length ? `${Math.min(100, summary.avgConfidence)}%` : "0%"; });
 
   // Update recent activity ledger preview list from localStorage
   const recentList = document.getElementById("dashLedgerList");
   if (recentList) {
     const ledger = getAuditLedger().slice(0, 3);
     recentList.innerHTML = "";
+
+    if (!ledger.length) {
+      recentList.innerHTML = `<div class="feed-empty">No scan history yet.</div>`;
+    }
 
     ledger.forEach(log => {
       const itemDiv = document.createElement("div");
@@ -1611,6 +1895,19 @@ function initAnalyticsCharts() {
 
       recentList.appendChild(itemDiv);
     });
+  }
+
+  const alertValues = document.querySelectorAll(".alert-row-value");
+  if (alertValues[0]) alertValues[0].textContent = String(summary.reviewCount);
+  if (alertValues[1]) alertValues[1].textContent = `${summary.avgConfidence.toFixed(1)}%`;
+  if (alertValues[2]) alertValues[2].textContent = String(summary.contaminationCount);
+  const workloadMeter = document.querySelector(".workload-meter strong");
+  if (workloadMeter) workloadMeter.textContent = String(summary.reviewCount);
+
+  if (!summary.scans.length) {
+    drawEmptyAnalyticsCharts();
+    window.addEventListener("resize", drawEmptyAnalyticsCharts);
+    return;
   }
 
   // Draw chart views
@@ -1651,9 +1948,9 @@ function initAnalyticsCharts() {
   new Chart(compositionCanvas, {
     type: "doughnut",
     data: {
-      labels: ["Metal", "Plastic", "Glass", "Paper", "Cardboard", "Food Organics", "General Trash", "Textile", "Battery"],
+      labels: summary.categoryLabels,
       datasets: [{
-        data: [25, 20, 15, 10, 10, 8, 5, 5, 2],
+        data: summary.categoryValues,
         backgroundColor: [
           palette.green,
           palette.teal,
@@ -1678,7 +1975,7 @@ function initAnalyticsCharts() {
         datalabels: {
           color: "#ffffff",
           font: { weight: "bold", size: 10 },
-          formatter: (value) => value >= 5 ? value + "%" : "",
+          formatter: (value) => value > 0 ? value : "",
           display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 5,
           textShadowColor: "rgba(0,0,0,0.4)",
           textShadowBlur: 3
@@ -1690,58 +1987,17 @@ function initAnalyticsCharts() {
   // 2. RESALE CHART
   const resaleCanvas = document.getElementById("resaleChart");
   if (resaleCanvas) {
-    new Chart(resaleCanvas, {
-      type: "bar",
-      data: {
-        labels: ["Metal", "Plastic", "Glass", "Paper", "Cardboard"],
-        datasets: [{
-          label: "Resale Value",
-          data: [540000, 152000, 107051, 15000, 21000],
-          backgroundColor: [palette.green, palette.teal, palette.blue, palette.purple, palette.amber],
-          borderColor: "rgba(4,15,13,0.92)",
-          borderWidth: 1,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        ...chartDefaults,
-        plugins: {
-          legend: { display: false },
-          datalabels: {
-            anchor: "end",
-            align: "top",
-            color: labelColor,
-            font: { weight: "bold", size: 10.5 },
-            formatter: (value) => "$" + (value / 1000).toFixed(0) + "k",
-            padding: { bottom: 4 }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { callback: (value) => "$" + value / 1000 + "k", color: tickColor },
-            grid: { color: gridColor }
-          },
-          x: { ticks: { color: tickColor }, grid: { display: false } }
-        }
-      }
-    });
+    drawEmptyChart(resaleCanvas, "No resale data");
   }
 
   // 3. YIELD CHART
   const yieldCanvas = document.getElementById("yieldChart");
   if (yieldCanvas) {
     new Chart(yieldCanvas, {
-      type: "line",
+      type: "bar",
       data: {
-        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-        datasets: [
-          { label: "Metal", data: [350, 360, 380, 400, 420, 450], borderColor: palette.green, backgroundColor: isLight ? "rgba(0, 240, 138, 0.04)" : "rgba(0, 240, 138, 0.10)", tension: 0.32, fill: true },
-          { label: "Plastic", data: [280, 290, 310, 330, 350, 380], borderColor: palette.teal, backgroundColor: isLight ? "rgba(0, 214, 214, 0.04)" : "rgba(0, 214, 214, 0.08)", tension: 0.32, fill: true },
-          { label: "Paper", data: [110, 115, 120, 130, 140, 150], borderColor: palette.purple, backgroundColor: isLight ? "rgba(125, 223, 167, 0.04)" : "rgba(125, 223, 167, 0.08)", tension: 0.32, fill: true },
-          { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], borderColor: palette.amber, backgroundColor: isLight ? "rgba(216, 164, 72, 0.04)" : "rgba(216, 164, 72, 0.08)", tension: 0.32, fill: true },
-          { label: "Glass", data: [90, 95, 105, 110, 120, 127], borderColor: palette.blue, backgroundColor: isLight ? "rgba(79, 145, 255, 0.04)" : "rgba(79, 145, 255, 0.08)", tension: 0.32, fill: true }
-        ]
+        labels: summary.categoryLabels,
+        datasets: [{ label: "Detected items", data: summary.categoryValues, backgroundColor: palette.green, borderRadius: 6 }]
       },
       options: {
         ...chartDefaults,
@@ -1758,6 +2014,23 @@ function initAnalyticsCharts() {
 }
 
 /* Fallback chart drawings inside plain canvas context */
+function drawEmptyChart(canvas, label = "No data") {
+  if (!canvas) return;
+  const { ctx, width, height } = prepareCanvas(canvas);
+  ctx.fillStyle = "rgba(4, 15, 13, 0.86)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(244,255,249,0.62)";
+  ctx.font = "600 15px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(label, width / 2, height / 2);
+}
+
+function drawEmptyAnalyticsCharts() {
+  drawEmptyChart(document.getElementById("compositionChart"), "No analytics data");
+  drawEmptyChart(document.getElementById("resaleChart"), "No resale data");
+  drawEmptyChart(document.getElementById("yieldChart"), "No scan data");
+}
+
 function prepareCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
@@ -1770,11 +2043,16 @@ function prepareCanvas(canvas) {
 }
 
 function drawFallbackAnalyticsCharts(palette) {
+  const summary = plGetAnalyticsSummary();
+  if (!summary.scans.length) {
+    drawEmptyAnalyticsCharts();
+    return;
+  }
+
   const composition = document.getElementById("compositionChart");
   if (composition) {
     const { ctx, width, height } = prepareCanvas(composition);
-    const labels = ["Metal", "Plastic", "Glass", "Paper", "Cardboard", "Food Organics", "General Trash", "Textile", "Battery"];
-    const values = plSafeArray([25, 20, 15, 10, 10, 8, 5, 5, 2]);
+    const values = summary.categoryValues;
     const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange, palette.green, "#7f8c8d", palette.teal, palette.red];
     const total = values.reduce((sum, value) => sum + value, 0) || 1;
     const radius = Math.min(width, height) * 0.28;
@@ -1807,25 +2085,13 @@ function drawFallbackAnalyticsCharts(palette) {
 
   const resale = document.getElementById("resaleChart");
   if (resale) {
-    const { ctx, width, height } = prepareCanvas(resale);
-    const labels = ["Metal", "Plastic", "Glass", "Paper", "Cardboard"];
-    const values = [540, 152, 107, 15, 21];
-    const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange];
-    drawFallbackBars(ctx, width, height, labels, values, colors, "$", "k");
+    drawEmptyChart(resale, "No resale data");
   }
 
   const yieldCanvas = document.getElementById("yieldChart");
   if (yieldCanvas) {
     const { ctx, width, height } = prepareCanvas(yieldCanvas);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-    const series = [
-      { label: "Metal", data: [350, 360, 380, 400, 420, 450], color: palette.amber },
-      { label: "Plastic", data: [280, 290, 310, 330, 350, 380], color: palette.blue },
-      { label: "Paper", data: [110, 115, 120, 130, 140, 150], color: palette.slate },
-      { label: "Cardboard", data: [90, 95, 105, 120, 130, 140], color: palette.orange },
-      { label: "Glass", data: [90, 95, 105, 110, 120, 127], color: palette.purple }
-    ];
-    drawFallbackLines(ctx, width, height, months, series);
+    drawFallbackBars(ctx, width, height, summary.categoryLabels, summary.categoryValues, [palette.green], "", "");
   }
 }
 
@@ -1854,7 +2120,7 @@ function drawFallbackBars(ctx, width, height, labels, values, colors, prefix, su
     const barHeight = (values[index] / max) * chartHeight;
     const x = left + index * (barWidth + barGap);
     const y = top + chartHeight - barHeight;
-    ctx.fillStyle = colors[index];
+    ctx.fillStyle = colors[index % colors.length];
     ctx.fillRect(x, y, barWidth, barHeight);
     ctx.fillStyle = "#66756f";
     ctx.fillText(label, x + barWidth / 2, height - 20);
@@ -2136,24 +2402,33 @@ function renderMaterialDetail(materialName, options = {}) {
     normName = "General Trash";
   }
 
-  const data = drillMaterialData[normName] || drillMaterialData.Metal;
   const panel = document.getElementById("detail-material");
   if (!panel) return;
+  const summary = plGetAnalyticsSummary();
+  const materials = summary.materials.filter(material => material.category === normName);
+  const count = materials.length;
+  const contaminated = materials.filter(material => !plIsClean(material)).length;
+  const recyclable = materials.filter(plIsRecyclable).length;
+  const avgConfidence = count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
+  const isContaminant = contaminated > 0 && recyclable === 0;
+  const color = drillMaterialData[normName]?.color || "#00F08A";
+  const subtitle = count ? `${count} saved detection(s) from scan results.` : "No saved detections for this material yet.";
+  const zones = count ? [["Recyclable", recyclable], ["Contaminated", contaminated], ["Other", Math.max(count - recyclable - contaminated, 0)]] : [];
 
   panel.querySelectorAll("[data-material-title]").forEach(el => { el.textContent = normName; });
-  panel.querySelectorAll("[data-material-subtitle]").forEach(el => { el.textContent = data.subtitle; });
-  panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = data.tonnage; el.style.color = data.color; });
-  panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = data.value; el.style.color = data.color; });
-  panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = data.rate; });
-  panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = data.purity; el.style.color = data.color; });
-  panel.querySelectorAll("[data-material-status]").forEach(el => { el.textContent = data.status; });
-  panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = data.isContaminant ? "Total Flagged" : "Tonnage Recovered"; });
-  panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = data.isContaminant ? "Est. Sorting Penalty" : "Commodity Market Value"; });
-  panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = data.isContaminant ? "Severity Rating" : "Avg Material Purity"; });
-  panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = data.isContaminant ? "30-Day Flagged Trend" : "30-Day Recovery Trend"; });
-  panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = data.isContaminant ? "Flags by upload type" : "Distribution by upload type"; });
-  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, data.trend, data.color));
-  panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, data.zones, data.color, data.isContaminant ? "" : " t"));
+  panel.querySelectorAll("[data-material-subtitle]").forEach(el => { el.textContent = subtitle; });
+  panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = String(count); el.style.color = color; });
+  panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = "No data"; el.style.color = color; });
+  panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = "No resale field saved"; });
+  panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = `${avgConfidence.toFixed(1)}%`; el.style.color = color; });
+  panel.querySelectorAll("[data-material-status]").forEach(el => { el.textContent = count ? `${contaminated} contaminated` : "No data"; });
+  panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = isContaminant ? "Total Flagged" : "Detected Count"; });
+  panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = "Resale Value"; });
+  panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = "Avg Confidence"; });
+  panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = "Saved Scan Trend"; });
+  panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = "Saved Material Status"; });
+  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, count ? materials.map(material => plConfidencePercent(material.confidence)) : [], color));
+  panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, zones, color, ""));
 
   if (activate) activateDetailPanel("detail-material");
 }
@@ -2167,7 +2442,20 @@ function renderStationDetail(stationId, options = {}) {
   if (stationId === "BELT-C03" || stationId === "STATION-C03") normId = "ZIP-BATCH";
   if (stationId === "BELT-D04" || stationId === "STATION-D04") normId = "QUARANTINE-UPLOAD";
 
-  const data = drillStationData[normId] || drillStationData["UPLOAD-HUB"];
+  const summary = plGetAnalyticsSummary();
+  const data = {
+    load: String(summary.scans.length),
+    capacity: "Saved scans",
+    speed: "YOLOv8 backend",
+    maxSpeed: "Supabase records",
+    scanner: getUploadSourceDisplayName(normId),
+    motor: summary.scans.length ? "Data available" : "No data",
+    air: "Upload-triggered",
+    action: summary.reviewCount ? "Review needed" : "No pending review",
+    insight: summary.scans.length ? "Saved scans are loaded from Supabase records." : "No scan data yet. Upload a file to generate model results.",
+    uptime: [["Cleared", summary.scans.filter(scan => plNormalizeStatus(scan.overall_status) === "accepted").length], ["Review", summary.reviewCount], ["Quarantined", summary.scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length]],
+    composition: [["Recyclable", summary.recyclableCount], ["Non-recyclable", summary.nonRecyclableCount], ["Contaminated", summary.contaminationCount]]
+  };
   const panel = document.getElementById("detail-belt");
   if (!panel) return;
 
@@ -2427,7 +2715,7 @@ function animateProgressBars() {
 }
 
 /* Page Navigation Match & Trigger */
-function initPurityLoopApp() {
+async function initPurityLoopApp() {
   // Navigation terminology updates across all files
   const sideLinks = document.querySelectorAll(".side-nav a");
   sideLinks.forEach(link => {
@@ -2445,6 +2733,7 @@ function initPurityLoopApp() {
   initPasswordToggle();
   // initMobileNav(); // Handled by theme.js
   animateProgressBars();
+  await plRefreshScanResultsFromSupabase();
   initUploadPage();
   initResultPage();
   initSubmitTicketPage();

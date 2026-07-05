@@ -40,6 +40,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="stylesheet" href="/css/style.css" />
       </head>
       <body style={{ backgroundColor: "#010806" }}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__PURITYLOOP_CONFIG__=${JSON.stringify({
+              apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "",
+              useSupabase: process.env.NEXT_PUBLIC_USE_SUPABASE === "true",
+              supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+              supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+            })};`
+          }}
+        />
         {children}
         <Script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js" strategy="afterInteractive" />
         <Script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" strategy="afterInteractive" />

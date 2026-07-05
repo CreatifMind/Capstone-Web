@@ -607,3 +607,101 @@ if (document.readyState === 'loading') {
 }
 
 window.addEventListener('purityloop:page-ready', initPurityLoopTheme);
+
+/* ── MOBILE OVERLAY LOCKS + SETTINGS SLIDER ── */
+(function () {
+  const MOBILE_MAX = 768;
+  const isMobile = () => window.innerWidth <= MOBILE_MAX;
+  const landingMenu = () => document.getElementById('mobileMenu');
+  const appSidebar = () => document.getElementById('appSidebar');
+
+  function setExpanded(selectors, value) {
+    document.querySelectorAll(selectors).forEach((el) => {
+      el.setAttribute('aria-expanded', String(value));
+    });
+  }
+
+  function closeLandingMenu() {
+    const menu = landingMenu();
+    if (menu) menu.classList.remove('open');
+    document.body.classList.remove('landing-menu-open');
+    setExpanded('[aria-controls="mobileMenu"], #mobileMenuClose', false);
+  }
+
+  function closeAppSidebar() {
+    const sidebar = appSidebar();
+    if (sidebar) sidebar.classList.remove('mobile-open');
+    document.body.classList.remove('app-sidebar-open');
+    setExpanded('#mobileToggle, #sidebarToggle', false);
+  }
+
+  function syncOverlayLocks() {
+    if (!isMobile()) {
+      closeLandingMenu();
+      closeAppSidebar();
+      return;
+    }
+
+    document.body.classList.toggle(
+      'landing-menu-open',
+      Boolean(landingMenu()?.classList.contains('open'))
+    );
+    document.body.classList.toggle(
+      'app-sidebar-open',
+      Boolean(appSidebar()?.classList.contains('mobile-open'))
+    );
+  }
+
+  function bindOverlayLocks() {
+    if (document.documentElement.dataset.overlayLocksBound === 'true') return;
+    document.documentElement.dataset.overlayLocksBound = 'true';
+
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      window.setTimeout(syncOverlayLocks, 0);
+
+      if (target.closest('#mobileMenu a')) closeLandingMenu();
+      if (target.closest('#appSidebar.mobile-open a')) closeAppSidebar();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeLandingMenu();
+        closeAppSidebar();
+      }
+    });
+
+    window.addEventListener('resize', syncOverlayLocks);
+  }
+
+  function bindSettingsThresholdSliders() {
+    document.querySelectorAll('.settings-card input[type="range"]').forEach((input) => {
+      if (!(input instanceof HTMLInputElement) || input.dataset.thresholdBound === 'true') return;
+      input.dataset.thresholdBound = 'true';
+
+      const output = input.closest('.settings-card')?.querySelector('.threshold-control strong');
+      const update = () => {
+        if (output) output.textContent = `${input.value}%`;
+      };
+
+      input.addEventListener('input', update);
+      update();
+    });
+  }
+
+  function initMobileOverlayFix() {
+    bindOverlayLocks();
+    bindSettingsThresholdSliders();
+    syncOverlayLocks();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMobileOverlayFix);
+  } else {
+    initMobileOverlayFix();
+  }
+
+  window.addEventListener('purityloop:page-ready', initMobileOverlayFix);
+})();

@@ -118,11 +118,9 @@ const html = `
 
           <aside class="ticket-status-panel panel bbox-card">
             <p class="eyebrow">Ticket queue</p>
-            <h2>Status examples</h2>
+            <h2>Current tickets</h2>
             <div class="ticket-status-list">
-              <div><span class="status-pill review">Open</span><strong>Model review requested</strong><small>2 min ago</small></div>
-              <div><span class="status-pill review">In Review</span><strong>Upload preview mismatch</strong><small>16 min ago</small></div>
-              <div><span class="status-pill cleared">Resolved</span><strong>Analytics export restored</strong><small>Yesterday</small></div>
+              <div class="feed-empty">No support tickets submitted yet.</div>
             </div>
           </aside>
         </section>

@@ -105,37 +105,37 @@ const html = `
           <article class="kpi-card material drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
             <div class="kpi-icon-row">
               <span class="kpi-badge badge-blue"><i class="fa-solid fa-recycle"></i></span>
-              <span class="kpi-trend trend-up">▲ 5.2%</span>
+              <span class="kpi-trend trend-neutral">no data</span>
             </div>
-            <span>Total Material Diverted</span>
-            <strong>1,500 <small>tons</small></strong>
-            <p>Year-to-date across uploaded image batches</p>
-            <div class="kpi-progress-meta"><span>YTD target progress</span><strong>72%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 72%"></span></div>
+            <span>Detected Materials</span>
+            <strong>0</strong>
+            <p>No scan data yet</p>
+            <div class="kpi-progress-meta"><span>Saved scan progress</span><strong>0%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
           </article>
 
           <article class="kpi-card revenue drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
             <div class="kpi-icon-row">
               <span class="kpi-badge badge-green"><i class="fa-solid fa-sack-dollar"></i></span>
-              <span class="kpi-trend trend-up">▲ 8.1%</span>
+              <span class="kpi-trend trend-neutral">no data</span>
             </div>
-            <span>Revenue Generated</span>
-            <strong>$842,500</strong>
-            <p>From recovered commodity resale</p>
-            <div class="kpi-progress-meta"><span>Annual revenue target</span><strong>84%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 84%"></span></div>
+            <span>Revenue Data</span>
+            <strong>No data</strong>
+            <p>No resale formula or value field saved</p>
+            <div class="kpi-progress-meta"><span>Revenue data availability</span><strong>0%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
           </article>
 
           <article class="kpi-card purity drill-trigger bbox-card" data-drill-target="detail-purity" tabindex="0">
             <div class="kpi-icon-row">
               <span class="kpi-badge badge-amber"><i class="fa-solid fa-chart-simple"></i></span>
-              <span class="kpi-trend trend-down">▼ 0.5%</span>
+              <span class="kpi-trend trend-neutral">no data</span>
             </div>
-            <span>Average Purity Rate</span>
-            <strong>96.3%</strong>
-            <p>AI-verified recyclable sorting score</p>
-            <div class="kpi-progress-meta"><span>Purity threshold</span><strong>96.3%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 96.3%"></span></div>
+            <span>Average Confidence</span>
+            <strong>0.0%</strong>
+            <p>No scan data yet</p>
+            <div class="kpi-progress-meta"><span>Saved scan confidence</span><strong>0%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
           </article>
 
           <article class="kpi-card hazard drill-trigger bbox-card" data-drill-target="detail-contaminants" tabindex="0">
@@ -143,11 +143,11 @@ const html = `
               <span class="kpi-badge badge-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
               <span class="kpi-trend trend-neutral">stable</span>
             </div>
-            <span>Anomalies Blocked</span>
-            <strong>23</strong>
-            <p>Textile & battery hazard incidents</p>
-            <div class="kpi-progress-meta"><span>Monthly risk load</span><strong>23%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 23%"></span></div>
+            <span>Contaminated Items</span>
+            <strong>0</strong>
+            <p>No contamination data yet</p>
+            <div class="kpi-progress-meta"><span>Current risk load</span><strong>0%</strong></div>
+            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
           </article>
         </section>
 
@@ -165,35 +165,35 @@ const html = `
             <a href="/log" class="alert-row review">
               <div class="alert-row-icon"><i class="fa-solid fa-bell"></i></div>
               <div class="alert-row-body">
-                <strong>8 Pending Reviews</strong>
-                <p>Low confidence overrides awaiting human QA.</p>
+                <strong>0 Pending Reviews</strong>
+                <p>No scan data yet.</p>
               </div>
-              <span class="alert-row-value">8</span>
+              <span class="alert-row-value">0</span>
             </a>
 
             <div class="alert-row success drill-trigger" data-drill-target="detail-purity" tabindex="0">
               <div class="alert-row-icon"><i class="fa-solid fa-bullseye"></i></div>
               <div class="alert-row-body">
                 <strong>AI Detection Precision</strong>
-                <p>Active camera classification score.</p>
+                <p>No saved scans yet.</p>
               </div>
-              <span class="alert-row-value">98.2%</span>
+              <span class="alert-row-value">0.0%</span>
             </div>
 
             <div class="alert-row neutral drill-trigger" data-drill-target="detail-contaminants" tabindex="0">
               <div class="alert-row-icon"><i class="fa-solid fa-ban"></i></div>
               <div class="alert-row-body">
                 <strong>Anomalies Blocked</strong>
-                <p>Textile and battery hazard alerts.</p>
+                <p>No contamination data yet.</p>
               </div>
-              <span class="alert-row-value">23</span>
+              <span class="alert-row-value">0</span>
             </div>
 
             <div class="alert-row danger-row drill-trigger" data-drill-target="detail-purity" tabindex="0">
               <div class="alert-row-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
               <div class="alert-row-body">
-                <strong>Mixed batch needs human review</strong>
-                <p>Glass confidence dropped below approval threshold.</p>
+                <strong>No review alerts</strong>
+                <p>Upload scans to generate review signals.</p>
               </div>
               <span class="alert-row-value" style="color: var(--danger);">!</span>
             </div>
@@ -208,9 +208,7 @@ const html = `
                 <h2>Material Mix</h2>
               </div>
             </div>
-            <p class="chart-subtitle">Breakdown of all 9 material categories detected across uploaded images, 2026
-              YTD.
-            </p>
+            <p class="chart-subtitle">No material data yet. Upload scans to populate this chart.</p>
             <div class="chart-box">
               <canvas id="compositionChart"></canvas>
             </div>
@@ -224,7 +222,7 @@ const html = `
                 <h2>Resale Value by Category</h2>
               </div>
             </div>
-            <p class="chart-subtitle">Estimated revenue generated per material type based on current market rates.</p>
+            <p class="chart-subtitle">No resale data yet. Saved scans do not include revenue fields.</p>
             <div class="chart-box">
               <canvas id="resaleChart"></canvas>
             </div>
@@ -244,29 +242,29 @@ const html = `
             <p class="chart-subtitle">Operator workload by upload type and confidence risk.</p>
             <div class="review-workload-viz" aria-label="Human review workload visualisation">
               <div class="workload-meter">
-                <strong>8</strong>
+                <strong>0</strong>
                 <span>Pending reviews</span>
               </div>
               <div class="workload-bars">
                 <div class="workload-row">
                   <span>Mixed batches</span>
-                  <strong>44%</strong>
-                  <i style="width: 44%"></i>
+                  <strong>0%</strong>
+                  <i style="width: 0%"></i>
                 </div>
                 <div class="workload-row">
                   <span>Low confidence scans</span>
-                  <strong>31%</strong>
-                  <i style="width: 31%"></i>
+                  <strong>0%</strong>
+                  <i style="width: 0%"></i>
                 </div>
                 <div class="workload-row warning">
                   <span>Hazard checks</span>
-                  <strong>18%</strong>
-                  <i style="width: 18%"></i>
+                  <strong>0%</strong>
+                  <i style="width: 0%"></i>
                 </div>
                 <div class="workload-row quiet">
                   <span>Operator corrections</span>
-                  <strong>7%</strong>
-                  <i style="width: 7%"></i>
+                  <strong>0%</strong>
+                  <i style="width: 0%"></i>
                 </div>
               </div>
             </div>
@@ -283,22 +281,7 @@ const html = `
             </div>
 
             <div class="ledger-list" id="dashLedgerList">
-              <!-- Populated by js/script.js -->
-              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
-                <span class="status-pill cleared">Cleared</span>
-                <strong>Scan Verification</strong>
-                <p>10:42 AM | single-image-upload.jpg | Metal (98.7%)</p>
-              </div>
-              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
-                <span class="status-pill review">Review</span>
-                <strong>Manual Review Needed</strong>
-                <p>10:30 AM | mixed-batch.zip | Glass (82.0%)</p>
-              </div>
-              <div class="drill-trigger" data-drill-target="detail-ledger" tabindex="0">
-                <span class="status-pill quarantine">Quarantine</span>
-                <strong>Battery Hazard</strong>
-                <p>10:25 AM | hazard-sample.png | Battery</p>
-              </div>
+              <div class="feed-empty">No scan history yet.</div>
             </div>
           </article>
 
@@ -310,7 +293,7 @@ const html = `
                 <h2>Material Diverted Over Time</h2>
               </div>
             </div>
-            <p class="chart-subtitle">Monthly tonnage recovered per material category, showing growth trend.</p>
+            <p class="chart-subtitle">No scan data yet. Saved material counts appear here after uploads.</p>
             <div class="chart-box">
               <canvas id="yieldChart"></canvas>
             </div>
@@ -341,25 +324,10 @@ const html = `
               to
               view specific sorting statistics.</p>
             <div class="detail-grid five">
-              <button type="button" class="metric-tile" data-material-detail="Metal"><span>Metal</span><strong>450
-                  t</strong><small>$540,000 value</small></button>
-              <button type="button" class="metric-tile" data-material-detail="Plastic"><span>Plastic</span><strong>380
-                  t</strong><small>$152,000 value</small></button>
-              <button type="button" class="metric-tile" data-material-detail="Paper"><span>Paper</span><strong>150
-                  t</strong><small>$15,000 value</small></button>
-              <button type="button" class="metric-tile"
-                data-material-detail="Cardboard"><span>Cardboard</span><strong>140
-                  t</strong><small>$21,000 value</small></button>
-              <button type="button" class="metric-tile" data-material-detail="Glass"><span>Glass</span><strong>127
-                  t</strong><small>$107,051 value</small></button>
+              <div class="feed-empty">No material data yet.</div>
             </div>
             <div class="month-table">
-              <div><span>Jan</span><strong>920 t</strong></div>
-              <div><span>Feb</span><strong>955 t</strong></div>
-              <div><span>Mar</span><strong>1,020 t</strong></div>
-              <div><span>Apr</span><strong>1,090 t</strong></div>
-              <div><span>May</span><strong>1,160 t</strong></div>
-              <div><span>Jun</span><strong>1,247 t</strong></div>
+              <div><span>No saved scans</span><strong>0</strong></div>
             </div>
           </article>
 
@@ -385,35 +353,7 @@ const html = `
                 </thead>
                 <tbody>
                   <tr>
-                    <td><button type="button" class="text-drill" data-material-detail="Metal">Metal</button></td>
-                    <td>450 t</td>
-                    <td>$1,200/t</td>
-                    <td class="positive">$540,000</td>
-                  </tr>
-                  <tr>
-                    <td><button type="button" class="text-drill" data-material-detail="Plastic">Plastic</button></td>
-                    <td>380 t</td>
-                    <td>$400/t</td>
-                    <td class="positive">$152,000</td>
-                  </tr>
-                  <tr>
-                    <td><button type="button" class="text-drill" data-material-detail="Glass">Glass</button></td>
-                    <td>127 t</td>
-                    <td>$843/t</td>
-                    <td class="positive">$107,051</td>
-                  </tr>
-                  <tr>
-                    <td><button type="button" class="text-drill" data-material-detail="Cardboard">Cardboard</button>
-                    </td>
-                    <td>140 t</td>
-                    <td>$150/t</td>
-                    <td class="positive">$21,000</td>
-                  </tr>
-                  <tr>
-                    <td><button type="button" class="text-drill" data-material-detail="Paper">Paper</button></td>
-                    <td>150 t</td>
-                    <td>$100/t</td>
-                    <td class="positive">$15,000</td>
+                    <td colspan="4"><div class="feed-empty">No resale data yet.</div></td>
                   </tr>
                 </tbody>
               </table>
@@ -441,10 +381,7 @@ const html = `
               </div>
             </div>
             <div class="bar-list">
-              <div><span>Single image uploads</span><strong>99.1%</strong><i style="width: 99.1%"></i></div>
-              <div><span>Clean ZIP batches</span><strong>95.0%</strong><i style="width: 95.0%"></i></div>
-              <div><span>Mixed material batches</span><strong>90.8%</strong><i style="width: 90.8%"></i></div>
-              <div><span>Hazard review uploads</span><strong>88.8%</strong><i style="width: 88.8%"></i></div>
+              <div><span>No saved scans</span><strong>0%</strong><i style="width: 0%"></i></div>
             </div>
           </article>
 
@@ -460,30 +397,13 @@ const html = `
               <div>
                 <h3>Recyclables Breakdown</h3>
                 <div class="bar-list compact">
-                  <button type="button" data-material-detail="Metal"><span>Metal</span><strong>25% | 450 t</strong><i
-                      style="width: 25%"></i></button>
-                  <button type="button" data-material-detail="Plastic"><span>Plastic</span><strong>20% | 380
-                      t</strong><i style="width: 20%"></i></button>
-                  <button type="button" data-material-detail="Glass"><span>Glass</span><strong>15% | 127 t</strong><i
-                      style="width: 15%"></i></button>
-                  <button type="button" data-material-detail="Paper"><span>Paper</span><strong>10% | 150 t</strong><i
-                      style="width: 10%"></i></button>
-                  <button type="button" data-material-detail="Cardboard"><span>Cardboard</span><strong>10% | 140
-                      t</strong><i style="width: 10%"></i></button>
+                  <div><span>No recyclable data</span><strong>0</strong><i style="width: 0%"></i></div>
                 </div>
               </div>
               <div>
                 <h3>Contaminants &amp; Hazards</h3>
                 <div class="bar-list compact danger-bars">
-                  <button type="button" data-material-detail="Food Organics"><span>Food Organics</span><strong>8% |
-                      1,420
-                      incidents</strong><i style="width: 8%"></i></button>
-                  <button type="button" data-material-detail="General Trash"><span>General Trash</span><strong>5% | 950
-                      incidents</strong><i style="width: 5%"></i></button>
-                  <button type="button" data-material-detail="Textile"><span>Textile</span><strong>5% | 780
-                      incidents</strong><i style="width: 5%"></i></button>
-                  <button type="button" data-material-detail="Battery"><span>Battery</span><strong>2% | 210
-                      incidents</strong><i style="width: 2%"></i></button>
+                  <div><span>No contaminant data</span><strong>0</strong><i style="width: 0%"></i></div>
                 </div>
               </div>
             </div>
@@ -498,16 +418,7 @@ const html = `
               </div>
             </div>
             <div class="detail-grid four">
-              <button type="button" class="metric-tile danger" data-material-detail="Food Organics"><span>Food
-                  Organics</span><strong>1,420</strong><small>Medium Severity</small></button>
-              <button type="button" class="metric-tile danger" data-material-detail="General Trash"><span>General
-                  Trash</span><strong>950</strong><small>Low Severity</small></button>
-              <button type="button" class="metric-tile danger"
-                data-material-detail="Textile"><span>Textile</span><strong>780</strong><small>High
-                  Severity</small></button>
-              <button type="button" class="metric-tile danger"
-                data-material-detail="Battery"><span>Battery</span><strong>210</strong><small>Critical Fire
-                  Risk</small></button>
+              <div class="feed-empty">No contaminant logs yet.</div>
             </div>
           </article>
 
@@ -534,32 +445,7 @@ const html = `
                 </thead>
                 <tbody>
                   <tr>
-                    <td>10:42 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="SINGLE-IMAGE">single-image-upload.jpg</button>
-                    </td>
-                    <td><button type="button" class="text-drill" data-material-detail="Metal">Metal</button></td>
-                    <td>18.4 kg</td>
-                    <td class="positive">98.7%</td>
-                    <td><span class="status-pill cleared">Cleared</span></td>
-                  </tr>
-                  <tr>
-                    <td>10:30 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="ZIP-BATCH">mixed-batch.zip</button>
-                    </td>
-                    <td><button type="button" class="text-drill" data-material-detail="Glass">Glass</button></td>
-                    <td>14.5 kg</td>
-                    <td class="warning-text">82.0%</td>
-                    <td><span class="status-pill review">Review Needed</span></td>
-                  </tr>
-                  <tr>
-                    <td>10:25 AM</td>
-                    <td><button type="button" class="text-drill" data-belt-detail="QUARANTINE-UPLOAD">hazard-sample.png</button>
-                    </td>
-                    <td><button type="button" class="text-drill" data-material-detail="General Trash">General
-                        Trash</button></td>
-                    <td>12.0 kg</td>
-                    <td class="danger-text">42.1%</td>
-                    <td><span class="status-pill quarantine">Quarantine</span></td>
+                    <td colspan="6"><div class="feed-empty">No scan history yet.</div></td>
                   </tr>
                 </tbody>
               </table>

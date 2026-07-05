@@ -9494,3 +9494,75 @@ body.page-loaded {
     transform: none;
   }
 }
+
+/* Mobile full-screen locked overlays */
+@media (max-width: 768px) {
+  body.landing-menu-open,
+  body.app-sidebar-open {
+    width: 100%;
+    height: 100dvh;
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+
+  body.landing-menu-open #mobileMenu,
+  #mobileMenu.open {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    z-index: 9999 !important;
+    overflow: hidden !important;
+    transform: none !important;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(0, 224, 180, 0.18), transparent 36%),
+      linear-gradient(180deg, rgba(2, 38, 35, 0.98), rgba(0, 16, 13, 0.99)) !important;
+  }
+
+  #appSidebar:not(.mobile-open) {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    overflow: hidden !important;
+    transform: none !important;
+  }
+
+  body.app-sidebar-open #appSidebar,
+  #appSidebar.mobile-open {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    flex: none !important;
+    transform: none !important;
+    z-index: 9999 !important;
+    overflow: hidden !important;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(0, 224, 180, 0.18), transparent 36%),
+      linear-gradient(180deg, rgba(2, 38, 35, 0.98), rgba(0, 16, 13, 0.99)) !important;
+  }
+
+  #mobileMenu.open .mobile-menu-links,
+  #appSidebar.mobile-open .sidebar-nav {
+    overflow: hidden !important;
+  }
+
+  .ops-pro-page .topbar,
+  .dark-app .topbar {
+    position: sticky !important;
+    top: 0;
+    z-index: 80;
+  }
+}
