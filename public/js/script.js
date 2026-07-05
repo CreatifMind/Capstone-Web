@@ -76,6 +76,15 @@ function plIsRecyclable(material) {
   return plNormalizeStatus(material?.recyclable_status) === "recyclable";
 }
 
+function plIsContaminatedMaterial(material) {
+  const contaminantStatus = plNormalizeStatus(material?.contaminant_status);
+  const recyclableStatus = plNormalizeStatus(material?.recyclable_status);
+  return material?.contaminant_status === true ||
+    contaminantStatus === "true" ||
+    contaminantStatus === "contaminated" ||
+    recyclableStatus === "contaminated";
+}
+
 function plConfidencePercent(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return 0;
@@ -122,22 +131,46 @@ function plNormalizeScan(scan) {
 }
 
 async function plRefreshScanResultsFromSupabase() {
-  if (!plUseSupabase()) return false;
+  if (!plUseSupabase()) {
+    if (plConfig().useSupabase) console.error("PurityLoop: Supabase config missing.");
+    return false;
+  }
   const config = plConfig();
+  const baseUrl = String(config.supabaseUrl).replace(/\/$/, "");
+  const headers = {
+    apikey: config.supabaseAnonKey,
+    Authorization: `Bearer ${config.supabaseAnonKey}`
+  };
   try {
-    const url = `${String(config.supabaseUrl).replace(/\/$/, "")}/rest/v1/mock_scan_results?select=*,detected_materials:mock_detected_materials(*)&order=created_at.desc`;
-    const response = await fetch(url, {
-      headers: {
-        apikey: config.supabaseAnonKey,
-        Authorization: `Bearer ${config.supabaseAnonKey}`
-      }
-    });
-    if (!response.ok) return false;
-    const scans = plSafeArray(await response.json()).map(plNormalizeScan).filter(Boolean);
+    const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=*&order=created_at.desc`, { headers });
+    if (!scansResponse.ok) {
+      console.error("PurityLoop: mock_scan_results fetch failed.", scansResponse.status, await scansResponse.text());
+      return false;
+    }
+
+    const materialsResponse = await fetch(`${baseUrl}/rest/v1/mock_detected_materials?select=*`, { headers });
+    if (!materialsResponse.ok) {
+      console.error("PurityLoop: mock_detected_materials fetch failed.", materialsResponse.status, await materialsResponse.text());
+      return false;
+    }
+
+    const scansPayload = await scansResponse.json();
+    const materialsPayload = await materialsResponse.json();
+    const groupedMaterials = plSafeArray(materialsPayload).reduce((acc, material) => {
+      const scanResultId = String(material.scan_result_id || "");
+      if (!scanResultId) return acc;
+      acc[scanResultId] = acc[scanResultId] || [];
+      acc[scanResultId].push(material);
+      return acc;
+    }, {});
+    const scans = plSafeArray(scansPayload)
+      .map(scan => ({ ...scan, detected_materials: groupedMaterials[String(scan.id || "")] || [] }))
+      .map(plNormalizeScan)
+      .filter(Boolean);
     plSetScanResults(scans);
     return true;
   } catch (error) {
-    console.warn("PurityLoop: Supabase scan refresh failed.", error);
+    console.error("PurityLoop: Supabase scan refresh failed.", error);
     return false;
   }
 }
@@ -263,25 +296,50 @@ function plGetAnalyticsSummary() {
   const scans = plGetScanResults();
   const materials = scans.flatMap(scan => plSafeArray(scan.detected_materials));
   const categoryCounts = materials.reduce((acc, material) => {
-    const category = material.category || "Unknown";
+    const category = material.category || material.material_name || "Unknown";
     acc[category] = (acc[category] || 0) + 1;
     return acc;
   }, {});
   const recyclableCount = materials.filter(plIsRecyclable).length;
-  const contaminationCount = materials.filter(material => !plIsClean(material)).length;
-  const reviewCount = scans.filter(scan => scan.human_review_required || scan.overall_status === "Human Review Required").length;
-  const avgConfidence = scans.length
-    ? scans.reduce((sum, scan) => sum + plConfidencePercent(scan.overall_confidence), 0) / scans.length
-    : 0;
+  const contaminationCount = materials.filter(plIsContaminatedMaterial).length;
+  const reviewCount = scans.filter(scan => scan.human_review_required || plNormalizeStatus(scan.overall_status) === "review_required").length;
+  const materialConfidences = materials.map(material => plConfidencePercent(material.confidence)).filter(value => value > 0);
+  const scanConfidences = scans.map(scan => plConfidencePercent(scan.overall_confidence)).filter(value => value > 0);
+  const avgConfidence = materialConfidences.length
+    ? materialConfidences.reduce((sum, value) => sum + value, 0) / materialConfidences.length
+    : scanConfidences.length
+      ? scanConfidences.reduce((sum, value) => sum + value, 0) / scanConfidences.length
+      : 0;
+  const categoryRows = Object.entries(categoryCounts)
+    .map(([label, value]) => [label, Number(value) || 0])
+    .sort((a, b) => b[1] - a[1]);
+  const recyclableRows = categoryRows
+    .map(([label]) => [label, materials.filter(material => (material.category || material.material_name || "Unknown") === label && plIsRecyclable(material)).length])
+    .filter(([, value]) => value > 0);
+  const contaminatedRows = categoryRows
+    .map(([label]) => [label, materials.filter(material => (material.category || material.material_name || "Unknown") === label && plIsContaminatedMaterial(material)).length])
+    .filter(([, value]) => value > 0);
   return {
     scans,
     materials,
-    categoryLabels: Object.keys(categoryCounts),
-    categoryValues: Object.values(categoryCounts),
+    savedScansCount: scans.length,
+    detectedMaterialsCount: materials.length,
+    categoryLabels: categoryRows.map(row => row[0]),
+    categoryValues: categoryRows.map(row => row[1]),
+    categoryRows,
+    recyclableRows,
+    contaminatedRows,
     recyclableCount,
     nonRecyclableCount: Math.max(materials.length - recyclableCount, 0),
     contaminationCount,
     reviewCount,
+    lowConfidenceCount: materials.filter(material => {
+      const confidence = plConfidencePercent(material.confidence);
+      return confidence > 0 && confidence < 85;
+    }).length,
+    hazardCount: contaminationCount,
+    clearedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "accepted").length,
+    quarantinedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length,
     avgConfidence
   };
 }
@@ -1839,11 +1897,12 @@ function initAnalyticsCharts() {
 
   const summary = plGetAnalyticsSummary();
 
-  const kpiCards = document.querySelectorAll(".kpi-card");
+  const kpiCards = document.querySelectorAll(".kpi-grid-four > .kpi-card");
   if (kpiCards[0]) {
     kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Detected Materials");
-    kpiCards[0].querySelector("strong").innerHTML = `${summary.materials.length}`;
-    kpiCards[0].querySelector("p").textContent = summary.materials.length ? "From saved scan results" : "No scan data yet";
+    kpiCards[0].querySelector("strong").innerHTML = `${summary.detectedMaterialsCount}`;
+    kpiCards[0].querySelector("p").textContent = summary.detectedMaterialsCount ? "From saved detected materials" : "No material data yet";
+    kpiCards[0].querySelector(".kpi-progress-meta strong") && (kpiCards[0].querySelector(".kpi-progress-meta strong").textContent = String(summary.savedScansCount));
   }
   if (kpiCards[1]) {
     kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Revenue Data");
@@ -1853,16 +1912,21 @@ function initAnalyticsCharts() {
   if (kpiCards[2]) {
     kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Average Confidence");
     kpiCards[2].querySelector("strong").textContent = `${summary.avgConfidence.toFixed(1)}%`;
-    kpiCards[2].querySelector("p").textContent = summary.scans.length ? "From saved scans" : "No scan data yet";
+    kpiCards[2].querySelector("p").textContent = summary.materials.length ? "From detected material confidence" : summary.scans.length ? "From saved scan confidence" : "No scan data yet";
+    kpiCards[2].querySelector(".kpi-progress-meta strong") && (kpiCards[2].querySelector(".kpi-progress-meta strong").textContent = `${summary.avgConfidence.toFixed(1)}%`);
   }
   if (kpiCards[3]) {
     kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Contaminated Items");
     kpiCards[3].querySelector("strong").textContent = String(summary.contaminationCount);
     kpiCards[3].querySelector("p").textContent = summary.contaminationCount ? "From saved detected materials" : "No contamination data yet";
+    kpiCards[3].querySelector(".kpi-progress-meta strong") && (kpiCards[3].querySelector(".kpi-progress-meta strong").textContent = String(summary.reviewCount));
   }
 
-  document.querySelectorAll(".kpi-trend").forEach(item => { item.textContent = summary.scans.length ? "saved data" : "no data"; });
-  document.querySelectorAll(".kpi-progress-fill").forEach(item => { item.style.width = summary.scans.length ? `${Math.min(100, summary.avgConfidence)}%` : "0%"; });
+  document.querySelectorAll(".kpi-grid-four .kpi-trend").forEach(item => { item.textContent = summary.scans.length ? "saved data" : "no data"; });
+  if (kpiCards[0]?.querySelector(".kpi-progress-fill")) kpiCards[0].querySelector(".kpi-progress-fill").style.width = summary.savedScansCount ? "100%" : "0%";
+  if (kpiCards[1]?.querySelector(".kpi-progress-fill")) kpiCards[1].querySelector(".kpi-progress-fill").style.width = "0%";
+  if (kpiCards[2]?.querySelector(".kpi-progress-fill")) kpiCards[2].querySelector(".kpi-progress-fill").style.width = summary.avgConfidence ? `${Math.min(100, summary.avgConfidence)}%` : "0%";
+  if (kpiCards[3]?.querySelector(".kpi-progress-fill")) kpiCards[3].querySelector(".kpi-progress-fill").style.width = summary.contaminationCount ? `${Math.min(100, (summary.contaminationCount / Math.max(summary.detectedMaterialsCount, 1)) * 100)}%` : "0%";
 
   // Update recent activity ledger preview list from localStorage
   const recentList = document.getElementById("dashLedgerList");
@@ -1901,8 +1965,40 @@ function initAnalyticsCharts() {
   if (alertValues[0]) alertValues[0].textContent = String(summary.reviewCount);
   if (alertValues[1]) alertValues[1].textContent = `${summary.avgConfidence.toFixed(1)}%`;
   if (alertValues[2]) alertValues[2].textContent = String(summary.contaminationCount);
+  const alertRows = document.querySelectorAll(".alert-row");
+  if (alertRows[0]) {
+    alertRows[0].querySelector("strong").textContent = `${summary.reviewCount} Pending Reviews`;
+    alertRows[0].querySelector("p").textContent = summary.savedScansCount ? `${summary.savedScansCount} saved scan(s).` : "No scan data yet.";
+  }
+  if (alertRows[1]) {
+    alertRows[1].querySelector("p").textContent = summary.avgConfidence ? "Calculated from saved confidence values." : "No saved scans yet.";
+  }
+  if (alertRows[2]) {
+    alertRows[2].querySelector("p").textContent = summary.contaminationCount ? "From detected material contamination status." : "No contamination data yet.";
+  }
   const workloadMeter = document.querySelector(".workload-meter strong");
   if (workloadMeter) workloadMeter.textContent = String(summary.reviewCount);
+  const workloadRows = document.querySelectorAll(".workload-row");
+  const workloadMetrics = [
+    ["Saved scans", summary.savedScansCount],
+    ["Low confidence scans", summary.lowConfidenceCount],
+    ["Hazard checks", summary.hazardCount],
+    ["Operator corrections", 0]
+  ];
+  workloadRows.forEach((row, index) => {
+    const metric = workloadMetrics[index];
+    if (!metric) return;
+    const value = metric[1];
+    row.querySelector("span").textContent = metric[0];
+    row.querySelector("strong").textContent = String(value);
+    const bar = row.querySelector("i");
+    if (bar) bar.style.width = `${summary.savedScansCount ? Math.min(100, Math.max(8, (value / Math.max(summary.savedScansCount, summary.detectedMaterialsCount, 1)) * 100)) : 0}%`;
+  });
+  const compositionSubtitle = compositionCanvas.closest(".chart-panel")?.querySelector(".chart-subtitle");
+  if (compositionSubtitle) compositionSubtitle.textContent = summary.materials.length ? `${summary.detectedMaterialsCount} detected material record(s) from saved scans.` : "No material data yet. Upload scans to populate this chart.";
+  const yieldSubtitle = document.getElementById("yieldChart")?.closest(".chart-panel")?.querySelector(".chart-subtitle");
+  if (yieldSubtitle) yieldSubtitle.textContent = summary.materials.length ? "Saved material counts grouped by category." : "No scan data yet. Saved material counts appear here after uploads.";
+  updateAnalyticsDetailPanels(summary);
 
   if (!summary.scans.length) {
     drawEmptyAnalyticsCharts();
@@ -2391,6 +2487,85 @@ function renderBarRows(container, rows, color, suffix = "") {
     .join("");
 }
 
+function updateAnalyticsDetailPanels(summary) {
+  const yieldPanel = document.getElementById("detail-yield");
+  if (yieldPanel) {
+    const yieldGrid = yieldPanel.querySelector(".detail-grid.five");
+    if (yieldGrid) {
+      yieldGrid.innerHTML = summary.materials.length
+        ? summary.categoryRows.map(([label, count]) => `
+            <button type="button" class="metric-tile static" data-material-detail="${label}">
+              <span>${label}</span>
+              <strong>${count}</strong>
+              <small>Detected material records</small>
+            </button>
+          `).join("")
+        : `<div class="feed-empty">No material data yet.</div>`;
+    }
+    const monthTable = yieldPanel.querySelector(".month-table");
+    if (monthTable) {
+      monthTable.innerHTML = summary.materials.length
+        ? `
+          <div><span>Saved scans</span><strong>${summary.savedScansCount}</strong></div>
+          <div><span>Detected materials</span><strong>${summary.detectedMaterialsCount}</strong></div>
+          <div><span>Avg confidence</span><strong>${summary.avgConfidence.toFixed(1)}%</strong></div>
+        `
+        : `<div><span>No saved scans</span><strong>0</strong></div>`;
+    }
+  }
+
+  const purityPanel = document.getElementById("detail-purity");
+  if (purityPanel) {
+    renderBarRows(
+      purityPanel.querySelector(".bar-list"),
+      summary.materials.length ? [["Average confidence", Number(summary.avgConfidence.toFixed(1))], ["Clean recyclable", summary.recyclableCount], ["Pending review", summary.reviewCount]] : [],
+      "#00F08A",
+      ""
+    );
+  }
+
+  const compositionPanel = document.getElementById("detail-composition");
+  if (compositionPanel) {
+    const lists = compositionPanel.querySelectorAll(".bar-list.compact");
+    renderBarRows(lists[0], summary.recyclableRows, "#00F08A", "");
+    renderBarRows(lists[1], summary.contaminatedRows, "#D85E70", "");
+  }
+
+  const contaminantsPanel = document.getElementById("detail-contaminants");
+  if (contaminantsPanel) {
+    const grid = contaminantsPanel.querySelector(".detail-grid.four");
+    if (grid) {
+      grid.innerHTML = summary.contaminationCount
+        ? summary.contaminatedRows.map(([label, count]) => `
+            <button type="button" class="metric-tile static" data-material-detail="${label}">
+              <span>${label}</span>
+              <strong>${count}</strong>
+              <small>Contaminated records</small>
+            </button>
+          `).join("")
+        : `<div class="feed-empty">No contaminant logs yet.</div>`;
+    }
+  }
+
+  const ledgerPanel = document.getElementById("detail-ledger");
+  const ledgerBody = ledgerPanel?.querySelector("tbody");
+  if (ledgerBody) {
+    const ledger = getAuditLedger();
+    ledgerBody.innerHTML = ledger.length
+      ? ledger.slice(0, 10).map(log => `
+          <tr onclick="window.location.href='/result?scanId=${encodeURIComponent(log.scanId || log.id)}'">
+            <td>${log.time}</td>
+            <td>${getLogSourceLabel(log)}</td>
+            <td>${log.category}</td>
+            <td>${log.weight}</td>
+            <td>${log.confidence}</td>
+            <td>${log.status}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="6"><div class="feed-empty">No scan history yet.</div></td></tr>`;
+  }
+}
+
 function renderMaterialDetail(materialName, options = {}) {
   const activate = options.activate !== false;
 
@@ -2407,7 +2582,7 @@ function renderMaterialDetail(materialName, options = {}) {
   const summary = plGetAnalyticsSummary();
   const materials = summary.materials.filter(material => material.category === normName);
   const count = materials.length;
-  const contaminated = materials.filter(material => !plIsClean(material)).length;
+  const contaminated = materials.filter(plIsContaminatedMaterial).length;
   const recyclable = materials.filter(plIsRecyclable).length;
   const avgConfidence = count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
   const isContaminant = contaminated > 0 && recyclable === 0;
@@ -2453,7 +2628,7 @@ function renderStationDetail(stationId, options = {}) {
     air: "Upload-triggered",
     action: summary.reviewCount ? "Review needed" : "No pending review",
     insight: summary.scans.length ? "Saved scans are loaded from Supabase records." : "No scan data yet. Upload a file to generate model results.",
-    uptime: [["Cleared", summary.scans.filter(scan => plNormalizeStatus(scan.overall_status) === "accepted").length], ["Review", summary.reviewCount], ["Quarantined", summary.scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length]],
+    uptime: [["Cleared", summary.clearedCount], ["Review", summary.reviewCount], ["Quarantined", summary.quarantinedCount]],
     composition: [["Recyclable", summary.recyclableCount], ["Non-recyclable", summary.nonRecyclableCount], ["Contaminated", summary.contaminationCount]]
   };
   const panel = document.getElementById("detail-belt");

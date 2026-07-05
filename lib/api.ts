@@ -9,7 +9,6 @@ const logsKey = "purityloop_scan_logs";
 const settingsKey = "purityloop_settings";
 const scanResultsTable = "mock_scan_results";
 const detectedMaterialsTable = "mock_detected_materials";
-const scanResultSelect = "*, detected_materials:mock_detected_materials(*)";
 
 function canUseSupabase() {
   return USE_SUPABASE && !DEMO_MODE && isSupabaseConfigured && supabase;
@@ -73,6 +72,44 @@ function normalizeScanResult(value: unknown): ScanResult | null {
 
 function normalizeScanResults(value: unknown): ScanResult[] {
   return safeArray<unknown>(value).map(normalizeScanResult).filter((item): item is ScanResult => Boolean(item));
+}
+
+function attachMaterialsToScans(scans: unknown[], materials: unknown[]) {
+  const grouped = safeArray<Record<string, unknown>>(materials).reduce<Record<string, unknown[]>>((acc, material) => {
+    const scanResultId = String(material.scan_result_id || "");
+    if (!scanResultId) return acc;
+    acc[scanResultId] = acc[scanResultId] || [];
+    acc[scanResultId].push(material);
+    return acc;
+  }, {});
+
+  return safeArray<Record<string, unknown>>(scans).map(scan => ({
+    ...scan,
+    detected_materials: grouped[String(scan.id || "")] || []
+  }));
+}
+
+async function getScansWithMaterials() {
+  if (!supabase) return null;
+
+  const { data: scans, error: scansError } = await supabase
+    .from(scanResultsTable)
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (scansError) {
+    console.error("Supabase fetch failed: mock_scan_results", scansError);
+    return null;
+  }
+
+  const { data: materials, error: materialsError } = await supabase
+    .from(detectedMaterialsTable)
+    .select("*");
+  if (materialsError) {
+    console.error("Supabase fetch failed: mock_detected_materials", materialsError);
+    return null;
+  }
+
+  return attachMaterialsToScans(scans || [], materials || []);
 }
 
 export async function loginUser(email?: string) {
@@ -148,13 +185,8 @@ export async function saveDetectedMaterials(scanResultId: string, materials: Det
 
 export async function getLatestScanResult(): Promise<ScanResult | null> {
   if (canUseSupabase() && supabase) {
-    const { data, error } = await supabase
-      .from(scanResultsTable)
-      .select(scanResultSelect)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!error && data) return normalizeScanResult(data);
+    const scans = await getScansWithMaterials();
+    if (scans) return normalizeScanResults(scans)[0] || null;
   }
 
   return normalizeScanResult(safeJsonParse<unknown>(getStorageItem(latestScanKey), null));
@@ -164,12 +196,8 @@ export async function getScanResultById(id: string): Promise<ScanResult | null> 
   if (!id) return null;
 
   if (canUseSupabase() && supabase) {
-    const { data, error } = await supabase
-      .from(scanResultsTable)
-      .select(scanResultSelect)
-      .eq("id", id)
-      .maybeSingle();
-    if (!error && data) return normalizeScanResult(data);
+    const scans = await getScansWithMaterials();
+    if (scans) return normalizeScanResults(scans).find(item => item.id === id) || null;
   }
   const logs = safeArray<ScanResult>(await getScanLogs());
   return logs.find(item => item.id === id) || null;
@@ -177,11 +205,8 @@ export async function getScanResultById(id: string): Promise<ScanResult | null> 
 
 export async function getScanLogs(): Promise<ScanResult[]> {
   if (canUseSupabase() && supabase) {
-    const { data, error } = await supabase
-      .from(scanResultsTable)
-      .select(scanResultSelect)
-      .order("created_at", { ascending: false });
-    if (!error && data) return normalizeScanResults(data);
+    const scans = await getScansWithMaterials();
+    if (scans) return normalizeScanResults(scans);
   }
   return normalizeScanResults(safeJsonParse<unknown>(getStorageItem(logsKey), []));
 }
@@ -189,9 +214,29 @@ export async function getScanLogs(): Promise<ScanResult[]> {
 export async function getAnalyticsData() {
   const logs = safeArray<ScanResult>(await getScanLogs());
   const materials = logs.flatMap(log => safeArray<DetectedMaterial>(log.detected_materials));
-  const recyclable = materials.filter(material => material.recyclable_status === "Recyclable").length;
-  const contaminated = materials.filter(material => material.contaminant_status !== "Clean").length;
-  const reviewRequired = logs.filter(log => log.human_review_required).length;
+  const normalizeStatus = (value?: string) => String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const confidencePercent = (value: unknown) => {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return 0;
+    return numeric <= 1 ? numeric * 100 : numeric;
+  };
+  const recyclable = materials.filter(material => normalizeStatus(material.recyclable_status) === "recyclable").length;
+  const contaminated = materials.filter(material => {
+    const contaminantStatus = normalizeStatus(material.contaminant_status);
+    const recyclableStatus = normalizeStatus(material.recyclable_status);
+    return material.contaminant_status === "true" ||
+      contaminantStatus === "true" ||
+      contaminantStatus === "contaminated" ||
+      recyclableStatus === "contaminated";
+  }).length;
+  const reviewRequired = logs.filter(log => log.human_review_required || normalizeStatus(log.overall_status) === "review_required").length;
+  const materialConfidences = materials.map(material => confidencePercent(material.confidence)).filter(value => value > 0);
+  const scanConfidences = logs.map(item => confidencePercent(item.overall_confidence)).filter(value => value > 0);
+  const averageConfidence = materialConfidences.length
+    ? materialConfidences.reduce((sum, value) => sum + value, 0) / materialConfidences.length
+    : scanConfidences.length
+      ? scanConfidences.reduce((sum, value) => sum + value, 0) / scanConfidences.length
+      : 0;
 
   return {
     scanCount: logs.length,
@@ -202,9 +247,7 @@ export async function getAnalyticsData() {
     contaminationCount: contaminated,
     recyclableRecoveryRate: materials.length ? (recyclable / materials.length) * 100 : 0,
     contaminationRate: materials.length ? (contaminated / materials.length) * 100 : 0,
-    averageConfidence: logs.length
-      ? logs.reduce((sum, item) => sum + Number(item.overall_confidence || 0), 0) / logs.length
-      : 0
+    averageConfidence
   };
 }
 

@@ -8581,10 +8581,26 @@ body.page-loaded {
 @media (max-width: 768px) {
   .dark-landing .hero-inner {
     grid-template-columns: 1fr !important;
+    gap: 18px !important;
   }
 
   .dark-landing .hero-visual {
     display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+  }
+
+  .dark-landing .hero-copy {
+    min-height: 0;
+  }
+
+  .dark-landing .hero-dashboard-card {
+    display: block !important;
+    max-height: none;
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
   }
 }
 
@@ -8616,12 +8632,52 @@ body.page-loaded {
 }
 
 @media (max-width: 640px) {
+  .dark-landing .hero-section {
+    align-items: flex-start;
+    padding-top: 96px;
+  }
+
+  .dark-landing .hero-tag {
+    margin-bottom: 14px;
+  }
+
+  .dark-landing .hero-headline {
+    margin-bottom: 14px;
+  }
+
+  .dark-landing .hero-sub {
+    margin-bottom: 18px;
+  }
+
+  .dark-landing .hero-social-proof {
+    margin-top: 18px;
+  }
+
   .dark-landing .hero-dashboard-card {
     padding: 16px;
   }
 
   .dark-landing .hdc-metrics {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .dark-landing .hdc-metric {
+    padding: 10px 6px;
+  }
+
+  .dark-landing .hdc-metric-val {
+    font-size: 1rem;
+  }
+
+  .dark-landing .hdc-chart-placeholder {
+    height: 72px;
+    margin-bottom: 12px;
+  }
+
+  .dark-landing .hdc-item {
+    padding: 8px 10px;
   }
 }
 
@@ -9564,5 +9620,9 @@ body.page-loaded {
     position: sticky !important;
     top: 0;
     z-index: 80;
+  }
+
+  .dark-app .main-content {
+    padding-top: 0;
   }
 }
