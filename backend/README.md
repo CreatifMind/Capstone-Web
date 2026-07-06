@@ -42,9 +42,22 @@ Required values:
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 MODEL_PATH=backend/models/best.pt
+ALLOWED_ORIGINS=http://localhost:3000,https://purityloop-ai.vercel.app
+GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID=1oLPhVOBqflPjzQ6wQFq2FVZEj35PFhVd
+GOOGLE_OAUTH_CLIENT_SECRET_FILE=backend/google-oauth-client.json
+GOOGLE_OAUTH_TOKEN_FILE=backend/google-oauth-token.json
+GOOGLE_OAUTH_REDIRECT_URI=https://capstone-web-backend.onrender.com/api/google/callback
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-side only. Do not expose it in frontend code.
+
+For the deployed frontend, set Vercel `NEXT_PUBLIC_API_BASE_URL` to:
+
+```text
+https://capstone-web-backend.onrender.com
+```
+
+Use the backend base URL only. Do not include `/docs`; `/docs` is only the Swagger UI page.
 
 ## Run Locally
 
@@ -115,7 +128,7 @@ supabase/schema.sql
 
 ## Notes
 
-- CORS is currently configured for `http://localhost:3000`.
+- CORS is configured from `ALLOWED_ORIGINS`.
 - Only image uploads are accepted by `/api/predict`.
 - The YOLO model is loaded lazily on the first prediction request.
 - If `backend/models/best.pt` is missing, prediction returns a server error.

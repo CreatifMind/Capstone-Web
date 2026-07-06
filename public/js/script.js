@@ -56,6 +56,24 @@ function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
 }
 
+function plSetUploadProgress(percent, label = "Uploading image") {
+  const progress = document.getElementById("uploadProgress");
+  const bar = document.getElementById("uploadProgressBar");
+  const text = document.getElementById("uploadProgressPercent");
+  const labelEl = document.getElementById("uploadProgressLabel");
+  if (!progress || !bar || !text) return;
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  progress.hidden = false;
+  bar.style.width = `${safePercent}%`;
+  text.textContent = `${safePercent}%`;
+  if (labelEl) labelEl.textContent = label;
+}
+
+function plHideUploadProgress() {
+  const progress = document.getElementById("uploadProgress");
+  if (progress) progress.hidden = true;
+}
+
 function plNormalizeCategory(value) {
   const text = String(value || "Unknown").trim();
   if (!text) return "Unknown";
@@ -661,14 +679,28 @@ async function plRunBackendPrediction(file) {
   const formData = new FormData();
   formData.append("file", file, file.name || "uploaded-image.jpg");
 
-  const response = await fetch(`${apiBaseUrl}/api/predict`, {
-    method: "POST",
-    body: formData
+  plSetUploadProgress(1);
+  const payload = await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${apiBaseUrl}/api/predict`);
+    request.timeout = 120000;
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      plSetUploadProgress((event.loaded / event.total) * 90);
+    };
+    request.onload = () => {
+      const body = plSafeJsonParse(request.responseText, {});
+      if (request.status >= 200 && request.status < 300) {
+        plSetUploadProgress(100, "Scan complete");
+        resolve(body);
+        return;
+      }
+      reject(new Error(body.detail || `AI scan failed (${request.status}). Check backend and try again.`));
+    };
+    request.onerror = () => reject(new Error("Cannot reach backend API. Check NEXT_PUBLIC_API_BASE_URL, backend hosting, and CORS."));
+    request.ontimeout = () => reject(new Error("Backend scan timed out. Check backend logs."));
+    request.send(formData);
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.detail || "AI scan failed. Check backend and try again.");
-  }
 
   const scan = plNormalizeScan({
     id: payload.scan_result_id,
@@ -765,6 +797,7 @@ function initUploadPage() {
         scanImageBtn.disabled = false;
         scanImageBtn.classList.remove("is-scanning");
         if (uploadBox) uploadBox.classList.remove("is-processing");
+        plHideUploadProgress();
         scanImageBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image';
       }
     });
@@ -857,6 +890,7 @@ function initUploadPage() {
   function processSelectedFiles(files) {
     const list = plSafeFiles(files);
     plSelectedUploadFiles = [];
+    plHideUploadProgress();
     if (!list.length) {
       alert("No files selected.");
       return;

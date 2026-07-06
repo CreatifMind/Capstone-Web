@@ -132,6 +132,15 @@ const html = `
               <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
                 <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image
               </button>
+              <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
+                <div class="upload-progress-row">
+                  <span id="uploadProgressLabel">Uploading image</span>
+                  <strong id="uploadProgressPercent">0%</strong>
+                </div>
+                <div class="upload-progress-track">
+                  <span id="uploadProgressBar"></span>
+                </div>
+              </div>
             </div>
           </div>
 

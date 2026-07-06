@@ -8436,17 +8436,56 @@ body.page-loaded {
   position: absolute;
   left: 8%;
   right: 8%;
-  top: 50%;
+  top: 10%;
   height: 2px;
   pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(0, 240, 138, 0.9), transparent);
-  transform: translateY(-50%);
-  animation: scanSweep 1.2s ease-in-out infinite;
+  animation: scanSweep 1.35s ease-in-out infinite;
+  z-index: 1;
 }
 
 .dark-app .upload-scan-btn.is-scanning {
   cursor: wait;
   opacity: 0.9;
+}
+
+.upload-progress {
+  width: min(360px, 100%);
+  margin-top: 14px;
+  font-size: 0.82rem;
+}
+
+.upload-progress[hidden] {
+  display: none;
+}
+
+.upload-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.upload-progress-row strong {
+  color: var(--primary);
+}
+
+.upload-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.24);
+}
+
+.upload-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #00f08a);
+  transition: width 180ms ease;
 }
 
 #uploadPreviewContainer.preview-visible {
@@ -8467,7 +8506,7 @@ body.page-loaded {
 @keyframes scanSweep {
   0% {
     opacity: 0;
-    transform: translateY(-50%) translateX(-70%);
+    transform: translateY(0);
   }
   20%,
   80% {
@@ -8475,7 +8514,7 @@ body.page-loaded {
   }
   100% {
     opacity: 0;
-    transform: translateY(-50%) translateX(70%);
+    transform: translateY(360px);
   }
 }
 

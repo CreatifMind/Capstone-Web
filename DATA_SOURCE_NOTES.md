@@ -17,7 +17,7 @@ Use this setup when preparing the real Google Drive + Supabase flow:
 NEXT_PUBLIC_DEMO_MODE=false
 NEXT_PUBLIC_USE_SUPABASE=true
 NEXT_PUBLIC_USE_MOCK_DB=false
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE_URL=https://capstone-web-backend.onrender.com
 ```
 
 In this mode:
@@ -32,8 +32,8 @@ In this mode:
 ## Future Real Flow
 
 ```text
-User uploads one image
--> frontend sends image to backend `/api/predict`
+User uploads one image from `https://purityloop-ai.vercel.app`
+-> frontend sends image to backend `https://capstone-web-backend.onrender.com/api/predict`
 -> backend creates scan_results row in Supabase
 -> YOLOv8 backend processes file using best.pt
 -> backend inserts detected_materials rows
@@ -56,8 +56,10 @@ User uploads one image
 6. Confirm Google Drive tracking columns exist in `scan_results`.
 7. Confirm database starts empty.
 8. Set `.env.local` with Supabase URL and anon key.
-9. Restart Next.js.
-10. Confirm frontend can handle empty database without crashing.
-11. Confirm `/log` shows empty state.
-12. Confirm `/analytics` shows empty state.
-13. Confirm `/result` without `scanId` shows no scan selected state.
+9. Set Vercel `NEXT_PUBLIC_API_BASE_URL` to the backend base URL without `/docs`.
+10. Set backend `ALLOWED_ORIGINS` to the Vercel frontend URL.
+11. Restart/redeploy frontend and backend.
+12. Confirm frontend can handle empty database without crashing.
+13. Confirm `/log` shows empty state.
+14. Confirm `/analytics` shows empty state.
+15. Confirm `/result` without `scanId` shows no scan selected state.
