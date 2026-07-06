@@ -4,6 +4,9 @@ python-multipart
 python-dotenv
 supabase
 ultralytics
+opencv-python-headless
+pillow
+numpy
 google-api-python-client
 google-auth
 google-auth-httplib2
