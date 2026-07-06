@@ -20,9 +20,7 @@ APP_ROOT = BACKEND_ROOT.parent
 
 load_dotenv(BACKEND_ROOT / ".env")
 
-MODEL_PATH = Path(os.getenv("MODEL_PATH", "backend/models/best.pt"))
-if not MODEL_PATH.is_absolute():
-    MODEL_PATH = APP_ROOT / MODEL_PATH
+MODEL_PATH = os.getenv("MODEL_PATH", "models/best.pt")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -52,9 +50,11 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 def get_model():
     global model
     if model is None:
-        if not MODEL_PATH.exists():
+        print(f"[startup] Loading YOLO model from: {MODEL_PATH}")
+        if not os.path.exists(MODEL_PATH):
+            print(f"[startup] YOLO model file not found at: {MODEL_PATH}")
             raise HTTPException(status_code=500, detail="YOLO model file not found.")
-        model = YOLO(str(MODEL_PATH))
+        model = YOLO(MODEL_PATH)
     return model
 
 
