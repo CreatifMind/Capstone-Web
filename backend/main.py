@@ -353,22 +353,25 @@ def health():
 
 @app.get("/api/debug/model")
 def debug_model():
-    raw_model_path = os.getenv("MODEL_PATH", "backend/models/best.pt")
-    raw_path = Path(raw_model_path)
+    model_path = os.getenv("MODEL_PATH", "models/best.pt")
+    raw_path = Path(model_path)
     raw_resolved_path = raw_path if raw_path.is_absolute() else Path.cwd() / raw_path
     backend_models_path = BACKEND_ROOT / "models"
     cwd_models_path = Path.cwd() / "models"
 
     return {
-        "cwd": str(Path.cwd()),
+        "cwd": os.getcwd(),
+        "model_path": model_path,
+        "exists": os.path.exists(model_path),
+        "root_files": os.listdir("."),
+        "models_exists": os.path.exists("models"),
+        "models_files": os.listdir("models") if os.path.exists("models") else [],
         "backend_root": str(BACKEND_ROOT),
         "app_root": str(APP_ROOT),
-        "raw_model_path": raw_model_path,
         "raw_model_path_from_cwd": str(raw_resolved_path),
         "raw_model_path_exists_from_cwd": raw_resolved_path.exists(),
         "resolved_model_path": str(MODEL_PATH),
         "resolved_model_path_exists": MODEL_PATH.exists(),
-        "root_files": sorted(path.name for path in APP_ROOT.iterdir()),
         "backend_files": sorted(path.name for path in BACKEND_ROOT.iterdir()),
         "cwd_models_exists": cwd_models_path.exists(),
         "cwd_models_files": sorted(path.name for path in cwd_models_path.iterdir()) if cwd_models_path.exists() else [],
