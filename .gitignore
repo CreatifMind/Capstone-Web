@@ -6,3 +6,15 @@ node_modules/
 dist/
 build/
 dragon.png
+.env.local
+backend/.env
+backend/.venv
+backend/google-service-account.json
+
+.Rhistory
+backend/__pycache__/
+pnpm-lock 2.yaml
+
+backend/google-oauth-client.json
+backend/google-oauth-token.json
+backend/google-oauth-state.json
