@@ -28,27 +28,10 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID = os.getenv("GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID")
 GOOGLE_OAUTH_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/api/google/callback")
-
-
-def normalize_origin(origin: str | None) -> str | None:
-    if not origin:
-        return None
-    return origin.strip().rstrip("/") or None
-
-
-def cors_origins() -> list[str]:
-    origins = [
-        "http://localhost:3000",
-        "https://purityloop-ai.vercel.app",
-        os.getenv("FRONTEND_ORIGIN"),
-    ]
-    origins.extend(os.getenv("ALLOWED_ORIGINS", "").split(","))
-    normalized = [normalize_origin(origin) for origin in origins]
-    return list(dict.fromkeys(origin for origin in normalized if origin))
-
-
-ALLOWED_ORIGINS = cors_origins()
-print(f"[startup] CORS allowed origins: {ALLOWED_ORIGINS}")
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://purityloop-ai.vercel.app",
+]
 
 app = FastAPI(title="PurityLoop AI Backend")
 app.add_middleware(
