@@ -548,6 +548,7 @@ function initMotionEffects() {
 
 function initMetricCountUp() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (document.body.classList.contains('analytics-pro-page')) return;
   const metrics = document.querySelectorAll('.kpi-card > strong, .ops-hero-card strong, [data-countup]');
   metrics.forEach(metric => {
     const original = metric.textContent.trim();

@@ -12,6 +12,7 @@ create table if not exists scan_results (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references users(id) on delete set null,
   image_url text,
+  preview_image_url text,
   storage_provider text default 'google_drive',
   drive_file_id text,
   drive_file_name text,
@@ -29,6 +30,7 @@ create table if not exists scan_results (
 );
 
 alter table scan_results
+add column if not exists preview_image_url text,
 add column if not exists storage_provider text default 'google_drive',
 add column if not exists drive_file_id text,
 add column if not exists drive_file_name text,
@@ -37,6 +39,9 @@ add column if not exists upload_status text default 'uploaded',
 add column if not exists processing_status text default 'pending',
 add column if not exists total_images integer,
 add column if not exists source_type text default 'image';
+
+alter table mock_scan_results
+add column if not exists preview_image_url text;
 
 create table if not exists detected_materials (
   id uuid primary key default gen_random_uuid(),

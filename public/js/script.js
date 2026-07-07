@@ -56,6 +56,13 @@ function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
 }
 
+function plStoragePreviewUrl(sourceName) {
+  const baseUrl = String(plConfig().supabaseUrl || "").replace(/\/$/, "");
+  const path = String(sourceName || "");
+  if (!baseUrl || !path.startsWith("purityloop_")) return "";
+  return `${baseUrl}/storage/v1/object/public/mock_uploaded_images/${encodeURIComponent(path)}`;
+}
+
 function plSetUploadProgress(percent, label = "Uploading image") {
   const progress = document.getElementById("uploadProgress");
   const bar = document.getElementById("uploadProgressBar");
@@ -125,7 +132,17 @@ function plNormalizeMaterial(material) {
 
 function plDisplayableImageUrl(value) {
   const url = String(value || "");
-  if (url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/assets/")) {
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    try {
+      const host = new URL(url).hostname;
+      if (host === "drive.google.com" || host.endsWith(".drive.google.com") || host === "docs.google.com" || host.endsWith(".docs.google.com")) {
+        return "";
+      }
+    } catch {
+      return "";
+    }
+  }
+  if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/assets/")) {
     return url;
   }
   return "";
@@ -137,6 +154,7 @@ function plNormalizeScan(scan) {
   return {
     ...scan,
     image_url: plDisplayableImageUrl(scan.image_url),
+    preview_image_url: plDisplayableImageUrl(scan.preview_image_url),
     source_name: sourceName,
     overall_status: scan.overall_status || "review_required",
     contamination_risk: scan.contamination_risk || "unknown",
@@ -160,7 +178,8 @@ async function plRefreshScanResultsFromSupabase() {
     Authorization: `Bearer ${config.supabaseAnonKey}`
   };
   try {
-    const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=*&order=created_at.desc`, { headers });
+    const scanColumns = "id,image_url,preview_image_url,drive_file_name,source_name,source_size,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
+    const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
     if (!scansResponse.ok) {
       console.error("PurityLoop: mock_scan_results fetch failed.", scansResponse.status, await scansResponse.text());
       return false;
@@ -310,14 +329,73 @@ function plScanToLedger(scan) {
   };
 }
 
+const FINAL_CATEGORIES = ["general trash", "food organic", "metal", "plastic", "glass", "textile", "paper", "battery", "cardboard"];
+const MATERIAL_ESTIMATES = {
+  "general trash": { label: "General Trash", averageWeightKg: 0.100, pricePerKgRm: 0.00 },
+  "food organic": { label: "Food Organic", averageWeightKg: 0.080, pricePerKgRm: 0.00 },
+  metal: { label: "Metal", averageWeightKg: 0.020, pricePerKgRm: 1.20 },
+  plastic: { label: "Plastic", averageWeightKg: 0.032, pricePerKgRm: 0.50 },
+  glass: { label: "Glass", averageWeightKg: 0.300, pricePerKgRm: 0.10 },
+  textile: { label: "Textile", averageWeightKg: 0.150, pricePerKgRm: 0.00 },
+  paper: { label: "Paper", averageWeightKg: 0.005, pricePerKgRm: 0.30 },
+  battery: { label: "Battery", averageWeightKg: 0.023, pricePerKgRm: 3.50 },
+  cardboard: { label: "Cardboard", averageWeightKg: 0.125, pricePerKgRm: 0.25 }
+};
+
+function normalizeMaterialCategory(material) {
+  const raw = typeof material === "string" ? material : (material?.material_name || material?.category || "");
+  const key = String(raw).toLowerCase().trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (key.includes("food") || key.includes("organic")) return "food organic";
+  if (key.includes("general") || key.includes("trash") || key.includes("landfill") || key.includes("unknown")) return "general trash";
+  return FINAL_CATEGORIES.find(category => key === category || key.includes(category)) || "general trash";
+}
+
+function plMaterialEstimate(material) {
+  return MATERIAL_ESTIMATES[normalizeMaterialCategory(material)] || MATERIAL_ESTIMATES["general trash"];
+}
+
+function getEstimatedWeightKg(material, count = 1) {
+  return plMaterialEstimate(material).averageWeightKg * count;
+}
+
+function getEstimatedResaleValueRm(material, count = 1) {
+  const estimate = plMaterialEstimate(material);
+  return estimate.averageWeightKg * count * estimate.pricePerKgRm;
+}
+
+function plFormatKg(value) {
+  return `${(Number(value) || 0).toFixed(3)} kg`;
+}
+
+function plFormatRm(value) {
+  return `RM ${(Number(value) || 0).toFixed(2)}`;
+}
+
 function plGetAnalyticsSummary() {
   const scans = plGetScanResults();
   const materials = scans.flatMap(scan => plSafeArray(scan.detected_materials));
   const categoryCounts = materials.reduce((acc, material) => {
-    const category = material.category || material.material_name || "Unknown";
+    const category = plMaterialEstimate(material).label;
     acc[category] = (acc[category] || 0) + 1;
     return acc;
   }, {});
+  const resaleRows = Object.entries(materials.reduce((acc, material) => {
+    const category = normalizeMaterialCategory(material);
+    const estimate = MATERIAL_ESTIMATES[category] || MATERIAL_ESTIMATES["general trash"];
+    acc[category] = acc[category] || {
+      category,
+      label: estimate.label,
+      count: 0,
+      estimatedWeightKg: 0,
+      pricePerKg: estimate.pricePerKgRm,
+      estimatedResaleValueRm: 0
+    };
+    acc[category].count += 1;
+    acc[category].estimatedWeightKg += estimate.averageWeightKg;
+    acc[category].estimatedResaleValueRm += estimate.averageWeightKg * estimate.pricePerKgRm;
+    return acc;
+  }, {})).map(([, row]) => row).sort((a, b) => b.estimatedResaleValueRm - a.estimatedResaleValueRm || b.count - a.count);
+  const totalEstimatedResaleValueRm = resaleRows.reduce((sum, row) => sum + row.estimatedResaleValueRm, 0);
   const recyclableCount = materials.filter(plIsRecyclable).length;
   const contaminationCount = materials.filter(plIsContaminatedMaterial).length;
   const reviewCount = scans.filter(scan => scan.human_review_required || plNormalizeStatus(scan.overall_status) === "review_required").length;
@@ -332,10 +410,10 @@ function plGetAnalyticsSummary() {
     .map(([label, value]) => [label, Number(value) || 0])
     .sort((a, b) => b[1] - a[1]);
   const recyclableRows = categoryRows
-    .map(([label]) => [label, materials.filter(material => (material.category || material.material_name || "Unknown") === label && plIsRecyclable(material)).length])
+    .map(([label]) => [label, materials.filter(material => plMaterialEstimate(material).label === label && plIsRecyclable(material)).length])
     .filter(([, value]) => value > 0);
   const contaminatedRows = categoryRows
-    .map(([label]) => [label, materials.filter(material => (material.category || material.material_name || "Unknown") === label && plIsContaminatedMaterial(material)).length])
+    .map(([label]) => [label, materials.filter(material => plMaterialEstimate(material).label === label && plIsContaminatedMaterial(material)).length])
     .filter(([, value]) => value > 0);
   return {
     scans,
@@ -345,6 +423,8 @@ function plGetAnalyticsSummary() {
     categoryLabels: categoryRows.map(row => row[0]),
     categoryValues: categoryRows.map(row => row[1]),
     categoryRows,
+    resaleRows,
+    totalEstimatedResaleValueRm,
     recyclableRows,
     contaminatedRows,
     recyclableCount,
@@ -360,6 +440,10 @@ function plGetAnalyticsSummary() {
     quarantinedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length,
     avgConfidence
   };
+}
+
+function plCategoryPalette(palette) {
+  return [palette.green, palette.teal, palette.blue, palette.amber, palette.purple, palette.red, palette.slate, "#9FE870", "#FF8A65"];
 }
 
 /* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
@@ -704,7 +788,8 @@ async function plRunBackendPrediction(file) {
 
   const scan = plNormalizeScan({
     id: payload.scan_result_id,
-    image_url: URL.createObjectURL(file),
+    image_url: payload.image_url || "",
+    preview_image_url: payload.preview_image_url || "",
     source_name: file.name || "Uploaded image",
     source_size: Number(file.size || 0),
     overall_status: payload.overall_status,
@@ -717,7 +802,8 @@ async function plRunBackendPrediction(file) {
   });
   if (!scan) throw new Error("Backend did not return a scan id.");
   plSaveScanResult(scan);
-  return scan;
+  await plRefreshScanResultsFromSupabase();
+  return plGetScanResultById(scan.id) || scan;
 }
 
 /*****************************************
@@ -790,7 +876,6 @@ function initUploadPage() {
       scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
       try {
         const scan = await plRunBackendPrediction(uploadFile);
-        localStorage.removeItem(PL_UPLOADS_KEY);
         window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
       } catch (error) {
         showToast(error.message || "AI scan failed. Check backend and try again.", "error");
@@ -975,7 +1060,7 @@ function initUploadPage() {
             name: file.name || "uploaded-image",
             size: Number(file.size || 0),
             dataUrl: dataUrl,
-            resultAssetPath: DEFAULT_SCAN_ASSET
+            resultAssetPath: ""
           });
 
           loadedCount++;
@@ -1072,14 +1157,31 @@ function initResultPage() {
   const reviewLogsBtn = document.querySelector(".action-panel a");
 
   const scans = plGetScanResults();
-  let uploads = scans.map(scan => ({
-    name: scan.source_name || scan.id,
-    size: scan.source_size || 0,
-    dataUrl: scan.image_url && scan.image_url.startsWith("data:") ? scan.image_url : "",
-    assetPath: scan.image_url && !scan.image_url.startsWith("data:") ? scan.image_url : "",
-    scanId: scan.id
-  }));
+  const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
+  const findCachedUploadPreview = sourceName => {
+    const key = String(sourceName || "");
+    const match = cachedUploadPreviews.find(upload => {
+      const name = String(upload?.name || "");
+      return upload?.dataUrl && name && (name === key || key.endsWith(name) || key.includes(name));
+    });
+    return match?.dataUrl || "";
+  };
+  let uploads = scans.map(scan => {
+    const previewUrl = scan.preview_image_url || "";
+    const hasScanImage = Boolean(previewUrl);
+    const storagePreview = hasScanImage ? "" : plStoragePreviewUrl(scan.source_name || scan.drive_file_name);
+    const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
+    return {
+      name: scan.source_name || scan.id,
+      size: scan.source_size || 0,
+      thumbnailSrc: previewUrl,
+      dataUrl: hasScanImage && previewUrl.startsWith("data:") ? previewUrl : cachedPreview,
+      assetPath: hasScanImage && !previewUrl.startsWith("data:") ? previewUrl : storagePreview,
+      scanId: scan.id
+    };
+  });
   const requestedScan = plGetRequestedScanResult();
+  console.info("[result] scanId from URL", new URLSearchParams(window.location.search).get("scanId") || "");
 
   let activeIndex = 0;
   if (requestedScan) {
@@ -1206,15 +1308,31 @@ function initResultPage() {
         }, 3000);
       }
 
-      const imgSrc = file.dataUrl || file.assetPath || "/assets/items/plastic-bottle.png";
+      const tag = document.createElement("span");
+      tag.className = `finder-tag-dot ${tagColor}`;
+      card.appendChild(tag);
 
-      card.innerHTML = `
-        <span class="finder-tag-dot ${tagColor}"></span>
-        <div class="finder-thumbnail-wrap">
-          <img src="${imgSrc}" alt="${file.name}">
-        </div>
-        <div class="finder-filename" title="${file.name}">${file.name}</div>
-      `;
+      const thumbWrap = document.createElement("div");
+      thumbWrap.className = "finder-thumbnail-wrap";
+      const imgSrc = plDisplayableImageUrl(file.thumbnailSrc);
+      if (imgSrc) {
+        const thumb = document.createElement("img");
+        thumb.src = imgSrc;
+        thumb.alt = file.name || "Uploaded image";
+        thumb.addEventListener("error", () => {
+          thumb.replaceWith(Object.assign(document.createElement("div"), { className: "finder-file-placeholder", innerHTML: '<i class="fa-solid fa-image"></i>' }));
+        }, { once: true });
+        thumbWrap.appendChild(thumb);
+      } else {
+        thumbWrap.innerHTML = `<div class="finder-file-placeholder"><i class="fa-solid fa-image"></i></div>`;
+      }
+      card.appendChild(thumbWrap);
+
+      const filename = document.createElement("div");
+      filename.className = "finder-filename";
+      filename.title = file.name;
+      filename.textContent = file.name;
+      card.appendChild(filename);
 
       card.addEventListener("click", () => {
         activeIndex = index;
@@ -1241,17 +1359,45 @@ function initResultPage() {
     if (activeBeltTitle) activeBeltTitle.textContent = activeFile.name;
 
     activeImageObj = new Image();
-    if (activeFile.resultAssetPath) {
-      activeImageObj.src = activeFile.resultAssetPath;
-    } else if (activeFile.dataUrl) {
-      activeImageObj.src = activeFile.dataUrl;
-    } else {
-      activeImageObj.src = activeFile.assetPath || "/assets/items/plastic-bottle.png";
-    }
-
     activeImageObj.onload = function () {
       drawCanvasFrame();
     };
+    activeImageObj.onerror = function () {
+      console.info("[result] preview image failed", activeScan.id, activeImageObj.src);
+      if (activeFile.dataUrl && activeImageObj.src !== activeFile.dataUrl) {
+        activeImageObj = new Image();
+        activeImageObj.onload = function () {
+          drawCanvasFrame();
+        };
+        activeImageObj.onerror = function () {
+          console.info("[result] cached preview failed", activeScan.id);
+          activeImageObj = null;
+          drawEmptyScanCanvas("No image preview");
+        };
+        activeImageObj.src = activeFile.dataUrl;
+        return;
+      }
+      activeImageObj = null;
+      drawEmptyScanCanvas("No image preview");
+    };
+    if (activeFile.dataUrl) {
+      activeImageObj.src = activeFile.dataUrl;
+    } else if (activeFile.assetPath) {
+      activeImageObj.src = activeFile.assetPath;
+    } else {
+      activeImageObj = null;
+      console.info("[result] preview image_url", activeScan.id, "");
+      drawEmptyScanCanvas("No image preview");
+      updateResultDetails({
+        ...detectWasteTypeFromFileName(activeFile.name),
+        confidence: `${Math.round(plConfidencePercent(activeScan.overall_confidence))}%`,
+        statusClass: plNormalizeStatus(activeScan.overall_status) === "quarantined" ? "danger" : activeScan.human_review_required ? "warning" : "safe",
+        status: activeScan.overall_status,
+        instruction: activeScan.recommended_action
+      }, activeFile);
+      return;
+    }
+    console.info("[result] preview image_url", activeScan.id, activeImageObj.src);
 
     const result = {
       ...detectWasteTypeFromFileName(activeFile.name),
@@ -1280,18 +1426,23 @@ function initResultPage() {
       `;
     }
     if (canvas && ctx2d) {
-      const parent = canvas.parentElement;
-      const rect = parent?.getBoundingClientRect?.() || { width: 640, height: 360 };
-      canvas.width = rect.width || 640;
-      canvas.height = rect.height || Math.round(canvas.width * (9 / 16));
-      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-      ctx2d.fillStyle = "rgba(4, 15, 13, 0.86)";
-      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
-      ctx2d.fillStyle = "rgba(244,255,249,0.62)";
-      ctx2d.font = "600 15px 'IBM Plex Sans', Arial";
-      ctx2d.textAlign = "center";
-      ctx2d.fillText("No scan data", canvas.width / 2, canvas.height / 2);
+      drawEmptyScanCanvas("No scan data");
     }
+  }
+
+  function drawEmptyScanCanvas(label) {
+    if (!canvas || !ctx2d) return;
+    const parent = canvas.parentElement;
+    const rect = parent?.getBoundingClientRect?.() || { width: 640, height: 360 };
+    canvas.width = rect.width || 640;
+    canvas.height = rect.height || Math.round(canvas.width * (9 / 16));
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    ctx2d.fillStyle = "rgba(4, 15, 13, 0.86)";
+    ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+    ctx2d.fillStyle = "rgba(244,255,249,0.62)";
+    ctx2d.font = "600 15px 'IBM Plex Sans', Arial";
+    ctx2d.textAlign = "center";
+    ctx2d.fillText(label, canvas.width / 2, canvas.height / 2);
   }
 
   function getActiveBoxes() {
@@ -1431,6 +1582,8 @@ function initResultPage() {
 
       boxes.forEach((box, index) => {
         const itemDiv = document.createElement("div");
+        const estimatedWeightKg = getEstimatedWeightKg(box.label);
+        const estimatedResaleValueRm = getEstimatedResaleValueRm(box.label);
         const isContaminant = box.label.toLowerCase().includes("contaminant") ||
           box.label.toLowerCase().includes("hazard") ||
           box.label.toLowerCase().includes("alert") ||
@@ -1443,6 +1596,8 @@ function initResultPage() {
           <span>
             <strong>${box.label.replace(" Contaminant", "")}</strong>
             <small>${isContaminant ? "Contaminant" : "Recyclable"} | Qty 1</small>
+            <small>Object weight: ${plFormatKg(estimatedWeightKg)}</small>
+            <small>Estimated resale value: ${plFormatRm(estimatedResaleValueRm)}</small>
           </span>
           <b>${box.confidence}</b>
         `;
@@ -1452,9 +1607,12 @@ function initResultPage() {
 
       const infoDiv = document.createElement("div");
       infoDiv.className = "material-meta";
+      const totalEstimatedWeightKg = boxes.reduce((sum, box) => sum + getEstimatedWeightKg(box.label), 0);
+      const totalEstimatedResaleValueRm = boxes.reduce((sum, box) => sum + getEstimatedResaleValueRm(box.label), 0);
       infoDiv.innerHTML = `
         <div><strong>Disposal Bin:</strong> ${result.bin}</div>
-        <div><strong>Object Weight:</strong> ${file.size ? formatFileSize(file.size) : result.weight}</div>
+        <div><strong>Object Weight:</strong> ${plFormatKg(totalEstimatedWeightKg)}</div>
+        <div><strong>Estimated resale value:</strong> ${plFormatRm(totalEstimatedResaleValueRm)}</div>
       `;
       liveFeed.appendChild(infoDiv);
     }
@@ -1487,15 +1645,17 @@ function initResultPage() {
     canvas.width = rect.width;
     canvas.height = rect.height || Math.round(rect.width * (9 / 16));
 
-    // - 1. Draw image filling the entire canvas (object-fit: cover style) -
+    // - 1. Draw full uploaded image without cropping (object-fit: contain style) -
     const imgW = activeImageObj.width;
     const imgH = activeImageObj.height;
-    const scale = Math.max(canvas.width / imgW, canvas.height / imgH);
+    const scale = Math.min(canvas.width / imgW, canvas.height / imgH);
     const drawW = imgW * scale;
     const drawH = imgH * scale;
     const drawX = (canvas.width - drawW) / 2;
     const drawY = (canvas.height - drawH) / 2;
 
+    ctx2d.fillStyle = "#010504";
+    ctx2d.fillRect(0, 0, canvas.width, canvas.height);
     ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
 
     // - 2. Subtle dark vignette overlay (like NANDO AI dims the image slightly) -
@@ -1914,6 +2074,7 @@ function initAnalyticsCharts() {
     teal: "#00D6D6",
     darkGreen: "#08211D"
   };
+  const categoryPalette = plCategoryPalette(palette);
 
   const compositionCanvas = document.getElementById("compositionChart");
   if (!compositionCanvas) return; // Not on analytics page
@@ -1932,35 +2093,42 @@ function initAnalyticsCharts() {
   const summary = plGetAnalyticsSummary();
 
   const kpiCards = document.querySelectorAll(".kpi-grid-four > .kpi-card");
+  const kpiLabel = card => card.querySelector(":scope > span:not(.kpi-badge):not(.kpi-trend)");
+  const setKpiProgress = (card, label, width) => {
+    const fill = card?.querySelector(".kpi-progress-fill");
+    const meta = card?.querySelector(".kpi-progress-meta strong");
+    if (meta) meta.textContent = label;
+    if (fill) {
+      fill.style.setProperty("--target-width", width);
+      fill.style.width = width;
+    }
+  };
   if (kpiCards[0]) {
-    kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[0].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Detected Materials");
-    kpiCards[0].querySelector("strong").innerHTML = `${summary.detectedMaterialsCount}`;
-    kpiCards[0].querySelector("p").textContent = summary.detectedMaterialsCount ? "From saved detected materials" : "No material data yet";
-    kpiCards[0].querySelector(".kpi-progress-meta strong") && (kpiCards[0].querySelector(".kpi-progress-meta strong").textContent = String(summary.savedScansCount));
+    kpiLabel(kpiCards[0]) && (kpiLabel(kpiCards[0]).textContent = "Detected Materials");
+    kpiCards[0].querySelector("strong").innerHTML = `${summary.savedScansCount}`;
+    kpiCards[0].querySelector("p").textContent = summary.savedScansCount ? "From saved scans" : "No scan data yet";
+    setKpiProgress(kpiCards[0], String(summary.savedScansCount), summary.savedScansCount ? "100%" : "0%");
   }
   if (kpiCards[1]) {
-    kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[1].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Revenue Data");
-    kpiCards[1].querySelector("strong").textContent = "No data";
-    kpiCards[1].querySelector("p").textContent = "No resale formula or value field saved";
+    kpiLabel(kpiCards[1]) && (kpiLabel(kpiCards[1]).textContent = "Revenue Data");
+    kpiCards[1].querySelector("strong").textContent = summary.materials.length ? plFormatRm(summary.totalEstimatedResaleValueRm) : "No data";
+    kpiCards[1].querySelector("p").textContent = summary.materials.length ? "Estimated from saved scan materials" : "No material data yet";
+    setKpiProgress(kpiCards[1], summary.materials.length ? "100%" : "0%", summary.materials.length ? "100%" : "0%");
   }
   if (kpiCards[2]) {
-    kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[2].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Average Confidence");
+    kpiLabel(kpiCards[2]) && (kpiLabel(kpiCards[2]).textContent = "Average Confidence");
     kpiCards[2].querySelector("strong").textContent = `${summary.avgConfidence.toFixed(1)}%`;
     kpiCards[2].querySelector("p").textContent = summary.materials.length ? "From detected material confidence" : summary.scans.length ? "From saved scan confidence" : "No scan data yet";
-    kpiCards[2].querySelector(".kpi-progress-meta strong") && (kpiCards[2].querySelector(".kpi-progress-meta strong").textContent = `${summary.avgConfidence.toFixed(1)}%`);
+    setKpiProgress(kpiCards[2], `${summary.avgConfidence.toFixed(1)}%`, summary.avgConfidence ? `${Math.min(100, summary.avgConfidence)}%` : "0%");
   }
   if (kpiCards[3]) {
-    kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)") && (kpiCards[3].querySelector("span:not(.kpi-badge):not(.kpi-trend)").textContent = "Contaminated Items");
-    kpiCards[3].querySelector("strong").textContent = String(summary.contaminationCount);
-    kpiCards[3].querySelector("p").textContent = summary.contaminationCount ? "From saved detected materials" : "No contamination data yet";
-    kpiCards[3].querySelector(".kpi-progress-meta strong") && (kpiCards[3].querySelector(".kpi-progress-meta strong").textContent = String(summary.reviewCount));
+    kpiLabel(kpiCards[3]) && (kpiLabel(kpiCards[3]).textContent = "Contaminated Items");
+    kpiCards[3].querySelector("strong").textContent = String(summary.reviewCount);
+    kpiCards[3].querySelector("p").textContent = summary.reviewCount ? "From saved review load" : "No contamination data yet";
+    setKpiProgress(kpiCards[3], String(summary.reviewCount), summary.reviewCount ? "100%" : "0%");
   }
 
   document.querySelectorAll(".kpi-grid-four .kpi-trend").forEach(item => { item.textContent = summary.scans.length ? "saved data" : "no data"; });
-  if (kpiCards[0]?.querySelector(".kpi-progress-fill")) kpiCards[0].querySelector(".kpi-progress-fill").style.width = summary.savedScansCount ? "100%" : "0%";
-  if (kpiCards[1]?.querySelector(".kpi-progress-fill")) kpiCards[1].querySelector(".kpi-progress-fill").style.width = "0%";
-  if (kpiCards[2]?.querySelector(".kpi-progress-fill")) kpiCards[2].querySelector(".kpi-progress-fill").style.width = summary.avgConfidence ? `${Math.min(100, summary.avgConfidence)}%` : "0%";
-  if (kpiCards[3]?.querySelector(".kpi-progress-fill")) kpiCards[3].querySelector(".kpi-progress-fill").style.width = summary.contaminationCount ? `${Math.min(100, (summary.contaminationCount / Math.max(summary.detectedMaterialsCount, 1)) * 100)}%` : "0%";
 
   // Update recent activity ledger preview list from localStorage
   const recentList = document.getElementById("dashLedgerList");
@@ -2032,6 +2200,8 @@ function initAnalyticsCharts() {
   if (compositionSubtitle) compositionSubtitle.textContent = summary.materials.length ? `${summary.detectedMaterialsCount} detected material record(s) from saved scans.` : "No material data yet. Upload scans to populate this chart.";
   const yieldSubtitle = document.getElementById("yieldChart")?.closest(".chart-panel")?.querySelector(".chart-subtitle");
   if (yieldSubtitle) yieldSubtitle.textContent = summary.materials.length ? "Saved material counts grouped by category." : "No scan data yet. Saved material counts appear here after uploads.";
+  const resaleSubtitle = document.getElementById("resaleChart")?.closest(".chart-panel")?.querySelector(".chart-subtitle");
+  if (resaleSubtitle) resaleSubtitle.textContent = summary.materials.length ? "Estimated resale value grouped by category." : "No resale data yet. Upload scans to populate this chart.";
   updateAnalyticsDetailPanels(summary);
 
   if (!summary.scans.length) {
@@ -2117,7 +2287,28 @@ function initAnalyticsCharts() {
   // 2. RESALE CHART
   const resaleCanvas = document.getElementById("resaleChart");
   if (resaleCanvas) {
-    drawEmptyChart(resaleCanvas, "No resale data");
+    if (!summary.resaleRows.length) {
+      drawEmptyChart(resaleCanvas, "No resale data");
+    } else {
+      new Chart(resaleCanvas, {
+      type: "bar",
+      data: {
+        labels: summary.resaleRows.map(row => row.label),
+        datasets: [{ label: "Estimated resale value", data: summary.resaleRows.map(row => Number(row.estimatedResaleValueRm.toFixed(2))), backgroundColor: categoryPalette, borderRadius: 6 }]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: {
+          datalabels: { display: false },
+          legend: { labels: { color: legendColor } }
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { color: tickColor, callback: value => `RM ${value}` }, grid: { color: gridColor } },
+          x: { ticks: { color: tickColor }, grid: { display: false } }
+        }
+      }
+      });
+    }
   }
 
   // 3. YIELD CHART
@@ -2127,7 +2318,7 @@ function initAnalyticsCharts() {
       type: "bar",
       data: {
         labels: summary.categoryLabels,
-        datasets: [{ label: "Detected items", data: summary.categoryValues, backgroundColor: palette.green, borderRadius: 6 }]
+        datasets: [{ label: "Detected items", data: summary.categoryValues, backgroundColor: categoryPalette, borderRadius: 6 }]
       },
       options: {
         ...chartDefaults,
@@ -2215,18 +2406,32 @@ function drawFallbackAnalyticsCharts(palette) {
 
   const resale = document.getElementById("resaleChart");
   if (resale) {
-    drawEmptyChart(resale, "No resale data");
+    if (summary.resaleRows.length) {
+      const { ctx, width, height } = prepareCanvas(resale);
+      drawFallbackBars(
+        ctx,
+        width,
+        height,
+        summary.resaleRows.map(row => row.label),
+        summary.resaleRows.map(row => Number(row.estimatedResaleValueRm.toFixed(2))),
+        plCategoryPalette(palette),
+        "RM ",
+        ""
+      );
+    } else {
+      drawEmptyChart(resale, "No resale data");
+    }
   }
 
   const yieldCanvas = document.getElementById("yieldChart");
   if (yieldCanvas) {
     const { ctx, width, height } = prepareCanvas(yieldCanvas);
-    drawFallbackBars(ctx, width, height, summary.categoryLabels, summary.categoryValues, [palette.green], "", "");
+    drawFallbackBars(ctx, width, height, summary.categoryLabels, summary.categoryValues, plCategoryPalette(palette), "", "");
   }
 }
 
 function drawFallbackBars(ctx, width, height, labels, values, colors, prefix, suffix) {
-  const max = Math.max(...values) * 1.15;
+  const max = Math.max(1, ...values) * 1.15;
   const left = 48;
   const right = 18;
   const top = 20;
@@ -2256,7 +2461,8 @@ function drawFallbackBars(ctx, width, height, labels, values, colors, prefix, su
     ctx.fillText(label, x + barWidth / 2, height - 20);
     ctx.fillStyle = "#14221b";
     ctx.font = "bold 11px Arial";
-    ctx.fillText(prefix + values[index] + suffix, x + barWidth / 2, y - 6);
+    const displayValue = prefix === "RM " ? Number(values[index]).toFixed(2) : values[index];
+    ctx.fillText(prefix + displayValue + suffix, x + barWidth / 2, y - 6);
     ctx.font = "11px Arial";
   });
 }
@@ -2548,6 +2754,21 @@ function updateAnalyticsDetailPanels(summary) {
     }
   }
 
+  const resalePanel = document.getElementById("detail-resale");
+  const resaleBody = resalePanel?.querySelector("tbody");
+  if (resaleBody) {
+    resaleBody.innerHTML = summary.resaleRows.length
+      ? summary.resaleRows.map(row => `
+          <tr>
+            <td>${row.label}</td>
+            <td>${plFormatKg(row.estimatedWeightKg)}</td>
+            <td>RM ${row.pricePerKg.toFixed(2)}/kg</td>
+            <td>${plFormatRm(row.estimatedResaleValueRm)}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="4"><div class="feed-empty">No resale data yet.</div></td></tr>`;
+  }
+
   const purityPanel = document.getElementById("detail-purity");
   if (purityPanel) {
     renderBarRows(
@@ -2603,19 +2824,17 @@ function updateAnalyticsDetailPanels(summary) {
 function renderMaterialDetail(materialName, options = {}) {
   const activate = options.activate !== false;
 
-  // Normalization
-  let normName = materialName;
-  if (materialName === "Food" || materialName === "Organics" || materialName === "food" || materialName === "food_organics") {
-    normName = "Food Organics";
-  } else if (materialName === "Trash" || materialName === "trash") {
-    normName = "General Trash";
-  }
+  const normalizedCategory = normalizeMaterialCategory(materialName);
+  const normName = MATERIAL_ESTIMATES[normalizedCategory].label;
 
   const panel = document.getElementById("detail-material");
   if (!panel) return;
   const summary = plGetAnalyticsSummary();
-  const materials = summary.materials.filter(material => material.category === normName);
+  const materials = summary.materials.filter(material => normalizeMaterialCategory(material) === normalizedCategory);
   const count = materials.length;
+  const estimatedWeightKg = getEstimatedWeightKg(normName, count);
+  const estimatedResaleValueRm = getEstimatedResaleValueRm(normName, count);
+  const pricePerKgRm = plMaterialEstimate(normName).pricePerKgRm;
   const contaminated = materials.filter(plIsContaminatedMaterial).length;
   const recyclable = materials.filter(plIsRecyclable).length;
   const avgConfidence = count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
@@ -2626,12 +2845,12 @@ function renderMaterialDetail(materialName, options = {}) {
 
   panel.querySelectorAll("[data-material-title]").forEach(el => { el.textContent = normName; });
   panel.querySelectorAll("[data-material-subtitle]").forEach(el => { el.textContent = subtitle; });
-  panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = String(count); el.style.color = color; });
-  panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = "No data"; el.style.color = color; });
-  panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = "No resale field saved"; });
+  panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = plFormatKg(estimatedWeightKg); el.style.color = color; });
+  panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = plFormatRm(estimatedResaleValueRm); el.style.color = color; });
+  panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = `RM ${pricePerKgRm.toFixed(2)}/kg`; });
   panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = `${avgConfidence.toFixed(1)}%`; el.style.color = color; });
   panel.querySelectorAll("[data-material-status]").forEach(el => { el.textContent = count ? `${contaminated} contaminated` : "No data"; });
-  panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = isContaminant ? "Total Flagged" : "Detected Count"; });
+  panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = "Estimated Weight"; });
   panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = "Resale Value"; });
   panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = "Avg Confidence"; });
   panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = "Saved Scan Trend"; });

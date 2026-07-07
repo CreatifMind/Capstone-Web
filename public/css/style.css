@@ -5410,13 +5410,19 @@ input:checked+.slider:before {
   border-bottom: 1px solid rgba(134, 247, 186, 0.16);
 }
 
+.ops-pro-page .stream-panel-header > div {
+  min-width: 0;
+}
+
 .ops-pro-page .stream-panel-header h2 {
   color: #ffffff;
   font-size: clamp(1.2rem, 2vw, 2rem);
+  overflow-wrap: anywhere;
 }
 
 .ops-pro-page .recording-chip {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   min-height: 36px;
@@ -6639,7 +6645,7 @@ input:checked+.slider:before {
 }
 .dark-app .detection-panel {
   height: auto;
-  min-height: 330px;
+  min-height: 0;
 }
 .dark-app .live-feed {
   min-height: 0;
@@ -6750,8 +6756,11 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .kpi-card {
   display: grid;
-  grid-template-rows: auto 44px 58px minmax(72px, 1fr) auto auto;
-  align-content: stretch;
+  grid-template-rows: auto auto auto auto auto;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 18px;
 }
 
 .dark-app.analytics-pro-page .kpi-card > span {
@@ -6771,8 +6780,8 @@ input:checked+.slider:before {
 }
 
 .dark-app.analytics-pro-page .kpi-progress-meta {
-  align-self: end;
-  margin-top: auto;
+  align-self: start;
+  margin-top: 8px;
 }
 
 .dark-app.analytics-pro-page .kpi-badge {
@@ -6786,6 +6795,8 @@ input:checked+.slider:before {
   color: rgba(166,255,221,0.92);
   box-shadow: inset 0 0 20px rgba(0,240,138,0.08);
   line-height: 1;
+  width: 52px;
+  height: 52px;
 }
 
 .dark-app.analytics-pro-page .kpi-badge i {
@@ -6861,13 +6872,24 @@ input:checked+.slider:before {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 14px;
-  margin-bottom: 7px;
+  margin-top: 8px;
+  margin-bottom: 4px;
   color: rgba(244,255,249,0.58);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.dark-app .finder-toolbar .recording-chip,
+.dark-app .finder-toolbar .queue-count-pill {
+  color: rgba(244,255,249,0.92) !important;
+  opacity: 1;
+}
+
+.dark-app .finder-toolbar .recording-chip {
+  border-color: rgba(0,240,138,0.42);
+  background: rgba(0,240,138,0.16);
 }
 
 .dark-app.analytics-pro-page .kpi-progress-meta span {
@@ -6981,7 +7003,8 @@ input:checked+.slider:before {
 .dark-app.analytics-pro-page .review-workload-viz {
   display: grid;
   grid-template-columns: minmax(120px, 0.42fr) minmax(0, 1fr);
-  gap: 16px;
+  align-items: center;
+  gap: 14px;
   flex: 1;
   min-height: 0;
 }
@@ -6990,7 +7013,7 @@ input:checked+.slider:before {
   display: grid;
   place-items: center;
   align-content: center;
-  min-height: 190px;
+  min-height: 124px;
   border: 1px solid rgba(73,255,182,0.16);
   border-radius: 18px;
   background:
@@ -7000,7 +7023,7 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .workload-meter strong {
   color: var(--ai-green);
-  font-size: clamp(2.6rem, 5vw, 4.25rem);
+  font-size: clamp(2.25rem, 4vw, 3.35rem);
   font-weight: 900;
   line-height: 0.92;
   letter-spacing: -0.04em;
@@ -7018,7 +7041,7 @@ input:checked+.slider:before {
 
 .dark-app.analytics-pro-page .workload-bars {
   display: grid;
-  gap: 10px;
+  gap: 7px;
   align-content: center;
 }
 
@@ -7028,8 +7051,8 @@ input:checked+.slider:before {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  min-height: 44px;
-  padding: 11px 13px;
+  min-height: 32px;
+  padding: 7px 10px;
   border: 1px solid rgba(73,255,182,0.16);
   border-radius: 13px;
   background: rgba(255,255,255,0.045);
@@ -7391,6 +7414,15 @@ input:checked+.slider:before {
   color: #fff !important;
 }
 
+.dark-app .finder-file-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(166,255,221,0.8);
+  font-size: 1.4rem;
+}
+
 .dark-app .finder-filename,
 .dark-app .file-name-cell strong,
 .dark-app .preview-card-info strong,
@@ -7670,6 +7702,23 @@ video {
   height: auto !important;
   min-height: unset !important;
   aspect-ratio: 16 / 9;
+}
+
+@media (min-width: 1181px) {
+  .dark-app .result-workbench > .stream-panel.bbox-card {
+    height: auto;
+    min-height: 0;
+  }
+
+  .dark-app .result-workbench > .stream-panel.bbox-card .stream-canvas-wrap {
+    height: 300px;
+    aspect-ratio: auto;
+  }
+
+  .dark-app .result-workbench > .stream-panel.bbox-card #liveInferenceCanvas {
+    height: 100% !important;
+    aspect-ratio: auto;
+  }
 }
 
 .dark-app .analytics-pro-page .chart-box,
@@ -8747,12 +8796,26 @@ body.page-loaded {
   padding: clamp(20px, 2.2vw, 32px);
 }
 
+.dark-app #ledgerDrillDetails {
+  padding: clamp(20px, 2.2vw, 32px);
+}
+
 .dark-app #liveDrillDetails > .section-heading {
   gap: clamp(18px, 3vw, 34px);
   margin-bottom: clamp(18px, 2vw, 28px);
 }
 
+.dark-app #ledgerDrillDetails > .section-heading {
+  gap: clamp(18px, 3vw, 34px);
+  margin-bottom: clamp(18px, 2vw, 28px);
+}
+
 .dark-app #liveDrillDetails > .section-heading .detail-hint {
+  max-width: 44rem;
+  padding-right: clamp(8px, 1.2vw, 18px);
+}
+
+.dark-app #ledgerDrillDetails > .section-heading .detail-hint {
   max-width: 44rem;
   padding-right: clamp(8px, 1.2vw, 18px);
 }
@@ -8768,6 +8831,31 @@ body.page-loaded {
 
 .analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] {
   order: 2;
+}
+
+.analytics-pro-page .analytics-operational-row .review-workload-panel,
+.analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] {
+  min-height: 0;
+  padding: 18px;
+}
+
+.analytics-pro-page .analytics-operational-row .review-workload-panel .section-heading,
+.analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] .section-heading {
+  margin-bottom: 10px;
+}
+
+.analytics-pro-page .analytics-operational-row .review-workload-panel .chart-subtitle,
+.analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] .chart-subtitle {
+  margin-bottom: 12px;
+}
+
+.analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] .chart-box {
+  min-height: 210px;
+  height: 210px;
+}
+
+.analytics-pro-page .analytics-operational-row .chart-panel[data-drill-target="detail-yield"] canvas {
+  max-height: 190px;
 }
 
 .analytics-pro-page .analytics-operational-row .ledger-preview {
@@ -8797,7 +8885,15 @@ body.page-loaded {
     padding: 18px;
   }
 
+  .dark-app #ledgerDrillDetails {
+    padding: 18px;
+  }
+
   .dark-app #liveDrillDetails > .section-heading {
+    align-items: flex-start;
+  }
+
+  .dark-app #ledgerDrillDetails > .section-heading {
     align-items: flex-start;
   }
 }
