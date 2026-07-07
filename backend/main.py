@@ -44,6 +44,7 @@ model = None
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
 SCAN_RESULTS_TABLE = "mock_scan_results"
 DETECTED_MATERIALS_TABLE = "mock_detected_materials"
+PREVIEW_BUCKET = "mock-uploaded-images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
@@ -63,6 +64,24 @@ def safe_drive_filename(original_filename: str | None) -> str:
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "uploaded-image.jpg"
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"purityloop_{timestamp}_{safe_name}"
+
+
+def upload_original_to_supabase_storage(file_bytes: bytes, original_filename: str | None, content_type: str) -> dict:
+    if not supabase:
+        raise RuntimeError("Supabase backend env is not configured")
+
+    path = safe_drive_filename(original_filename)
+    supabase.storage.from_(PREVIEW_BUCKET).upload(
+        path=path,
+        file=file_bytes,
+        file_options={"content-type": content_type, "upsert": "false"},
+    )
+    public_url = supabase.storage.from_(PREVIEW_BUCKET).get_public_url(path)
+    if isinstance(public_url, dict):
+        public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
+    if not public_url:
+        raise RuntimeError("Supabase Storage public URL is empty")
+    return {"path": path, "public_url": str(public_url or "")}
 
 
 def safe_error_message(exc: Exception) -> str:
@@ -263,7 +282,7 @@ def legacy_scan_row(scan_row: dict, original_filename: str | None) -> dict:
         "overall_confidence",
     }
     row = {key: value for key, value in scan_row.items() if key in keep_keys}
-    row["image_url"] = row.get("image_url") or original_filename or "uploaded-image"
+    row["image_url"] = row.get("image_url")
     row["upload_status"] = row.get("upload_status") or "uploaded"
     return row
 
@@ -415,27 +434,40 @@ async def predict(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Upload one image file.")
 
-    suffix = Path(file.filename or "upload.jpg").suffix or ".jpg"
+    content_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    suffix = (Path(file.filename or "upload.jpg").suffix or ".jpg").lower()
+    content_type = content_types.get(suffix)
+    if not content_type:
+        raise HTTPException(status_code=400, detail="Upload one image file.")
+
     tmp_path = None
     try:
         print(f"[predict] reading uploaded file: {file.filename or 'uploaded-image'} ({file.content_type})")
         file_bytes = await file.read()
         drive_metadata = {
-            "storage_provider": "drive_upload_failed",
-            "upload_status": "drive_upload_failed",
+            "storage_provider": "supabase_storage_failed",
+            "upload_status": "preview_upload_failed",
             "drive_file_id": None,
             "drive_file_name": file.filename or "uploaded-image",
             "drive_web_url": None,
             "image_url": None,
         }
         try:
+            print(f"[predict] uploading preview to Supabase Storage bucket: {PREVIEW_BUCKET}")
+            preview_upload = upload_original_to_supabase_storage(file_bytes, file.filename, content_type)
+            drive_metadata["image_url"] = preview_upload["public_url"]
+            drive_metadata["storage_provider"] = "supabase_storage"
+            drive_metadata["upload_status"] = "uploaded"
+            print(f"[predict] Supabase Storage preview upload complete: {preview_upload['path']}")
+        except Exception as exc:
+            print(f"[predict] Supabase Storage preview upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+        try:
             print("[predict] uploading to Google Drive with OAuth")
-            uploaded_drive_file = upload_original_to_drive_oauth(file_bytes, file.filename, file.content_type)
+            uploaded_drive_file = upload_original_to_drive_oauth(file_bytes, file.filename, content_type)
             drive_metadata = {
-                "storage_provider": "google_drive_oauth",
-                "upload_status": "uploaded",
+                **drive_metadata,
                 **uploaded_drive_file,
-                "image_url": uploaded_drive_file.get("drive_web_url"),
             }
             print(
                 f"[predict] Google Drive upload complete: "

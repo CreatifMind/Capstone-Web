@@ -121,7 +121,7 @@ const html = `
             </div>
             <span>Revenue Data</span>
             <strong>No data</strong>
-            <p>No resale formula or value field saved</p>
+            <p>No material data yet</p>
             <div class="kpi-progress-meta"><span>Revenue data availability</span><strong>0%</strong></div>
             <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
           </article>
@@ -222,7 +222,7 @@ const html = `
                 <h2>Resale Value by Category</h2>
               </div>
             </div>
-            <p class="chart-subtitle">No resale data yet. Saved scans do not include revenue fields.</p>
+            <p class="chart-subtitle">No resale data yet. Upload scans to populate this chart.</p>
             <div class="chart-box">
               <canvas id="resaleChart"></canvas>
             </div>
@@ -320,7 +320,7 @@ const html = `
                 <h2>Recyclable Yield Breakdown</h2>
               </div>
             </div>
-            <p class="detail-copy">Tonnage recovered by material across the past six months. Click a material row below
+            <p class="detail-copy">Weight recovered by material across the past six months. Click a material row below
               to
               view specific sorting statistics.</p>
             <div class="detail-grid five">
@@ -339,14 +339,14 @@ const html = `
                 <h2>Estimated Resale Value Breakdown</h2>
               </div>
             </div>
-            <p class="detail-copy">Recovered tonnage multiplied by estimated commodity resale rates. Click any material
+            <p class="detail-copy">Recovered kg multiplied by estimated commodity resale rates. Click any material
               for detailed analysis.</p>
             <div class="table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
                     <th>Material</th>
-                    <th>Tonnage</th>
+                    <th>Weight (kg)</th>
                     <th>Market Rate</th>
                     <th>Estimated Value</th>
                   </tr>
@@ -458,13 +458,13 @@ const html = `
               <div>
                 <p class="eyebrow">Material Deep Dive</p>
                 <h2><span data-material-title>Material</span> Details</h2>
-                <p data-material-subtitle class="detail-copy">Select a material to inspect tonnage, value, purity, and
+                <p data-material-subtitle class="detail-copy">Select a material to inspect weight, value, purity, and
                   distribution.</p>
               </div>
             </div>
             <div class="detail-grid three">
-              <div class="metric-tile static"><span data-material-kpi-one>Tonnage Recovered</span><strong
-                  data-material-tonnage>0 t</strong><small>Year-to-date</small></div>
+              <div class="metric-tile static"><span data-material-kpi-one>Estimated Weight</span><strong
+                  data-material-tonnage>0.000 kg</strong><small>Year-to-date</small></div>
               <div class="metric-tile static"><span data-material-kpi-two>Commodity Market Value</span><strong
                   data-material-value>$0</strong><small data-material-rate>@ market rate</small></div>
               <div class="metric-tile static"><span data-material-kpi-three>Avg Material Purity</span><strong
