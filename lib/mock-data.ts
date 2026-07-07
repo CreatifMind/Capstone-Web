@@ -13,6 +13,7 @@ export type DetectedMaterial = {
 export type ScanResult = {
   id: string;
   image_url: string;
+  preview_image_url?: string;
   source_name?: string;
   overall_status: string;
   contamination_risk: string;

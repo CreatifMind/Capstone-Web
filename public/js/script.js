@@ -60,7 +60,7 @@ function plStoragePreviewUrl(sourceName) {
   const baseUrl = String(plConfig().supabaseUrl || "").replace(/\/$/, "");
   const path = String(sourceName || "");
   if (!baseUrl || !path.startsWith("purityloop_")) return "";
-  return `${baseUrl}/storage/v1/object/public/mock-uploaded-images/${encodeURIComponent(path)}`;
+  return `${baseUrl}/storage/v1/object/public/mock_uploaded_images/${encodeURIComponent(path)}`;
 }
 
 function plSetUploadProgress(percent, label = "Uploading image") {
@@ -154,6 +154,7 @@ function plNormalizeScan(scan) {
   return {
     ...scan,
     image_url: plDisplayableImageUrl(scan.image_url),
+    preview_image_url: plDisplayableImageUrl(scan.preview_image_url),
     source_name: sourceName,
     overall_status: scan.overall_status || "review_required",
     contamination_risk: scan.contamination_risk || "unknown",
@@ -177,7 +178,7 @@ async function plRefreshScanResultsFromSupabase() {
     Authorization: `Bearer ${config.supabaseAnonKey}`
   };
   try {
-    const scanColumns = "id,image_url,drive_file_name,source_name,source_size,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
+    const scanColumns = "id,image_url,preview_image_url,drive_file_name,source_name,source_size,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
     const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
     if (!scansResponse.ok) {
       console.error("PurityLoop: mock_scan_results fetch failed.", scansResponse.status, await scansResponse.text());
@@ -788,6 +789,7 @@ async function plRunBackendPrediction(file) {
   const scan = plNormalizeScan({
     id: payload.scan_result_id,
     image_url: payload.image_url || "",
+    preview_image_url: payload.preview_image_url || "",
     source_name: file.name || "Uploaded image",
     source_size: Number(file.size || 0),
     overall_status: payload.overall_status,
@@ -1165,15 +1167,16 @@ function initResultPage() {
     return match?.dataUrl || "";
   };
   let uploads = scans.map(scan => {
-    const hasScanImage = Boolean(scan.image_url);
+    const previewUrl = scan.preview_image_url || "";
+    const hasScanImage = Boolean(previewUrl);
     const storagePreview = hasScanImage ? "" : plStoragePreviewUrl(scan.source_name || scan.drive_file_name);
     const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
     return {
       name: scan.source_name || scan.id,
       size: scan.source_size || 0,
-      thumbnailSrc: scan.image_url || "",
-      dataUrl: hasScanImage && scan.image_url.startsWith("data:") ? scan.image_url : cachedPreview,
-      assetPath: hasScanImage && !scan.image_url.startsWith("data:") ? scan.image_url : storagePreview,
+      thumbnailSrc: previewUrl,
+      dataUrl: hasScanImage && previewUrl.startsWith("data:") ? previewUrl : cachedPreview,
+      assetPath: hasScanImage && !previewUrl.startsWith("data:") ? previewUrl : storagePreview,
       scanId: scan.id
     };
   });

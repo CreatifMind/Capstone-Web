@@ -44,7 +44,7 @@ model = None
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
 SCAN_RESULTS_TABLE = "mock_scan_results"
 DETECTED_MATERIALS_TABLE = "mock_detected_materials"
-PREVIEW_BUCKET = "mock-uploaded-images"
+PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
@@ -272,6 +272,7 @@ def upload_original_to_drive_oauth(file_bytes: bytes, original_filename: str | N
 def legacy_scan_row(scan_row: dict, original_filename: str | None) -> dict:
     keep_keys = {
         "image_url",
+        "preview_image_url",
         "source_type",
         "upload_status",
         "processing_status",
@@ -451,16 +452,17 @@ async def predict(file: UploadFile = File(...)):
             "drive_file_name": file.filename or "uploaded-image",
             "drive_web_url": None,
             "image_url": None,
+            "preview_image_url": None,
         }
         try:
             print(f"[predict] uploading preview to Supabase Storage bucket: {PREVIEW_BUCKET}")
             preview_upload = upload_original_to_supabase_storage(file_bytes, file.filename, content_type)
-            drive_metadata["image_url"] = preview_upload["public_url"]
+            drive_metadata["preview_image_url"] = preview_upload["public_url"]
             drive_metadata["storage_provider"] = "supabase_storage"
             drive_metadata["upload_status"] = "uploaded"
             print(f"[predict] Supabase Storage preview upload complete: {preview_upload['path']}")
         except Exception as exc:
-            print(f"[predict] Supabase Storage preview upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+            print(f"[predict] Supabase Storage upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
 
         try:
             print("[predict] uploading to Google Drive with OAuth")

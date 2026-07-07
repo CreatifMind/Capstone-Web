@@ -59,6 +59,7 @@ function normalizeScanResult(value: unknown): ScanResult | null {
   return {
     id: candidate.id,
     image_url: candidate.image_url || "",
+    preview_image_url: candidate.preview_image_url || "",
     source_name: candidate.source_name || "",
     overall_status: candidate.overall_status || "Unknown",
     contamination_risk: candidate.contamination_risk || "Unknown",
@@ -138,6 +139,7 @@ export async function saveScanResult(result: Partial<ScanResult>) {
       .from(scanResultsTable)
       .insert({
         image_url: payload.image_url,
+        preview_image_url: payload.preview_image_url,
         overall_status: payload.overall_status,
         contamination_risk: payload.contamination_risk,
         recommended_action: payload.recommended_action,
