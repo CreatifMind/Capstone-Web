@@ -440,13 +440,12 @@ const html = `
   ══════════════════════════════════════ -->
   <section id="impact" class="section impact-section">
     <div class="section-inner">
-      <div class="section-header centered" data-aos="fade-up" style="color:white;margin-bottom:60px;">
-        <div class="section-tag"
-          style="background:rgba(255,255,255,0.1);color:#6EE7B7;border-color:rgba(255,255,255,0.15);">
+      <div class="section-header centered impact-header" data-aos="fade-up">
+        <div class="section-tag impact-tag">
           <i class="fa-solid fa-chart-line"></i> Real Results
         </div>
-        <h2 class="section-headline" style="color:white;">Platform Performance at a Glance</h2>
-        <p class="section-sub" style="color:rgba(255,255,255,0.6);">Measured across uploaded images and material
+        <h2 class="section-headline">Platform Performance at a Glance</h2>
+        <p class="section-sub">Measured across uploaded images and material
           categories for the 2026 capstone prototype.</p>
       </div>
 

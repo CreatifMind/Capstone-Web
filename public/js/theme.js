@@ -3,6 +3,63 @@
    Collapsible sidebar, mobile nav, AOS, GSAP, CountUp
    ============================================================= */
 
+/* ── 0. LIGHT / DARK / SYSTEM THEME SWITCHER ──
+   The dark-ai/dark-landing/dark-app/dark-login body classes stay applied in
+   every theme — they carry the app's layout/component treatment, not just
+   dark colors. Colors themselves come from the --ai-* custom properties,
+   which flip via the data-theme attribute below. */
+function resolvePlTheme(pref) {
+  if (pref === 'system') {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  return pref;
+}
+
+function applyPlTheme(pref) {
+  const resolved = resolvePlTheme(pref);
+  document.documentElement.setAttribute('data-theme', resolved);
+  document.documentElement.setAttribute('data-theme-pref', pref);
+  document.documentElement.style.colorScheme = resolved;
+
+  document.querySelectorAll('.theme-switcher button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.themeOption === pref);
+  });
+}
+window.applyPlTheme = applyPlTheme;
+
+function initThemeSwitcher() {
+  if (!document.querySelector('.theme-switcher')) {
+    const widget = document.createElement('div');
+    widget.className = 'theme-switcher';
+    widget.setAttribute('role', 'group');
+    widget.setAttribute('aria-label', 'Theme');
+    widget.innerHTML = `
+      <button type="button" data-theme-option="light" aria-label="Light theme"><i class="fa-solid fa-sun"></i></button>
+      <button type="button" data-theme-option="dark" aria-label="Dark theme"><i class="fa-solid fa-moon"></i></button>
+      <button type="button" data-theme-option="system" aria-label="Match system theme"><i class="fa-solid fa-desktop"></i></button>
+    `;
+    document.body.appendChild(widget);
+
+    widget.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pref = btn.dataset.themeOption;
+        try { localStorage.setItem('pl_theme', pref); } catch (e) {}
+        applyPlTheme(pref);
+      });
+    });
+
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+      let currentPref = 'system';
+      try { currentPref = localStorage.getItem('pl_theme') || 'system'; } catch (e) {}
+      if (currentPref === 'system') applyPlTheme('system');
+    });
+  }
+
+  let pref = 'system';
+  try { pref = localStorage.getItem('pl_theme') || 'system'; } catch (e) {}
+  applyPlTheme(pref);
+}
+
 /* ── 1. COLLAPSIBLE SIDEBAR ── */
 function initSidebar() {
   const sidebar = document.getElementById('appSidebar');
@@ -356,16 +413,17 @@ function initHeroBars() {
 /* ── 11. LANDING ANALYTICS CHARTS ── */
 function initLandingCharts() {
   if (typeof Chart === 'undefined') return;
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   Chart.defaults.font.family = 'Inter, sans-serif';
-  Chart.defaults.color = 'rgba(244,255,249,0.62)';
-  const chartGrid = 'rgba(178, 255, 224, 0.16)';
-  const chartText = 'rgba(244,255,249,0.62)';
-  const mint = '#00F08A';
-  const teal = '#00D6D6';
-  const moss = '#7DDFA7';
-  const amber = '#D8A448';
-  const coral = '#D85E70';
-  const slate = '#78938D';
+  Chart.defaults.color = isLight ? 'rgba(22,38,31,0.68)' : 'rgba(244,255,249,0.62)';
+  const chartGrid = isLight ? 'rgba(22,38,31,0.10)' : 'rgba(178, 255, 224, 0.16)';
+  const chartText = isLight ? 'rgba(22,38,31,0.68)' : 'rgba(244,255,249,0.62)';
+  const mint = isLight ? '#2f8f5b' : '#00F08A';
+  const teal = isLight ? '#12a4a0' : '#00D6D6';
+  const moss = isLight ? '#7dbf98' : '#7DDFA7';
+  const amber = isLight ? '#d9a24a' : '#D8A448';
+  const coral = isLight ? '#d85e70' : '#D85E70';
+  const slate = isLight ? '#6b7a72' : '#78938D';
 
   // Forecast Line Chart
   const forecastEl = document.getElementById('landingForecastChart');
@@ -417,8 +475,7 @@ function initLandingCharts() {
         datasets: [{
           data: [28, 22, 18, 14, 10, 8],
           backgroundColor: [mint, teal, moss, amber, coral, slate],
-          borderColor: 'rgba(4,15,13,0.90)',
-          borderWidth: 2,
+          borderWidth: 0,
           hoverOffset: 6,
         }]
       },
@@ -581,6 +638,7 @@ function initMetricCountUp() {
 
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
+  initThemeSwitcher();
   initSidebar();
   initLiveClock();
   initActiveNav();

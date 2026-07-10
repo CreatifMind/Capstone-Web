@@ -15,6 +15,13 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
     let secondFrame = 0;
 
     try {
+      let pref = "system";
+      try { pref = window.localStorage.getItem("pl_theme") || "system"; } catch {}
+      const resolved = pref === "system"
+        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : pref;
+      document.documentElement.setAttribute("data-theme", resolved);
+      document.documentElement.setAttribute("data-theme-pref", pref);
       document.body.className = bodyClass;
       if (dataPage) {
         document.body.setAttribute("data-page", dataPage);
@@ -50,5 +57,11 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
     };
   }, [bodyClass, dataPage, html]);
 
-  return <div className={bodyClass} data-page={dataPage} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className={bodyClass}
+      data-page={dataPage}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

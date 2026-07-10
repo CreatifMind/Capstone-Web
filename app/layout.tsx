@@ -14,12 +14,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" style={{ backgroundColor: "#010806", colorScheme: "dark" }}>
+    <html lang="en" style={{ backgroundColor: "#010806", colorScheme: "dark" }} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(localStorage.getItem('pl_sidebar')==='collapsed'&&window.matchMedia('(min-width:1001px)').matches){document.documentElement.classList.add('sidebar-state-collapsed')}}catch(e){}"
+              "try{if(localStorage.getItem('pl_sidebar')==='collapsed'&&window.matchMedia('(min-width:1001px)').matches){document.documentElement.classList.add('sidebar-state-collapsed')}}catch(e){}" +
+              "try{var p=localStorage.getItem('pl_theme')||'system';var r=p==='system'?(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):p;var d=document.documentElement;d.setAttribute('data-theme',r);d.setAttribute('data-theme-pref',p);d.style.colorScheme=r;d.style.backgroundColor=r==='light'?'#f4fbf7':'#010806';}catch(e){}"
           }}
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
         <link rel="stylesheet" href="/css/style.css" />
       </head>
-      <body style={{ backgroundColor: "#010806" }}>
+      <body>
         <script
           dangerouslySetInnerHTML={{
             __html: `window.__PURITYLOOP_CONFIG__=${JSON.stringify({

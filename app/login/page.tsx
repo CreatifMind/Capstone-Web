@@ -42,11 +42,11 @@ const html = `
         <div class="login-illustration">
           <svg viewBox="0 0 400 240" fill="none" xmlns="http://www.w3.org/2000/svg">
             <!-- Background grid & scanning beams -->
-            <path d="M40 120H360" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" stroke-dasharray="4 4" />
-            <path d="M200 40V200" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" stroke-dasharray="4 4" />
+            <path d="M40 120H360" stroke="var(--ai-border-strong)" stroke-width="2" stroke-dasharray="4 4" />
+            <path d="M200 40V200" stroke="var(--ai-border-strong)" stroke-width="2" stroke-dasharray="4 4" />
 
             <!-- Conveyor belt line -->
-            <rect x="50" y="116" width="300" height="8" rx="4" fill="rgba(255, 255, 255, 0.2)" />
+            <rect x="50" y="116" width="300" height="8" rx="4" fill="var(--ai-border-strong)" />
 
             <!-- Scanning field -->
             <path d="M200 40L140 120H260L200 40Z" fill="url(#scanGrad)" opacity="0.45" />
@@ -60,7 +60,7 @@ const html = `
             <!-- Glass -->
             <rect x="80" y="100" width="30" height="30" rx="6" fill="#10B981" opacity="0.8" />
             <path d="M95 105V125M85 115H105" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" />
-            <text x="95" y="90" fill="rgba(255, 255, 255, 0.7)" font-size="9" text-anchor="middle"
+            <text x="95" y="90" fill="var(--ai-muted)" font-size="9" text-anchor="middle"
               font-family="Inter, sans-serif" font-weight="bold">PET [98%]</text>
 
             <!-- Scanning target -->
@@ -70,9 +70,9 @@ const html = `
               font-weight="bold">SCANNING...</text>
 
             <!-- Cardboard -->
-            <rect x="290" y="100" width="30" height="30" rx="6" fill="rgba(255, 255, 255, 0.15)"
-              stroke="rgba(255, 255, 255, 0.3)" />
-            <text x="305" y="90" fill="rgba(255, 255, 255, 0.5)" font-size="9" text-anchor="middle"
+            <rect x="290" y="100" width="30" height="30" rx="6" fill="color-mix(in srgb, var(--ai-text) 15%, transparent)"
+              stroke="var(--ai-border-strong)" />
+            <text x="305" y="90" fill="var(--ai-muted)" font-size="9" text-anchor="middle"
               font-family="Inter, sans-serif">ALUM</text>
 
             <!-- Gradients -->
