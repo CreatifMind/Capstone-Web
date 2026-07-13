@@ -1,0 +1,93 @@
+Mapping of images to slides:
+============================================================
+Slide 1:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 2:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 3:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 4:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 5:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 6:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 7:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 8:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 9:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 10:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 11:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 12:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 13:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 14:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 15:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 16:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 17:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 18:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 19:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 20:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 21:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 22:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 23:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 24:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 25:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 26:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 27:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 28:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 29:
+  [Background has picture/texture fill]
+------------------------------------------------------------
+Slide 30:
+  [Background has picture/texture fill]
+  Shape 2: Picture (filename='image.png', size=(640, 360), ext='png')
+------------------------------------------------------------

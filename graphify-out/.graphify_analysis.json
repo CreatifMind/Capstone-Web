@@ -1,0 +1,898 @@
+{
+  "communities": {
+    "0": [
+      "public_js_script",
+      "public_js_script_activatedetailpanel",
+      "public_js_script_animateprogressbars",
+      "public_js_script_detectionresults",
+      "public_js_script_detectwastetypefromfilename",
+      "public_js_script_drawemptyanalyticscharts",
+      "public_js_script_drawemptychart",
+      "public_js_script_drawfallbackanalyticscharts",
+      "public_js_script_drawfallbackbars",
+      "public_js_script_drawfallbacklines",
+      "public_js_script_drillmaterialdata",
+      "public_js_script_drillstationdata",
+      "public_js_script_final_categories",
+      "public_js_script_formatfilesize",
+      "public_js_script_getauditledger",
+      "public_js_script_getdetectedobjectsforfile",
+      "public_js_script_getestimatedresalevaluerm",
+      "public_js_script_getestimatedweightkg",
+      "public_js_script_getlogsourcekey",
+      "public_js_script_getlogsourcelabel",
+      "public_js_script_getuploadsourcedisplayname",
+      "public_js_script_initanalyticscharts",
+      "public_js_script_initdrillthrough",
+      "public_js_script_initmobilenav",
+      "public_js_script_initpasswordtoggle",
+      "public_js_script_initpurityloopapp",
+      "public_js_script_initresultpage",
+      "public_js_script_initreviewmodal",
+      "public_js_script_initsubmitticketpage",
+      "public_js_script_initthemetoggle",
+      "public_js_script_inituploadpage",
+      "public_js_script_material_estimates",
+      "public_js_script_normalizematerialcategory",
+      "public_js_script_plapibaseurl",
+      "public_js_script_plboxestomaterials",
+      "public_js_script_plcategorypalette",
+      "public_js_script_plconfidencepercent",
+      "public_js_script_plconfig",
+      "public_js_script_pldisplayableimageurl",
+      "public_js_script_plformatkg",
+      "public_js_script_plformatrm",
+      "public_js_script_plformatscantime",
+      "public_js_script_plgetanalyticssummary",
+      "public_js_script_plgetlatestscanresult",
+      "public_js_script_plgetrequestedscanresult",
+      "public_js_script_plgetscanresultbyid",
+      "public_js_script_plgetscanresults",
+      "public_js_script_plhideuploadprogress",
+      "public_js_script_plisclean",
+      "public_js_script_pliscontaminantlabel",
+      "public_js_script_pliscontaminatedmaterial",
+      "public_js_script_plisrecyclable",
+      "public_js_script_plmaterialcategoryfromlabel",
+      "public_js_script_plmaterialestimate",
+      "public_js_script_plmaterialstatus",
+      "public_js_script_plmaterialstoboxes",
+      "public_js_script_plnormalizecategory",
+      "public_js_script_plnormalizematerial",
+      "public_js_script_plnormalizescan",
+      "public_js_script_plnormalizestatus",
+      "public_js_script_plnumberfrompercent",
+      "public_js_script_plrefreshscanresultsfromsupabase",
+      "public_js_script_plrunbackendprediction",
+      "public_js_script_plsafearray",
+      "public_js_script_plsafefiles",
+      "public_js_script_plsafejsonparse",
+      "public_js_script_plsavescanresult",
+      "public_js_script_plscantoledger",
+      "public_js_script_plselecteduploadfiles",
+      "public_js_script_plsetjson",
+      "public_js_script_plsetscanresults",
+      "public_js_script_plsetuploadprogress",
+      "public_js_script_plstoragepreviewurl",
+      "public_js_script_plusesupabase",
+      "public_js_script_preparecanvas",
+      "public_js_script_renderbarrows",
+      "public_js_script_rendermaterialdetail",
+      "public_js_script_rendersparkbars",
+      "public_js_script_renderstationdetail",
+      "public_js_script_saveauditledger",
+      "public_js_script_showtoast",
+      "public_js_script_updateanalyticsdetailpanels"
+    ],
+    "1": [
+      "components_detectedmaterialspanel",
+      "components_detectedmaterialspanel_detectedmaterialspanel",
+      "lib_api",
+      "lib_api_attachmaterialstoscans",
+      "lib_api_canusesupabase",
+      "lib_api_getanalyticsdata",
+      "lib_api_getlatestscanresult",
+      "lib_api_getscanlogs",
+      "lib_api_getscanresultbyid",
+      "lib_api_getscanswithmaterials",
+      "lib_api_getstorageitem",
+      "lib_api_loginuser",
+      "lib_api_normalizedetectedmaterials",
+      "lib_api_normalizescanresult",
+      "lib_api_normalizescanresults",
+      "lib_api_savedetectedmaterials",
+      "lib_api_savescanresult",
+      "lib_api_savesettings",
+      "lib_api_setstorageitem",
+      "lib_api_submitticket",
+      "lib_api_tofinitenumber",
+      "lib_config",
+      "lib_config_issupabaseconfigured",
+      "lib_mock_data",
+      "lib_mock_data_detectedmaterial",
+      "lib_mock_data_scanresult",
+      "lib_storage",
+      "lib_storage_uploadimagetosupabase",
+      "lib_supabase",
+      "lib_utils",
+      "lib_utils_cn",
+      "lib_utils_formatpercent",
+      "lib_utils_safearray",
+      "lib_utils_safeid",
+      "lib_utils_safejsonparse",
+      "lib_utils_safeobject"
+    ],
+    "2": [
+      "backend_main",
+      "backend_main_config_path",
+      "backend_main_debug_model",
+      "backend_main_get_model",
+      "backend_main_google_auth",
+      "backend_main_google_callback",
+      "backend_main_google_credentials_path",
+      "backend_main_google_oauth_client_path",
+      "backend_main_google_oauth_state_path",
+      "backend_main_google_oauth_token_path",
+      "backend_main_health",
+      "backend_main_legacy_scan_row",
+      "backend_main_load_oauth_state",
+      "backend_main_material_category",
+      "backend_main_material_status",
+      "backend_main_oauth_drive_credentials",
+      "backend_main_oauth_flow",
+      "backend_main_predict",
+      "backend_main_safe_drive_filename",
+      "backend_main_safe_error_message",
+      "backend_main_save_oauth_state",
+      "backend_main_save_oauth_token",
+      "backend_main_summarize",
+      "backend_main_to_detected_materials",
+      "backend_main_upload_original_to_drive",
+      "backend_main_upload_original_to_drive_oauth",
+      "backend_main_upload_original_to_supabase_storage",
+      "exception",
+      "path",
+      "uploadfile"
+    ],
+    "3": [
+      "ref",
+      "ref_dom",
+      "ref_dom_iterable",
+      "ref_esnext",
+      "ref_next_env_d_ts",
+      "ref_next_types_ts",
+      "ref_node_modules",
+      "ref_ts",
+      "ref_tsx",
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowjs",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_incremental",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_paths",
+      "tsconfig_compileroptions_plugins",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_exclude",
+      "tsconfig_include",
+      "tsconfig_paths"
+    ],
+    "4": [
+      "public_js_theme",
+      "public_js_theme_animateprogressbars",
+      "public_js_theme_applypltheme",
+      "public_js_theme_bindoverlaylocks",
+      "public_js_theme_bindsettingsthresholdsliders",
+      "public_js_theme_closeappsidebar",
+      "public_js_theme_closelandingmenu",
+      "public_js_theme_initactivenav",
+      "public_js_theme_initaos",
+      "public_js_theme_initcountup",
+      "public_js_theme_initgsap",
+      "public_js_theme_initherobars",
+      "public_js_theme_initlandingcharts",
+      "public_js_theme_initlandingnav",
+      "public_js_theme_initliveclock",
+      "public_js_theme_initloginform",
+      "public_js_theme_initmetriccountup",
+      "public_js_theme_initmobileoverlayfix",
+      "public_js_theme_initmotioneffects",
+      "public_js_theme_initpasswordtoggle",
+      "public_js_theme_initpuritylooptheme",
+      "public_js_theme_initsidebar",
+      "public_js_theme_initthemeswitcher",
+      "public_js_theme_inittopbaraccountactions",
+      "public_js_theme_inittyped",
+      "public_js_theme_resolvepltheme",
+      "public_js_theme_setexpanded",
+      "public_js_theme_syncoverlaylocks"
+    ],
+    "5": [
+      "app_analytics_page",
+      "app_analytics_page_page",
+      "app_create_account_page",
+      "app_create_account_page_page",
+      "app_log_page",
+      "app_log_page_page",
+      "app_login_page",
+      "app_login_page_page",
+      "app_page",
+      "app_page_page",
+      "app_result_page",
+      "app_result_page_page",
+      "app_settings_page",
+      "app_settings_page_page",
+      "app_submit_ticket_page",
+      "app_submit_ticket_page_page",
+      "app_upload_page",
+      "app_upload_page_page",
+      "components_pagehtml",
+      "components_pagehtml_pagehtml",
+      "components_pagehtml_pagehtmlprops"
+    ],
+    "6": [
+      "next",
+      "package",
+      "package_dependencies",
+      "package_dependencies_next",
+      "package_dependencies_puppeteer",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_dependencies_supabase_supabase_js",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_lint",
+      "package_scripts_start",
+      "package_version",
+      "puppeteer",
+      "react",
+      "react_dom",
+      "supabase_supabase_js"
+    ],
+    "7": [
+      "autoprefixer",
+      "eslint",
+      "eslint_config_next",
+      "package_devdependencies",
+      "package_devdependencies_autoprefixer",
+      "package_devdependencies_eslint",
+      "package_devdependencies_eslint_config_next",
+      "package_devdependencies_postcss",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_types_node",
+      "package_devdependencies_types_react",
+      "package_devdependencies_types_react_dom",
+      "package_devdependencies_typescript",
+      "postcss",
+      "tailwindcss",
+      "types_node",
+      "types_react",
+      "types_react_dom",
+      "typescript"
+    ],
+    "8": [
+      "next_backup_localhost_20260713_static_chunks_polyfills",
+      "next_backup_localhost_20260713_static_chunks_polyfills_cb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_e",
+      "next_backup_localhost_20260713_static_chunks_polyfills_eb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_hb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_ib",
+      "next_backup_localhost_20260713_static_chunks_polyfills_jm",
+      "next_backup_localhost_20260713_static_chunks_polyfills_nb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_ob",
+      "next_backup_localhost_20260713_static_chunks_polyfills_qm",
+      "next_backup_localhost_20260713_static_chunks_polyfills_rb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_sb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_t",
+      "next_backup_localhost_20260713_static_chunks_polyfills_tb",
+      "next_backup_localhost_20260713_static_chunks_polyfills_ub",
+      "next_backup_localhost_20260713_static_chunks_polyfills_zm"
+    ],
+    "9": [
+      "next_backup_localhost_20260713_types_app_layout",
+      "next_backup_localhost_20260713_types_app_layout_checkfields",
+      "next_backup_localhost_20260713_types_app_layout_diff",
+      "next_backup_localhost_20260713_types_app_layout_firstarg",
+      "next_backup_localhost_20260713_types_app_layout_layoutprops",
+      "next_backup_localhost_20260713_types_app_layout_maybefield",
+      "next_backup_localhost_20260713_types_app_layout_negative",
+      "next_backup_localhost_20260713_types_app_layout_nonnegative",
+      "next_backup_localhost_20260713_types_app_layout_numeric",
+      "next_backup_localhost_20260713_types_app_layout_omitwithtag",
+      "next_backup_localhost_20260713_types_app_layout_pageparams",
+      "next_backup_localhost_20260713_types_app_layout_pageprops",
+      "next_backup_localhost_20260713_types_app_layout_revalidaterange",
+      "next_backup_localhost_20260713_types_app_layout_secondarg",
+      "next_backup_localhost_20260713_types_app_layout_tentry",
+      "next_backup_localhost_20260713_types_app_layout_zero"
+    ],
+    "10": [
+      "next_backup_localhost_20260713_types_app_login_page",
+      "next_backup_localhost_20260713_types_app_login_page_checkfields",
+      "next_backup_localhost_20260713_types_app_login_page_diff",
+      "next_backup_localhost_20260713_types_app_login_page_firstarg",
+      "next_backup_localhost_20260713_types_app_login_page_layoutprops",
+      "next_backup_localhost_20260713_types_app_login_page_maybefield",
+      "next_backup_localhost_20260713_types_app_login_page_negative",
+      "next_backup_localhost_20260713_types_app_login_page_nonnegative",
+      "next_backup_localhost_20260713_types_app_login_page_numeric",
+      "next_backup_localhost_20260713_types_app_login_page_omitwithtag",
+      "next_backup_localhost_20260713_types_app_login_page_pageparams",
+      "next_backup_localhost_20260713_types_app_login_page_pageprops",
+      "next_backup_localhost_20260713_types_app_login_page_revalidaterange",
+      "next_backup_localhost_20260713_types_app_login_page_secondarg",
+      "next_backup_localhost_20260713_types_app_login_page_tentry",
+      "next_backup_localhost_20260713_types_app_login_page_zero"
+    ],
+    "11": [
+      "next_backup_localhost_20260713_types_app_page",
+      "next_backup_localhost_20260713_types_app_page_checkfields",
+      "next_backup_localhost_20260713_types_app_page_diff",
+      "next_backup_localhost_20260713_types_app_page_firstarg",
+      "next_backup_localhost_20260713_types_app_page_layoutprops",
+      "next_backup_localhost_20260713_types_app_page_maybefield",
+      "next_backup_localhost_20260713_types_app_page_negative",
+      "next_backup_localhost_20260713_types_app_page_nonnegative",
+      "next_backup_localhost_20260713_types_app_page_numeric",
+      "next_backup_localhost_20260713_types_app_page_omitwithtag",
+      "next_backup_localhost_20260713_types_app_page_pageparams",
+      "next_backup_localhost_20260713_types_app_page_pageprops",
+      "next_backup_localhost_20260713_types_app_page_revalidaterange",
+      "next_backup_localhost_20260713_types_app_page_secondarg",
+      "next_backup_localhost_20260713_types_app_page_tentry",
+      "next_backup_localhost_20260713_types_app_page_zero"
+    ],
+    "12": [
+      "next_backup_localhost_20260713_types_app_upload_page",
+      "next_backup_localhost_20260713_types_app_upload_page_checkfields",
+      "next_backup_localhost_20260713_types_app_upload_page_diff",
+      "next_backup_localhost_20260713_types_app_upload_page_firstarg",
+      "next_backup_localhost_20260713_types_app_upload_page_layoutprops",
+      "next_backup_localhost_20260713_types_app_upload_page_maybefield",
+      "next_backup_localhost_20260713_types_app_upload_page_negative",
+      "next_backup_localhost_20260713_types_app_upload_page_nonnegative",
+      "next_backup_localhost_20260713_types_app_upload_page_numeric",
+      "next_backup_localhost_20260713_types_app_upload_page_omitwithtag",
+      "next_backup_localhost_20260713_types_app_upload_page_pageparams",
+      "next_backup_localhost_20260713_types_app_upload_page_pageprops",
+      "next_backup_localhost_20260713_types_app_upload_page_revalidaterange",
+      "next_backup_localhost_20260713_types_app_upload_page_secondarg",
+      "next_backup_localhost_20260713_types_app_upload_page_tentry",
+      "next_backup_localhost_20260713_types_app_upload_page_zero"
+    ],
+    "13": [
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_cb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_e",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_eb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_hb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_ib",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_jm",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_nb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_ob",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_qm",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_rb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_sb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_t",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_tb",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_ub",
+      "next_backup_localhost_3001_20260713_static_chunks_polyfills_zm"
+    ],
+    "14": [
+      "next_backup_localhost_20260713_static_chunks_webpack",
+      "next_backup_localhost_20260713_static_chunks_webpack_applyhandler",
+      "next_backup_localhost_20260713_static_chunks_webpack_applyinvalidatedmodules",
+      "next_backup_localhost_20260713_static_chunks_webpack_createmodulehotobject",
+      "next_backup_localhost_20260713_static_chunks_webpack_createrequire",
+      "next_backup_localhost_20260713_static_chunks_webpack_hotapply",
+      "next_backup_localhost_20260713_static_chunks_webpack_hotcheck",
+      "next_backup_localhost_20260713_static_chunks_webpack_internalapply",
+      "next_backup_localhost_20260713_static_chunks_webpack_loadupdatechunk",
+      "next_backup_localhost_20260713_static_chunks_webpack_setstatus",
+      "next_backup_localhost_20260713_static_chunks_webpack_trackblockingpromise",
+      "next_backup_localhost_20260713_static_chunks_webpack_unblock",
+      "next_backup_localhost_20260713_static_chunks_webpack_waitforblockingpromises",
+      "next_backup_localhost_20260713_static_chunks_webpack_webpack_require"
+    ],
+    "15": [
+      "next_backup_localhost_20260713_server_app_login_page",
+      "next_backup_localhost_20260713_server_app_page",
+      "next_backup_localhost_20260713_server_app_upload_page",
+      "next_backup_localhost_20260713_server_pages_app",
+      "next_backup_localhost_20260713_server_pages_document",
+      "next_backup_localhost_20260713_server_pages_error",
+      "next_backup_localhost_20260713_server_webpack_runtime",
+      "next_backup_localhost_20260713_server_webpack_runtime_webpack_require"
+    ],
+    "16": [
+      "vercel",
+      "vercel_buildcommand",
+      "vercel_cleanurls",
+      "vercel_framework",
+      "vercel_installcommand",
+      "vercel_outputdirectory",
+      "vercel_schema",
+      "vercel_trailingslash"
+    ],
+    "17": [
+      "components_progressbar",
+      "components_progressbar_progressbar",
+      "components_progressbar_progressbarprops",
+      "components_progressbar_progressstyle"
+    ],
+    "18": [
+      "app_layout",
+      "app_layout_metadata",
+      "app_layout_rootlayout"
+    ],
+    "19": [
+      "components_boundingboxoverlay",
+      "components_boundingboxoverlay_boundingboxoverlay",
+      "components_boundingboxoverlay_boundingboxoverlayprops"
+    ],
+    "20": [
+      "components_kpicard",
+      "components_kpicard_kpicard",
+      "components_kpicard_kpicardprops"
+    ],
+    "21": [
+      "extract_frames",
+      "extract_frames_main",
+      "extract_frames_save_frame"
+    ],
+    "22": [
+      "search_all_overlap",
+      "search_all_overlap_get_all_frames",
+      "search_all_overlap_main"
+    ],
+    "23": [
+      "app_not_found",
+      "app_not_found_notfound"
+    ],
+    "24": [
+      "components_animatedcard",
+      "components_animatedcard_animatedcard"
+    ],
+    "25": [
+      "components_mobilenav",
+      "components_mobilenav_mobilenav"
+    ],
+    "26": [
+      "components_navbar",
+      "components_navbar_navbar"
+    ],
+    "27": [
+      "components_pagetransition",
+      "components_pagetransition_pagetransition"
+    ],
+    "28": [
+      "components_recommendedactionpanel",
+      "components_recommendedactionpanel_recommendedactionpanel"
+    ],
+    "29": [
+      "components_scanviewport",
+      "components_scanviewport_scanviewport"
+    ],
+    "30": [
+      "components_sidebar",
+      "components_sidebar_sidebar"
+    ],
+    "31": [
+      "components_uploaddropzone",
+      "components_uploaddropzone_uploaddropzone"
+    ],
+    "32": [
+      "extract_media_files",
+      "extract_media_files_extract_pptx_media"
+    ],
+    "33": [
+      "extract_pptx_images",
+      "extract_pptx_images_extract_images"
+    ],
+    "34": [
+      "map_zip_media",
+      "map_zip_media_map_slide_media"
+    ],
+    "35": [
+      "match_images",
+      "match_images_match_images"
+    ],
+    "36": [
+      "merge_videos",
+      "merge_videos_main"
+    ],
+    "37": [
+      "next_backup_localhost_20260713_package",
+      "next_backup_localhost_20260713_package_type"
+    ],
+    "38": [
+      "next_backup_localhost_20260713_types_package",
+      "next_backup_localhost_20260713_types_package_type"
+    ],
+    "39": [
+      "next_backup_localhost_3001_20260713_package",
+      "next_backup_localhost_3001_20260713_package_type"
+    ],
+    "40": [
+      "next_backup_localhost_3001_20260713_types_package",
+      "next_backup_localhost_3001_20260713_types_package_type"
+    ],
+    "41": [
+      "next_config",
+      "next_config_nextconfig"
+    ],
+    "42": [
+      "next_env_d",
+      "next_env_d_rationale_4"
+    ],
+    "43": [
+      "restart_tunnel",
+      "restart_tunnel_sh__entry"
+    ],
+    "44": [
+      "screenshot_all_slides",
+      "screenshot_all_slides_main"
+    ],
+    "45": [
+      "tailwind_config",
+      "tailwind_config_config"
+    ],
+    "46": [
+      "next_backup_localhost_20260713_server_app_login_page_client_reference_manifest"
+    ],
+    "47": [
+      "next_backup_localhost_20260713_server_app_not_found_page_client_reference_manifest"
+    ],
+    "48": [
+      "next_backup_localhost_20260713_server_app_page_client_reference_manifest"
+    ],
+    "49": [
+      "next_backup_localhost_20260713_server_app_upload_page_client_reference_manifest"
+    ],
+    "50": [
+      "next_backup_localhost_20260713_server_error"
+    ],
+    "51": [
+      "next_backup_localhost_20260713_server_interception_route_rewrite_manifest"
+    ],
+    "52": [
+      "next_backup_localhost_20260713_server_middleware_build_manifest"
+    ],
+    "53": [
+      "next_backup_localhost_20260713_server_middleware_react_loadable_manifest"
+    ],
+    "54": [
+      "next_backup_localhost_20260713_server_next_font_manifest"
+    ],
+    "55": [
+      "next_backup_localhost_20260713_server_server_reference_manifest"
+    ],
+    "56": [
+      "next_backup_localhost_20260713_server_vendor_chunks_next_14_2_35_react_dom_18_3_1_react_18_3_1_react_18_3_1"
+    ],
+    "57": [
+      "next_backup_localhost_20260713_server_vendor_chunks_swc_helpers_0_5_5"
+    ],
+    "58": [
+      "next_backup_localhost_20260713_static_chunks_app_layout"
+    ],
+    "59": [
+      "next_backup_localhost_20260713_static_chunks_app_login_page"
+    ],
+    "60": [
+      "next_backup_localhost_20260713_static_chunks_app_not_found"
+    ],
+    "61": [
+      "next_backup_localhost_20260713_static_chunks_app_page"
+    ],
+    "62": [
+      "next_backup_localhost_20260713_static_chunks_app_pages_internals"
+    ],
+    "63": [
+      "next_backup_localhost_20260713_static_chunks_app_upload_page"
+    ],
+    "64": [
+      "next_backup_localhost_20260713_static_chunks_error"
+    ],
+    "65": [
+      "next_backup_localhost_20260713_static_chunks_main"
+    ],
+    "66": [
+      "next_backup_localhost_20260713_static_chunks_main_app"
+    ],
+    "67": [
+      "next_backup_localhost_20260713_static_chunks_pages_app"
+    ],
+    "68": [
+      "next_backup_localhost_20260713_static_chunks_pages_error"
+    ],
+    "69": [
+      "next_backup_localhost_20260713_static_chunks_react_refresh"
+    ],
+    "70": [
+      "next_backup_localhost_20260713_static_development_buildmanifest"
+    ],
+    "71": [
+      "next_backup_localhost_20260713_static_development_ssgmanifest"
+    ],
+    "72": [
+      "next_backup_localhost_20260713_static_webpack_app_layout_40c2adbc2b913f89_hot_update"
+    ],
+    "73": [
+      "next_backup_localhost_20260713_static_webpack_webpack_2761d89a0acef98b_hot_update"
+    ],
+    "74": [
+      "next_backup_localhost_20260713_static_webpack_webpack_40c2adbc2b913f89_hot_update"
+    ],
+    "75": [
+      "next_backup_localhost_20260713_static_webpack_webpack_51bc412be617fe47_hot_update"
+    ],
+    "76": [
+      "next_backup_localhost_3001_20260713_server_interception_route_rewrite_manifest"
+    ],
+    "77": [
+      "next_backup_localhost_3001_20260713_server_middleware_build_manifest"
+    ],
+    "78": [
+      "next_backup_localhost_3001_20260713_server_middleware_react_loadable_manifest"
+    ],
+    "79": [
+      "next_backup_localhost_3001_20260713_server_next_font_manifest"
+    ],
+    "80": [
+      "next_backup_localhost_3001_20260713_server_server_reference_manifest"
+    ],
+    "81": [
+      "next_backup_localhost_3001_20260713_static_development_buildmanifest"
+    ],
+    "82": [
+      "next_backup_localhost_3001_20260713_static_development_ssgmanifest"
+    ],
+    "83": [
+      "postcss_config"
+    ]
+  },
+  "cohesion": {
+    "0": 0.06504065040650407,
+    "1": 0.13968253968253969,
+    "2": 0.15172413793103448,
+    "3": 0.06896551724137931,
+    "4": 0.14814814814814814,
+    "5": 0.1380952380952381,
+    "6": 0.1,
+    "7": 0.10526315789473684,
+    "8": 0.21666666666666667,
+    "9": 0.125,
+    "10": 0.125,
+    "11": 0.125,
+    "12": 0.125,
+    "13": 0.21666666666666667,
+    "14": 0.31868131868131866,
+    "15": 0.25,
+    "16": 0.25,
+    "17": 0.5,
+    "18": 0.6666666666666666,
+    "19": 0.6666666666666666,
+    "20": 0.6666666666666666,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0,
+    "34": 1.0,
+    "35": 1.0,
+    "36": 1.0,
+    "37": 1.0,
+    "38": 1.0,
+    "39": 1.0,
+    "40": 1.0,
+    "41": 1.0,
+    "42": 1.0,
+    "43": 1.0,
+    "44": 1.0,
+    "45": 1.0,
+    "46": 1.0,
+    "47": 1.0,
+    "48": 1.0,
+    "49": 1.0,
+    "50": 1.0,
+    "51": 1.0,
+    "52": 1.0,
+    "53": 1.0,
+    "54": 1.0,
+    "55": 1.0,
+    "56": 1.0,
+    "57": 1.0,
+    "58": 1.0,
+    "59": 1.0,
+    "60": 1.0,
+    "61": 1.0,
+    "62": 1.0,
+    "63": 1.0,
+    "64": 1.0,
+    "65": 1.0,
+    "66": 1.0,
+    "67": 1.0,
+    "68": 1.0,
+    "69": 1.0,
+    "70": 1.0,
+    "71": 1.0,
+    "72": 1.0,
+    "73": 1.0,
+    "74": 1.0,
+    "75": 1.0,
+    "76": 1.0,
+    "77": 1.0,
+    "78": 1.0,
+    "79": 1.0,
+    "80": 1.0,
+    "81": 1.0,
+    "82": 1.0,
+    "83": 1.0
+  },
+  "gods": [
+    {
+      "id": "public_js_theme_initpuritylooptheme",
+      "label": "initPurityLoopTheme()",
+      "degree": 18
+    },
+    {
+      "id": "public_js_script_rendermaterialdetail",
+      "label": "renderMaterialDetail()",
+      "degree": 16
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 16
+    },
+    {
+      "id": "public_js_script_plsafearray",
+      "label": "plSafeArray()",
+      "degree": 14
+    },
+    {
+      "id": "public_js_script_plgetanalyticssummary",
+      "label": "plGetAnalyticsSummary()",
+      "degree": 13
+    },
+    {
+      "id": "public_js_script_initanalyticscharts",
+      "label": "initAnalyticsCharts()",
+      "degree": 12
+    },
+    {
+      "id": "lib_utils_safearray",
+      "label": "safeArray()",
+      "degree": 11
+    },
+    {
+      "id": "public_js_script_plgetscanresults",
+      "label": "plGetScanResults()",
+      "degree": 11
+    },
+    {
+      "id": "public_js_script_initpurityloopapp",
+      "label": "initPurityLoopApp()",
+      "degree": 11
+    },
+    {
+      "id": "backend_main_predict",
+      "label": "predict()",
+      "degree": 10
+    }
+  ],
+  "surprises": [
+    {
+      "source": "DetectedMaterialsPanel()",
+      "target": "safeArray()",
+      "source_files": [
+        "components/DetectedMaterialsPanel.tsx",
+        "lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `DetectedMaterialsPanel()` unexpectedly reaches hub `safeArray()`"
+    },
+    {
+      "source": "normalizeDetectedMaterials()",
+      "target": "safeArray()",
+      "source_files": [
+        "lib/api.ts",
+        "lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    },
+    {
+      "source": "normalizeScanResults()",
+      "target": "safeArray()",
+      "source_files": [
+        "lib/api.ts",
+        "lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    },
+    {
+      "source": "attachMaterialsToScans()",
+      "target": "safeArray()",
+      "source_files": [
+        "lib/api.ts",
+        "lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    },
+    {
+      "source": "saveScanResult()",
+      "target": "safeArray()",
+      "source_files": [
+        "lib/api.ts",
+        "lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `devDependencies` connect `devDependencies` to `package.json`?",
+      "why": "High betweenness centrality (0.004) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 2 inferred relationships involving `renderMaterialDetail()` (e.g. with `plIsContaminatedMaterial()` and `plIsRecyclable()`) actually correct?",
+      "why": "`renderMaterialDetail()` has 2 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 2 inferred relationships involving `plGetAnalyticsSummary()` (e.g. with `plIsContaminatedMaterial()` and `plIsRecyclable()`) actually correct?",
+      "why": "`plGetAnalyticsSummary()` has 2 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `type`, `TEntry`, `PageParams` to the rest of the system?",
+      "why": "124 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `script.js` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06504065040650407 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `api.ts` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.13968253968253969 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `compilerOptions` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06896551724137931 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

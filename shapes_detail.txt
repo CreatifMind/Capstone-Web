@@ -1,0 +1,294 @@
+Slide 1:
+  Background fill type: BACKGROUND (5)
+  Shape count: 12
+    Shape 1: name='Group 2', type=GROUP (6)
+      Group shape with 2 subshapes
+        Subshape: name='Freeform 3', type=FREEFORM (5)
+        Subshape: name='TextBox 4', type=TEXT_BOX (17)
+    Shape 2: name='Freeform 5', type=FREEFORM (5)
+    Shape 3: name='Freeform 6', type=FREEFORM (5)
+    Shape 4: name='Freeform 7', type=FREEFORM (5)
+    Shape 5: name='TextBox 8', type=TEXT_BOX (17)
+      Text: Automated Waste Sorting & Contamination Detection...
+    Shape 6: name='TextBox 9', type=TEXT_BOX (17)
+      Text: Capstone Project...
+    Shape 7: name='Freeform 10', type=FREEFORM (5)
+    Shape 8: name='Freeform 11', type=FREEFORM (5)
+    Shape 9: name='Freeform 12', type=FREEFORM (5)
+    Shape 10: name='Group 13', type=GROUP (6)
+      Group shape with 3 subshapes
+        Subshape: name='Group 14', type=GROUP (6)
+        Subshape: name='Freeform 17', type=FREEFORM (5)
+        Subshape: name='TextBox 18', type=TEXT_BOX (17)
+    Shape 11: name='Freeform 19', type=FREEFORM (5)
+    Shape 12: name='Freeform 20', type=FREEFORM (5)
+--------------------------------------------------
+Slide 2:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Picture 3', type=MEDIA (16)
+--------------------------------------------------
+Slide 3:
+  Background fill type: BACKGROUND (5)
+  Shape count: 3
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+--------------------------------------------------
+Slide 4:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: AI Parallel Project Lifecycle...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 5:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: BPMN Diagram...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 6:
+  Background fill type: BACKGROUND (5)
+  Shape count: 1
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+--------------------------------------------------
+Slide 7:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: Dataset Qty Used:
+1,000 Datasets
+Equally selected from our 9...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 8:
+  Background fill type: BACKGROUND (5)
+  Shape count: 5
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: Test Model Results - (To Obtain Initial Model Parameter)...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+--------------------------------------------------
+Slide 9:
+  Background fill type: BACKGROUND (5)
+  Shape count: 1
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+--------------------------------------------------
+Slide 10:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='TextBox 3', type=TEXT_BOX (17)
+      Text: Dataset Qty Used:
+45,000 Datasets
+Equally selected from our ...
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 11:
+  Background fill type: BACKGROUND (5)
+  Shape count: 5
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: Baseline Model Results & Confusion Matrix...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+--------------------------------------------------
+Slide 12:
+  Background fill type: BACKGROUND (5)
+  Shape count: 7
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='TextBox 5', type=TEXT_BOX (17)
+      Text: Results: Training Optimization & Class Penalty Tuning...
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+    Shape 6: name='Freeform 7', type=FREEFORM (5)
+    Shape 7: name='TextBox 8', type=TEXT_BOX (17)
+      Text: Dataset Qty Used:
+45,000 Datasets
+Equally selected from our ...
+--------------------------------------------------
+Slide 13:
+  Background fill type: BACKGROUND (5)
+  Shape count: 7
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='TextBox 5', type=TEXT_BOX (17)
+      Text: Results: Model Scaling & Real-World Image Testing...
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+    Shape 6: name='Freeform 7', type=FREEFORM (5)
+    Shape 7: name='TextBox 8', type=TEXT_BOX (17)
+      Text: Dataset Qty Used:
+45,000 Datasets
+Equally selected from our ...
+--------------------------------------------------
+Slide 14:
+  Background fill type: BACKGROUND (5)
+  Shape count: 7
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='TextBox 5', type=TEXT_BOX (17)
+      Text: Results: Data Cleaning & Copy-Paste Augmentations...
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+    Shape 6: name='Freeform 7', type=FREEFORM (5)
+    Shape 7: name='TextBox 8', type=TEXT_BOX (17)
+      Text: Dataset Qty Used:
+45,000 Datasets
+Equally selected from our ...
+--------------------------------------------------
+Slide 15:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: Success Metrics...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 16:
+  Background fill type: BACKGROUND (5)
+  Shape count: 4
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: Web Development Framework...
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+--------------------------------------------------
+Slide 17:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 18:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 19:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 20:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 21:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 22:
+  Background fill type: BACKGROUND (5)
+  Shape count: 6
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='TextBox 5', type=TEXT_BOX (17)
+      Text: LANDING PAGE...
+    Shape 5: name='TextBox 6', type=TEXT_BOX (17)
+      Text: LOGIN PAGE...
+    Shape 6: name='TextBox 7', type=TEXT_BOX (17)
+      Text: →...
+--------------------------------------------------
+Slide 23:
+  Background fill type: BACKGROUND (5)
+  Shape count: 5
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='Group 5', type=GROUP (6)
+      Group shape with 2 subshapes
+        Subshape: name='Freeform 6', type=FREEFORM (5)
+        Subshape: name='Freeform 7', type=FREEFORM (5)
+    Shape 5: name='TextBox 8', type=TEXT_BOX (17)
+      Text: UPLOAD → RESULTS...
+--------------------------------------------------
+Slide 24:
+  Background fill type: BACKGROUND (5)
+  Shape count: 5
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Group 4', type=GROUP (6)
+      Group shape with 2 subshapes
+        Subshape: name='Freeform 5', type=FREEFORM (5)
+        Subshape: name='Freeform 6', type=FREEFORM (5)
+    Shape 4: name='Group 7', type=GROUP (6)
+      Group shape with 3 subshapes
+        Subshape: name='Freeform 8', type=FREEFORM (5)
+        Subshape: name='Freeform 9', type=FREEFORM (5)
+        Subshape: name='Freeform 10', type=FREEFORM (5)
+    Shape 5: name='TextBox 11', type=TEXT_BOX (17)
+      Text: LOGS → DASHBOARDS...
+--------------------------------------------------
+Slide 25:
+  Background fill type: BACKGROUND (5)
+  Shape count: 7
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+    Shape 5: name='Freeform 6', type=FREEFORM (5)
+    Shape 6: name='Freeform 7', type=FREEFORM (5)
+    Shape 7: name='TextBox 8', type=TEXT_BOX (17)
+      Text: DRILL-THROUGH...
+--------------------------------------------------
+Slide 26:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Picture 3', type=MEDIA (16)
+--------------------------------------------------
+Slide 27:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 28:
+  Background fill type: BACKGROUND (5)
+  Shape count: 5
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='TextBox 3', type=TEXT_BOX (17)
+      Text: Conclusion...
+    Shape 3: name='Freeform 4', type=FREEFORM (5)
+    Shape 4: name='Freeform 5', type=FREEFORM (5)
+    Shape 5: name='TextBox 6', type=TEXT_BOX (17)
+      Text: Problem     >     Solution     >     Impact...
+--------------------------------------------------
+Slide 29:
+  Background fill type: BACKGROUND (5)
+  Shape count: 2
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Freeform 3', type=FREEFORM (5)
+--------------------------------------------------
+Slide 30:
+  Background fill type: BACKGROUND (5)
+  Shape count: 3
+    Shape 1: name='Freeform 2', type=FREEFORM (5)
+    Shape 2: name='Picture 3', type=PICTURE (13)
+      Picture shape!
+    Shape 3: name='TextBox 4', type=TEXT_BOX (17)
+      Text: THANK YOU...
+--------------------------------------------------

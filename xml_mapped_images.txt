@@ -1,0 +1,166 @@
+XML Media Mapping to Slides:
+============================================================
+Slide 1:
+  Referenced Media: image1.png
+  Referenced Media: image10.png
+  Referenced Media: image11.svg
+  Referenced Media: image12.png
+  Referenced Media: image2.svg
+  Referenced Media: image3.png
+  Referenced Media: image4.svg
+  Referenced Media: image5.png
+  Referenced Media: image6.svg
+  Referenced Media: image7.png
+  Referenced Media: image8.svg
+  Referenced Media: image9.png
+--------------------------------------------------
+Slide 2:
+  Referenced Media: VAHOsF0Je8k.mp4
+  Referenced Media: image13.png
+  Referenced Media: image14.jpeg
+--------------------------------------------------
+Slide 3:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image15.png
+--------------------------------------------------
+Slide 4:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image16.png
+--------------------------------------------------
+Slide 5:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image17.png
+--------------------------------------------------
+Slide 6:
+  Referenced Media: image18.png
+--------------------------------------------------
+Slide 7:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image19.png
+--------------------------------------------------
+Slide 8:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image20.png
+  Referenced Media: image21.png
+--------------------------------------------------
+Slide 9:
+  Referenced Media: image22.png
+--------------------------------------------------
+Slide 10:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image23.png
+--------------------------------------------------
+Slide 11:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image24.png
+  Referenced Media: image25.png
+--------------------------------------------------
+Slide 12:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image26.png
+  Referenced Media: image27.png
+  Referenced Media: image28.png
+--------------------------------------------------
+Slide 13:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image29.png
+  Referenced Media: image30.png
+  Referenced Media: image31.png
+--------------------------------------------------
+Slide 14:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image32.png
+  Referenced Media: image33.png
+  Referenced Media: image34.png
+--------------------------------------------------
+Slide 15:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image35.png
+--------------------------------------------------
+Slide 16:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image36.png
+--------------------------------------------------
+Slide 17:
+  Referenced Media: image13.png
+  Referenced Media: image37.png
+--------------------------------------------------
+Slide 18:
+  Referenced Media: image13.png
+  Referenced Media: image38.png
+--------------------------------------------------
+Slide 19:
+  Referenced Media: image13.png
+  Referenced Media: image39.png
+--------------------------------------------------
+Slide 20:
+  Referenced Media: image13.png
+  Referenced Media: image40.png
+--------------------------------------------------
+Slide 21:
+  Referenced Media: image13.png
+  Referenced Media: image41.png
+--------------------------------------------------
+Slide 22:
+  Referenced Media: image13.png
+  Referenced Media: image42.png
+  Referenced Media: image43.png
+--------------------------------------------------
+Slide 23:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image44.png
+  Referenced Media: image45.png
+  Referenced Media: image46.png
+--------------------------------------------------
+Slide 24:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image47.png
+  Referenced Media: image48.png
+  Referenced Media: image49.png
+  Referenced Media: image50.png
+  Referenced Media: image51.png
+--------------------------------------------------
+Slide 25:
+  Referenced Media: image12.png
+  Referenced Media: image13.png
+  Referenced Media: image52.png
+  Referenced Media: image53.png
+  Referenced Media: image54.png
+  Referenced Media: image55.png
+--------------------------------------------------
+Slide 26:
+  Referenced Media: VAHOsPagTNY.mp4
+  Referenced Media: image13.png
+  Referenced Media: image56.jpeg
+--------------------------------------------------
+Slide 27:
+  Referenced Media: image13.png
+  Referenced Media: image57.png
+--------------------------------------------------
+Slide 28:
+  Referenced Media: image13.png
+  Referenced Media: image58.png
+  Referenced Media: image59.jpeg
+--------------------------------------------------
+Slide 29:
+  Referenced Media: image13.png
+  Referenced Media: image60.png
+--------------------------------------------------
+Slide 30:
+  Referenced Media: image13.png
+  Referenced Media: image61.png
+--------------------------------------------------
