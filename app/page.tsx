@@ -22,6 +22,7 @@ const html = `
 
     <!-- Actions -->
     <div class="nav-actions">
+      <div data-theme-slot="landing"></div>
       <a href="#contact" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">Explore now</a>
       <a href="/login" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
       <button id="navBurger" class="nav-burger" aria-label="Toggle menu" aria-expanded="false">
@@ -43,6 +44,7 @@ const html = `
       </button>
     </div>
     <div class="mobile-menu-links">
+      <div data-theme-slot="landing-mobile"></div>
       <a href="#hero" class="nav-link" role="menuitem">Home</a>
       <a href="#features" class="nav-link" role="menuitem">Features</a>
       <a href="#how" class="nav-link" role="menuitem">How It Works</a>

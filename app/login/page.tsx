@@ -97,6 +97,7 @@ const html = `
 
     <div class="login-card">
       <div class="login-card-header">
+        <div data-theme-slot="auth"></div>
         <a href="/"
           style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:0.8125rem;font-weight:600;margin-bottom:28px;text-decoration:none;">
           <i class="fa-solid fa-arrow-left"></i> Back to Home
@@ -157,7 +158,7 @@ const html = `
       </div>
 
       <div class="small-note" style="margin-top:24px;">
-        Demo credentials: any email + any password
+        Enter any email and password to continue.
       </div>
     </div>
 

@@ -833,6 +833,8 @@ function initUploadPage() {
 
   // Drag and drop events
   const uploadBox = document.querySelector(".upload-box");
+  const replaceUploadBtn = document.getElementById("replaceUploadBtn");
+  const removeUploadBtn = document.getElementById("removeUploadBtn");
   if (uploadBox) {
     ["dragenter", "dragover"].forEach(evt => {
       uploadBox.addEventListener(evt, (e) => {
@@ -862,6 +864,17 @@ function initUploadPage() {
       processSelectedFiles(fileUpload.files);
     }
   });
+
+  if (replaceUploadBtn) replaceUploadBtn.addEventListener("click", () => fileUpload.click());
+  if (removeUploadBtn) {
+    removeUploadBtn.addEventListener("click", () => {
+      plSelectedUploadFiles = [];
+      fileUpload.value = "";
+      fileName.textContent = "No file selected";
+      document.getElementById("uploadPreviewContainer")?.style.setProperty("display", "none");
+      if (scanImageBtn) scanImageBtn.disabled = true;
+    });
+  }
 
   if (scanImageBtn) {
     scanImageBtn.addEventListener("click", async () => {
@@ -1155,6 +1168,9 @@ function initResultPage() {
   // Replace buttons
   const activeBeltDetailBtn = document.getElementById("activeBeltDetailBtn");
   const reviewLogsBtn = document.querySelector(".action-panel a");
+  const previousScanBtn = document.getElementById("previousScanBtn");
+  const nextScanBtn = document.getElementById("nextScanBtn");
+  const navigationStatus = document.getElementById("finderNavigationStatus");
 
   const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
@@ -1235,6 +1251,13 @@ function initResultPage() {
   window.addEventListener('resize', () => {
     if (activeImageObj) drawCanvasFrame();
   });
+  if (canvas.dataset.themeRedrawReady !== "true") {
+    canvas.dataset.themeRedrawReady = "true";
+    window.addEventListener("purityloop:theme-change", () => {
+      if (activeImageObj) drawCanvasFrame();
+      else drawEmptyScanCanvas("No scan data");
+    });
+  }
 
   // Handle Verify & Approve Action
   const approveBtn = document.getElementById("verifyApproveBtn");
@@ -1279,12 +1302,27 @@ function initResultPage() {
     });
   }
 
+  function selectScan(index) {
+    if (!uploads.length) return;
+    activeIndex = (index + uploads.length) % uploads.length;
+    activeScan = plGetScanResultById(uploads[activeIndex].scanId);
+    if (activeScan) window.history.replaceState(null, "", `/result?scanId=${encodeURIComponent(activeScan.id)}`);
+    renderFinderGrid();
+    loadActiveImage();
+  }
+
+  if (previousScanBtn) previousScanBtn.addEventListener("click", () => selectScan(activeIndex - 1));
+  if (nextScanBtn) nextScanBtn.addEventListener("click", () => selectScan(activeIndex + 1));
+
   function renderFinderGrid() {
     const grid = document.getElementById("finderGrid");
     const countText = document.getElementById("finderCountText");
     if (!grid) return;
     grid.innerHTML = "";
     if (countText) countText.textContent = `${uploads.length} item(s)`;
+    if (navigationStatus) navigationStatus.textContent = uploads.length ? `Scan ${activeIndex + 1} of ${uploads.length}` : "No uploads";
+    if (previousScanBtn) previousScanBtn.disabled = uploads.length < 2;
+    if (nextScanBtn) nextScanBtn.disabled = uploads.length < 2;
 
     if (!uploads.length) {
       grid.innerHTML = `<div class="feed-empty">No uploaded images yet.</div>`;
@@ -1335,15 +1373,7 @@ function initResultPage() {
       card.appendChild(filename);
 
       card.addEventListener("click", () => {
-        activeIndex = index;
-        activeScan = plGetScanResultById(file.scanId);
-        if (activeScan) {
-          window.history.replaceState(null, "", `/result?scanId=${encodeURIComponent(activeScan.id)}`);
-        }
-        const cards = grid.querySelectorAll(".finder-file-card");
-        cards.forEach(c => c.classList.remove("active"));
-        card.classList.add("active");
-        loadActiveImage();
+        selectScan(index);
       });
 
       grid.appendChild(card);
@@ -1415,9 +1445,9 @@ function initResultPage() {
     if (itemsScannedEl) itemsScannedEl.textContent = "0 items";
     if (itemsPurityEl) itemsPurityEl.textContent = "0%";
     const marketValueEl = document.getElementById("liveMarketValue");
-    const co2OffsetEl = document.getElementById("liveCO2Offset");
+    const reviewNeededEl = document.getElementById("liveReviewNeeded");
     if (marketValueEl) marketValueEl.textContent = "No data";
-    if (co2OffsetEl) co2OffsetEl.textContent = "No data";
+    if (reviewNeededEl) reviewNeededEl.textContent = "No data";
     if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">No scan selected. Upload an image to generate results.</div>`;
     if (actionText) {
       actionText.innerHTML = `
@@ -1437,9 +1467,10 @@ function initResultPage() {
     canvas.width = rect.width || 640;
     canvas.height = rect.height || Math.round(canvas.width * (9 / 16));
     ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-    ctx2d.fillStyle = "rgba(4, 15, 13, 0.86)";
+    const isLightTheme = document.documentElement.dataset.theme === "light";
+    ctx2d.fillStyle = isLightTheme ? "#e7efe9" : "#0c1812";
     ctx2d.fillRect(0, 0, canvas.width, canvas.height);
-    ctx2d.fillStyle = "rgba(244,255,249,0.62)";
+    ctx2d.fillStyle = isLightTheme ? "#506259" : "#a9bbb0";
     ctx2d.font = "600 15px 'IBM Plex Sans', Arial";
     ctx2d.textAlign = "center";
     ctx2d.fillText(label, canvas.width / 2, canvas.height / 2);
@@ -1507,9 +1538,14 @@ function initResultPage() {
     }
 
     const marketValueEl = document.getElementById("liveMarketValue");
-    const co2OffsetEl = document.getElementById("liveCO2Offset");
+    const reviewNeededEl = document.getElementById("liveReviewNeeded");
     if (marketValueEl) marketValueEl.textContent = "No data";
-    if (co2OffsetEl) co2OffsetEl.textContent = "No data";
+    if (reviewNeededEl) {
+      const lowConfidence = boxes.filter(box => plConfidencePercent(box.confidence) < 80).length;
+      const pendingStatus = activeScan.human_review_required || plNormalizeStatus(activeScan.overall_status) === "review_required";
+      const reviewCount = lowConfidence + (pendingStatus ? 1 : 0);
+      reviewNeededEl.textContent = reviewCount ? `${reviewCount} item${reviewCount === 1 ? "" : "s"}` : "Clear";
+    }
 
     // Next Steps Action Guide Generator
     if (actionText) {
@@ -1654,7 +1690,7 @@ function initResultPage() {
     const drawX = (canvas.width - drawW) / 2;
     const drawY = (canvas.height - drawH) / 2;
 
-    ctx2d.fillStyle = "#010504";
+    ctx2d.fillStyle = document.documentElement.dataset.theme === "light" ? "#dfe9e2" : "#07110d";
     ctx2d.fillRect(0, 0, canvas.width, canvas.height);
     ctx2d.drawImage(activeImageObj, drawX, drawY, drawW, drawH);
 
@@ -2021,19 +2057,15 @@ function initReviewModal() {
         const reclassifySelect = document.getElementById("reclassifySelect");
         const chosenCategory = reclassifySelect ? reclassifySelect.value : activeLog.category;
 
-        let toastMsg = "";
         if (chosenCategory !== activeLog.category) {
-          toastMsg = `Record reclassified to ${chosenCategory} and verified.`;
-          activeLog.category = chosenCategory;
-          activeLog.status = "Verified (Reclassified)";
-        } else {
-          toastMsg = `Record ${activeLog.id} verified and cleared.`;
-          activeLog.status = "Verified (Cleared)";
+          showToast("Category changes need a persisted review endpoint before they can be saved.", "warning");
+          closeModal();
+          return;
         }
-
+        activeLog.status = "Verified (Cleared)";
         saveAuditLedger(ledger);
         buildLedgerTable();
-        showToast(toastMsg, "success");
+        showToast(`Record ${activeLog.id} verified and cleared.`, "success");
       }
       closeModal();
     });
@@ -2224,7 +2256,7 @@ function initAnalyticsCharts() {
     Chart.register(ChartDataLabels);
   }
 
-  const isLight = document.body.classList.contains("light");
+  const isLight = document.documentElement.dataset.theme === "light";
   const tickColor = isLight ? "#6c7b74" : "rgba(244,255,249,0.62)";
   const gridColor = isLight ? "#dce7e1" : "rgba(178,255,224,0.16)";
   const labelColor = isLight ? "#14221b" : "rgba(244,255,249,0.88)";
@@ -2338,10 +2370,11 @@ function initAnalyticsCharts() {
 function drawEmptyChart(canvas, label = "No data") {
   if (!canvas) return;
   const { ctx, width, height } = prepareCanvas(canvas);
-  ctx.fillStyle = "rgba(4, 15, 13, 0.86)";
+  const isLight = document.documentElement.dataset.theme === "light";
+  ctx.fillStyle = isLight ? "#edf4ef" : "#0c1812";
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = "rgba(244,255,249,0.62)";
-  ctx.font = "600 15px Arial";
+  ctx.fillStyle = isLight ? "#506259" : "#a9bbb0";
+  ctx.font = "600 15px 'IBM Plex Sans', Arial";
   ctx.textAlign = "center";
   ctx.fillText(label, width / 2, height / 2);
 }
@@ -3061,49 +3094,6 @@ function initMobileNav() {
   });
 }
 
-/* 1. Theme Toggle Management */
-function initThemeToggle() {
-  const savedTheme = localStorage.getItem("purityloop_theme") || "dark";
-  if (savedTheme === "light") {
-    document.body.classList.add("light");
-  } else {
-    document.body.classList.remove("light");
-  }
-
-  const toggleBtns = document.querySelectorAll(".theme-toggle-btn");
-
-  function updateIcons() {
-    const isLight = document.body.classList.contains("light");
-    toggleBtns.forEach(btn => {
-      const icon = btn.querySelector("i");
-      if (icon) {
-        if (isLight) {
-          icon.className = "fa-solid fa-sun";
-        } else {
-          icon.className = "fa-solid fa-moon";
-        }
-      }
-    });
-  }
-
-  updateIcons();
-
-  toggleBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.body.classList.toggle("light");
-      const newTheme = document.body.classList.contains("light") ? "light" : "dark";
-      localStorage.setItem("purityloop_theme", newTheme);
-      updateIcons();
-
-      // Smooth transitions for charts & canvases - reload page on analytics/result pages
-      const activePage = document.body.getAttribute("data-page");
-      if (activePage === "analytics" || activePage === "live-stream") {
-        window.location.reload();
-      }
-    });
-  });
-}
-
 /* 2. Login Password Reveal Toggle */
 function initPasswordToggle() {
   const toggleBtn = document.getElementById("passwordToggle");
@@ -3157,7 +3147,6 @@ async function initPurityLoopApp() {
     }
   });
 
-  initThemeToggle();
   initPasswordToggle();
   // initMobileNav(); // Handled by theme.js
   animateProgressBars();

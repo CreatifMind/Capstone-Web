@@ -73,11 +73,7 @@ const html = `
         </div>
 
         <div class="topbar-right">
-          <!-- Search Bar -->
-          <div class="search-bar">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
-          </div>
+          <div data-theme-slot="app"></div>
 
           <!-- Live Clock / Date Pill -->
           <div class="date-pill">
@@ -128,6 +124,10 @@ const html = `
                   style="color: var(--primary); font-weight: 700; display: flex; align-items: center; gap: 6px; font-size: 14px;">
                   <i class="fa-solid fa-circle-check"></i> Ready for AI Audit
                 </span>
+                <div class="upload-preview-actions">
+                  <button type="button" id="replaceUploadBtn" class="secondary-btn">Replace image</button>
+                  <button type="button" id="removeUploadBtn" class="text-btn">Remove</button>
+                </div>
               </div>
               <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
                 <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image

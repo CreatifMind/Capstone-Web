@@ -49,10 +49,7 @@ const html = `
         </div>
 
         <div class="topbar-right">
-          <div class="search-bar">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search uploads, materials, review logs..." aria-label="Search" />
-          </div>
+          <div data-theme-slot="app"></div>
 
           <div class="date-pill">
             <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>

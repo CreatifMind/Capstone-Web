@@ -31,7 +31,7 @@ const html = `
           </div>
           <div class="checklist-item">
             <i class="fa-solid fa-circle-check"></i>
-            <span>Secure capstone demo account</span>
+            <span>Secure operator account</span>
           </div>
         </div>
       </div>
@@ -47,6 +47,7 @@ const html = `
 
     <div class="login-card create-account-card">
       <div class="login-card-header">
+        <div data-theme-slot="auth"></div>
         <a href="/login"
           style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:0.8125rem;font-weight:600;margin-bottom:28px;text-decoration:none;">
           <i class="fa-solid fa-arrow-left"></i> Back to Login
@@ -63,7 +64,7 @@ const html = `
 
         <div class="form-group">
           <label for="facilityName">Facility Name</label>
-          <input type="text" id="facilityName" name="facilityName" placeholder="PurityLoop Demo MRF" required />
+          <input type="text" id="facilityName" name="facilityName" placeholder="Facility name" required />
         </div>
 
         <div class="form-group">
