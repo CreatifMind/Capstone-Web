@@ -1,0 +1,2234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PurityLoop AI Slide Deck Generator</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- GLOBAL RESET & STYLING --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #030712;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 16:9 Presentation Viewport Wrapper */
+        #viewport {
+            width: 1920px;
+            height: 1080px;
+            position: relative;
+            background: radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%);
+            overflow: hidden;
+        }
+
+        /* Grid Background overlay */
+        .grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Ambient Glow Blobs */
+        .glow-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(150px);
+            opacity: 0.12;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .glow-1 { top: 5%; left: 10%; width: 500px; height: 500px; background: #fb923c; }
+        .glow-2 { bottom: 10%; right: 10%; width: 600px; height: 600px; background: #34d399; }
+        .glow-3 { top: 40%; left: 40%; width: 450px; height: 450px; background: #3b82f6; }
+
+        /* Slide Canvas Wrapper */
+        .slide-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; /* Controlled by JS hash */
+            padding: 50px 60px 45px 60px;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .slide-canvas.active {
+            display: flex;
+        }
+
+        /* --- HEADER SECTION --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 18px;
+            margin-bottom: 15px;
+        }
+
+        .title-area {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slide-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 54px;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.1;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 50%, #34d399 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .slide-subtitle {
+            font-size: 22px;
+            font-weight: 400;
+            color: #94a3b8;
+            margin-top: 6px;
+        }
+
+        .project-logo {
+            width: 280px;
+            height: 170px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.25));
+        }
+
+        /* --- CONTAINER LAYOUTS --- */
+        .content-container {
+            position: relative;
+            z-index: 10;
+            flex-grow: 1;
+            display: flex;
+            gap: 40px;
+            margin-top: 10px;
+        }
+
+        /* Glassmorphic Panels */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 
+                0 10px 30px -10px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        /* Step Card standard styling */
+        .step-card {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 6px -1px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .step-card:hover {
+            transform: translateY(-2px);
+            background: rgba(30, 41, 59, 0.7);
+        }
+
+        .step-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .step-text {
+            font-size: 15px;
+            font-weight: 600;
+            color: #f8fafc;
+            line-height: 1.3;
+        }
+
+        .step-subtext {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+
+        /* Glow Theme Classes */
+        .glow-orange { border-color: rgba(249, 115, 22, 0.2); }
+        .glow-orange:hover { border-color: rgba(249, 115, 22, 0.5); box-shadow: 0 0 15px rgba(249, 115, 22, 0.15); }
+        .text-orange { color: #fb923c; }
+
+        .glow-blue { border-color: rgba(59, 130, 246, 0.2); }
+        .glow-blue:hover { border-color: rgba(59, 130, 246, 0.5); box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); }
+        .text-blue { color: #60a5fa; }
+
+        .glow-teal { border-color: rgba(16, 185, 129, 0.2); }
+        .glow-teal:hover { border-color: rgba(16, 185, 129, 0.5); box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
+        .text-teal { color: #34d399; }
+
+        .glow-purple { border-color: rgba(168, 85, 247, 0.2); }
+        .glow-purple:hover { border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 15px rgba(168, 85, 247, 0.15); }
+        .text-purple { color: #c084fc; }
+
+        .glow-cyan { border-color: rgba(6, 182, 212, 0.2); }
+        .glow-cyan:hover { border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 15px rgba(6, 182, 212, 0.15); }
+        .text-cyan { color: #22d3ee; }
+
+        .glow-red { border-color: rgba(239, 68, 68, 0.35); }
+        .glow-red:hover { border-color: rgba(239, 68, 68, 0.7); box-shadow: 0 0 15px rgba(239, 68, 68, 0.25); }
+        .text-red { color: #f87171; }
+
+        /* Badge badges styling */
+        .col-header-badge {
+            font-family: 'Outfit', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            padding: 6px 14px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            display: inline-block;
+        }
+        .badge-orange { background: rgba(249, 115, 22, 0.12); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.2); }
+        .badge-cyan { background: rgba(6, 182, 212, 0.12); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.2); }
+        .badge-teal { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .badge-blue { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+        .badge-purple { background: rgba(168, 85, 247, 0.12); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.2); }
+        .badge-gray { background: rgba(255, 255, 255, 0.04); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.08); }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 1 SPECIFIC STYLES: BPMN Diagram --- */
+        /* ========================================================================= */
+        .bpmn-grid {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            position: relative;
+        }
+
+        .bpmn-lane {
+            display: flex;
+            background: rgba(15, 23, 42, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            height: 140px;
+            position: relative;
+            align-items: center;
+        }
+
+        .bpmn-lane#lane-2 {
+            height: 240px; /* Taller Lane 2 to fit parallel tracks */
+        }
+
+        .bpmn-lane-label {
+            width: 60px;
+            height: 100%;
+            background: rgba(16, 185, 129, 0.08);
+            border-right: 1px solid rgba(16, 185, 129, 0.15);
+            border-radius: 16px 0 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+
+        .bpmn-lane-label-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: #34d399;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg); /* Reads bottom to top */
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .bpmn-lane-content {
+            flex-grow: 1;
+            height: 100%;
+            position: relative;
+        }
+
+        /* BPMN Node Absolute Positioning Wrapper */
+        .bpmn-node {
+            position: absolute;
+            transform: translateY(-50%);
+            top: 50%;
+            z-index: 10;
+        }
+
+        /* BPMN Event Circles */
+        .bpmn-circle-node {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.7);
+            border: 2px solid #34d399;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px rgba(52, 211, 153, 0.2);
+        }
+
+        .bpmn-circle-node.end-node {
+            border-width: 4px;
+            border-color: #06b6d4;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+        }
+
+        .bpmn-circle-node.intermediate-node {
+            border-style: dashed;
+            border-color: #fb923c;
+            box-shadow: 0 0 12px rgba(249, 115, 22, 0.2);
+        }
+
+        .bpmn-circle-label {
+            position: absolute;
+            top: 55px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 140px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #cbd5e1;
+            line-height: 1.2;
+        }
+
+        /* BPMN Gateway Diamonds */
+        .bpmn-gateway-wrapper {
+            width: 52px;
+            height: 52px;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+        }
+
+        .bpmn-gateway-diamond {
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.75);
+            border: 2px solid #a855f7;
+            transform: rotate(45deg);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .bpmn-gateway-symbol {
+            transform: rotate(-45deg);
+            font-size: 20px;
+            font-weight: 700;
+            color: #c084fc;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .bpmn-gateway-label {
+            position: absolute;
+            top: 58px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #94a3b8;
+            line-height: 1.2;
+        }
+
+        /* BPMN Connectors Texts */
+        .connector-label {
+            position: absolute;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            z-index: 12;
+        }
+        .label-yes { color: #34d399; background: rgba(16, 185, 129, 0.12); }
+        .label-no { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+        .label-hazard { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 2 SPECIFIC STYLES: All Data Sources --- */
+        /* ========================================================================= */
+        .source-left-panel {
+            width: 540px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+
+        .source-right-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .dataset-category-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 16px 20px;
+        }
+
+        .dataset-category-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #34d399;
+            text-transform: uppercase;
+        }
+
+        .dataset-list-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .dataset-tag {
+            font-size: 11px;
+            font-weight: 600;
+            color: #cbd5e1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .workflow-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            width: 100%;
+        }
+
+        .workflow-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            text-align: center;
+            padding: 15px 12px;
+        }
+
+        .workflow-card-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .workflow-card-label {
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .workflow-card-details {
+            font-size: 11px;
+            color: #64748b;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+
+        .balanced-banner {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            border-radius: 16px;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.04);
+        }
+
+        .balanced-icon {
+            font-size: 26px;
+            color: #34d399;
+        }
+
+        .balanced-text-main {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .balanced-text-sub {
+            font-size: 13px;
+            color: #94a3b8;
+            font-weight: 500;
+            margin-left: auto;
+        }
+
+        .eda-container-card {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex-grow: 1;
+        }
+
+        .eda-header {
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: #fb923c;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .eda-images-row {
+            display: flex;
+            gap: 20px;
+            flex-grow: 1;
+        }
+
+        .eda-image-box {
+            flex: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+        }
+
+        .eda-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.85;
+        }
+
+        .eda-image-label {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 3 & 5 SPECIFIC STYLES: YOLO Model Configs --- */
+        /* ========================================================================= */
+        .config-left-panel {
+            width: 900px;
+            flex-shrink: 0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .config-right-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-left: 30px;
+        }
+
+        .config-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 20px;
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .config-card-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .config-icon-box {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .config-card.glow-blue .config-icon-box { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border-color: rgba(59,130,246,0.2); }
+        .config-card.glow-teal .config-icon-box { background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16,185,129,0.2); }
+
+        .config-label-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .config-value-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .config-badge {
+            font-family: 'Outfit', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            text-transform: uppercase;
+            margin-left: auto;
+        }
+
+        .config-sparkline-svg {
+            width: 100%;
+            height: 40px;
+            margin-top: 15px;
+        }
+
+        .config-desc-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 38px;
+            font-weight: 700;
+            line-height: 1.3;
+            color: #f8fafc;
+        }
+
+        .config-desc-highlight {
+            color: #34d399;
+            background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 46px;
+            display: block;
+            margin: 10px 0;
+        }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 4 & 6 SPECIFIC STYLES: Results layouts --- */
+        /* ========================================================================= */
+        .results-left-panel {
+            width: 800px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .results-right-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .results-image-box {
+            width: 100%;
+            height: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(15, 23, 42, 0.5);
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .results-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .results-card-label {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: #34d399;
+            text-transform: uppercase;
+            z-index: 10;
+        }
+
+        /* --- SLIDE 7, 8, 9 SPECIFIC STYLES: Curves + Matrix + Panel --- */
+        .threeway-top-box {
+            height: 380px;
+            width: 100%;
+        }
+
+        .threeway-bottom-row {
+            height: 400px;
+            width: 100%;
+            display: flex;
+            gap: 40px;
+        }
+
+        .threeway-bottom-left {
+            width: 600px;
+            flex-shrink: 0;
+        }
+
+        .threeway-bottom-right {
+            flex-grow: 1;
+            display: flex;
+            gap: 30px;
+        }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 10 SPECIFIC STYLES: Web Dev Framework --- */
+        /* ========================================================================= */
+        .framework-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            position: relative;
+            margin-top: 120px;
+            margin-bottom: 120px;
+        }
+
+        .framework-card-wrapper {
+            width: 255px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .framework-step-card {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 18px;
+            padding: 20px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 
+                0 4px 6px -1px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .framework-step-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(52, 211, 153, 0.3);
+            box-shadow: 0 0 15px rgba(52, 211, 153, 0.1);
+        }
+
+        .framework-step-num {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            font-weight: 800;
+            color: #34d399;
+            line-height: 1;
+        }
+
+        .framework-step-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .framework-bullet-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .framework-bullet-item {
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+            line-height: 1.3;
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .framework-bullet-item::before {
+            content: "•";
+            color: #34d399;
+            font-weight: bold;
+        }
+
+
+        /* ========================================================================= */
+        /* --- SLIDE 11 SPECIFIC STYLES: PurityLoop AI R&D Path (BRIGHT THEME) --- */
+        /* ========================================================================= */
+        .bright-theme-canvas {
+            background: radial-gradient(circle at 50% 50%, #f8fafc 0%, #edf2f7 100%) !important;
+            color: #0f172a !important;
+        }
+
+        .bright-theme-canvas .slide-title {
+            background: linear-gradient(135deg, #0f172a 50%, #10b981 100%) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
+
+        .bright-theme-canvas .slide-subtitle {
+            color: #475569 !important;
+        }
+
+        .bright-theme-canvas .header {
+            border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+        }
+
+        .rd-main-panel {
+            background: rgba(255, 255, 255, 0.7);
+            border: 2px solid rgba(59, 130, 246, 0.35); /* blue shadow rectangle box! */
+            box-shadow: 
+                0 0 35px rgba(59, 130, 246, 0.22),
+                0 12px 28px -5px rgba(59, 130, 246, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .rd-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            height: 46%;
+        }
+
+        .rd-card {
+            width: 720px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(15, 23, 42, 0.06);
+            border-radius: 18px;
+            padding: 24px 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 
+                0 6px 15px -3px rgba(15, 23, 42, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .rd-card:hover {
+            transform: translateY(-3px);
+        }
+
+        /* Hover states with glows matching limitations/steps */
+        .rd-card.limit-card:hover {
+            border-color: rgba(234, 88, 12, 0.3);
+            box-shadow: 0 0 15px rgba(234, 88, 12, 0.1);
+        }
+
+        .rd-card.step-card-bright:hover {
+            border-color: rgba(22, 163, 74, 0.3);
+            box-shadow: 0 0 15px rgba(22, 163, 74, 0.1);
+        }
+
+        .rd-card-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .rd-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .limit-card .rd-icon-box {
+            background: #ffedd5;
+            color: #ea580c;
+            border: 1px solid rgba(234, 88, 12, 0.15);
+        }
+
+        .step-card-bright .rd-icon-box {
+            background: #dcfce7;
+            color: #16a34a;
+            border: 1px solid rgba(22, 163, 74, 0.15);
+        }
+
+        .rd-card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .rd-badge {
+            font-family: 'Outfit', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            align-self: flex-start;
+        }
+
+        .limit-card .rd-badge {
+            background: #ffedd5;
+            color: #ea580c;
+            border: 1px solid rgba(234, 88, 12, 0.2);
+        }
+
+        .step-card-bright .rd-badge {
+            background: #dcfce7;
+            color: #16a34a;
+            border: 1px solid rgba(22, 163, 74, 0.2);
+        }
+
+        .rd-bullets {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .rd-bullet-item {
+            font-size: 15px;
+            font-weight: 500;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .limit-card .rd-bullet-item::before {
+            content: "•";
+            color: #ea580c;
+            font-weight: bold;
+        }
+
+        .step-card-bright .rd-bullet-item::before {
+            content: "•";
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .rd-connector-arrow {
+            font-size: 28px;
+            color: #64748b;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
+        }
+    </style>
+</head>
+<body>
+
+<div id="viewport">
+    <div class="grid-overlay"></div>
+    <div class="glow-blob glow-1"></div>
+    <div class="glow-blob glow-2"></div>
+    <div class="glow-blob glow-3"></div>
+    
+    <!-- ========================================================================= -->
+    <!-- SLIDE 1: BPMN DIAGRAM -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-1" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">BPMN Diagram</h1>
+                <p class="slide-subtitle">Waste Classification Business Process Flowchart</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container">
+            <div class="bpmn-grid">
+                <!-- SVG overlay for all BPMN lines -->
+                <svg id="bpmn-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;">
+                    <!-- Define arrow markers -->
+                    <defs>
+                        <marker id="bpmn-marker-teal" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#34d399" />
+                        </marker>
+                        <marker id="bpmn-marker-orange" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#fb923c" />
+                        </marker>
+                        <marker id="bpmn-marker-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#ef4444" />
+                        </marker>
+                        <marker id="bpmn-marker-gray" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#64748b" />
+                        </marker>
+                    </defs>
+                </svg>
+
+                <!-- Lane 1: Operator -->
+                <div class="bpmn-lane" id="lane-1">
+                    <div class="bpmn-lane-label">
+                        <div class="bpmn-lane-label-text">Operator / User</div>
+                    </div>
+                    <div class="bpmn-lane-content">
+                        <div id="N1_1" class="bpmn-node bpmn-circle-node" style="left: 30px;">
+                            <i class="fa-solid fa-play text-teal" style="font-size: 16px; margin-left: 3px;"></i>
+                            <div class="bpmn-circle-label">Sorting Session Begins</div>
+                        </div>
+                        
+                        <div id="N1_2" class="bpmn-node step-card glow-teal" style="left: 170px; width: 180px;">
+                            <i class="fa-solid fa-cloud-arrow-up step-icon text-teal"></i>
+                            <div class="step-text">Upload Waste Image</div>
+                        </div>
+                        
+                        <div id="N1_3" class="bpmn-node step-card glow-teal" style="left: 450px; width: 180px;">
+                            <i class="fa-solid fa-chart-line step-icon text-teal"></i>
+                            <div class="step-text">View Analytics Dashboard</div>
+                        </div>
+                        
+                        <div id="N1_4" class="bpmn-node bpmn-circle-node end-node" style="left: 690px;">
+                            <i class="fa-solid fa-stop text-cyan" style="font-size: 16px;"></i>
+                            <div class="bpmn-circle-label">Session Complete</div>
+                        </div>
+                        
+                        <div id="N1_5" class="bpmn-node bpmn-circle-node intermediate-node" style="left: 950px;">
+                            <i class="fa-solid fa-bell text-orange" style="font-size: 16px;"></i>
+                            <div class="bpmn-circle-label">Amber Alert Received</div>
+                        </div>
+                        
+                        <div id="N1_6" class="bpmn-node step-card glow-orange" style="left: 1120px; width: 170px;">
+                            <i class="fa-solid fa-magnifying-glass step-icon text-orange"></i>
+                            <div class="step-text">Review Flagged Item</div>
+                        </div>
+                        
+                        <div id="N1_7" class="bpmn-gateway-wrapper" style="left: 1390px;">
+                            <div class="bpmn-gateway-diamond">
+                                <div class="bpmn-gateway-symbol">X</div>
+                            </div>
+                            <div class="bpmn-gateway-label">Approve or Reject?</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lane 2: AI Engine -->
+                <div class="bpmn-lane" id="lane-2">
+                    <div class="bpmn-lane-label">
+                        <div class="bpmn-lane-label-text">AI Detection Engine</div>
+                    </div>
+                    <div class="bpmn-lane-content">
+                        <!-- Top track main flow -->
+                        <div id="N2_1" class="bpmn-node step-card glow-teal" style="left: 170px; width: 180px; top: 30%;">
+                            <i class="fa-solid fa-arrow-down-long step-icon text-teal"></i>
+                            <div class="step-text">Receive Image Input</div>
+                        </div>
+                        
+                        <div id="N2_2" class="bpmn-node step-card glow-teal" style="left: 390px; width: 200px; top: 30%;">
+                            <i class="fa-solid fa-brain step-icon text-teal"></i>
+                            <div class="step-text">Run YOLOv8m-seg Inference</div>
+                        </div>
+                        
+                        <div id="N2_3" class="bpmn-node step-card glow-teal" style="left: 630px; width: 220px; top: 30%;">
+                            <i class="fa-solid fa-square-poll-horizontal step-icon text-teal"></i>
+                            <div class="step-text">
+                                Generate Output
+                                <div class="step-subtext">Class • Conf • Mask</div>
+                            </div>
+                        </div>
+                        
+                        <div id="N2_4" class="bpmn-gateway-wrapper" style="left: 950px; top: 30%;">
+                            <div class="bpmn-gateway-diamond">
+                                <div class="bpmn-gateway-symbol">X</div>
+                            </div>
+                            <div class="bpmn-gateway-label">Conf &ge; 0.85?</div>
+                        </div>
+                        
+                        <!-- Top track branch (NO path) -->
+                        <div id="N2_5" class="bpmn-node step-card glow-orange" style="left: 1100px; width: 170px; top: 30%;">
+                            <i class="fa-solid fa-list-check step-icon text-orange"></i>
+                            <div class="step-text">Flag to Amber Queue</div>
+                        </div>
+                        
+                        <div id="N2_6" class="bpmn-node bpmn-circle-node" style="left: 1310px; top: 30%; border-color: #fb923c;">
+                            <i class="fa-solid fa-paper-plane text-orange" style="font-size: 15px;"></i>
+                            <div class="bpmn-circle-label">Send Alert to Operator</div>
+                        </div>
+                        
+                        <!-- Bottom track branch (YES path) -->
+                        <div id="N2_7" class="bpmn-node step-card glow-teal" style="left: 1100px; width: 180px; top: 75%;">
+                            <i class="fa-solid fa-arrow-right-to-bracket step-icon text-teal"></i>
+                            <div class="step-text">Process Classification</div>
+                        </div>
+                        
+                        <div id="N2_8" class="bpmn-gateway-wrapper" style="left: 1330px; top: 75%;">
+                            <div class="bpmn-gateway-diamond">
+                                <div class="bpmn-gateway-symbol">X</div>
+                            </div>
+                            <div class="bpmn-gateway-label">Battery Class?</div>
+                        </div>
+                        
+                        <div id="N2_9" class="bpmn-node step-card glow-red" style="left: 1510px; width: 180px; top: 75%;">
+                            <i class="fa-solid fa-triangle-exclamation step-icon text-red"></i>
+                            <div class="step-text text-red">Fire Operator Alert</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lane 3: Data Layer -->
+                <div class="bpmn-lane" id="lane-3">
+                    <div class="bpmn-lane-label">
+                        <div class="bpmn-lane-label-text">Data Layer (SQLite)</div>
+                    </div>
+                    <div class="bpmn-lane-content">
+                        <div id="N3_1" class="bpmn-node step-card glow-teal" style="left: 630px; width: 220px;">
+                            <i class="fa-solid fa-database step-icon text-teal"></i>
+                            <div class="step-text">
+                                Write Detection Record
+                                <div class="step-subtext">Class • Conf • Purity</div>
+                            </div>
+                        </div>
+                        
+                        <div id="N3_2" class="bpmn-node step-card glow-teal" style="left: 890px; width: 200px;">
+                            <i class="fa-solid fa-calculator step-icon text-teal"></i>
+                            <div class="step-text">Update Purity Calculation</div>
+                        </div>
+                        
+                        <div id="N3_3" class="bpmn-node step-card glow-teal" style="left: 1130px; width: 210px;">
+                            <i class="fa-solid fa-file-invoice step-icon text-teal"></i>
+                            <div class="step-text">
+                                Commit Transaction
+                                <div class="step-subtext">purityloop_telemetry.db</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lane 4: Web Application & BI -->
+                <div class="bpmn-lane" id="lane-4">
+                    <div class="bpmn-lane-label">
+                        <div class="bpmn-lane-label-text">Web App & BI</div>
+                    </div>
+                    <div class="bpmn-lane-content">
+                        <div id="N4_1" class="bpmn-node step-card glow-teal" style="left: 800px; width: 190px;">
+                            <i class="fa-solid fa-folder-open step-icon text-teal"></i>
+                            <div class="step-text">Read Latest Records</div>
+                        </div>
+                        
+                        <div id="N4_2" class="bpmn-node step-card glow-teal" style="left: 1030px; width: 210px;">
+                            <i class="fa-solid fa-desktop step-icon text-teal"></i>
+                            <div class="step-text">
+                                Display Result
+                                <div class="step-subtext">Waste Class • Eco-credits</div>
+                            </div>
+                        </div>
+                        
+                        <div id="N4_3" class="bpmn-node step-card glow-teal" style="left: 1280px; width: 210px;">
+                            <i class="fa-solid fa-gauge step-icon text-teal"></i>
+                            <div class="step-text">
+                                Update Dashboard KPIs
+                                <div class="step-subtext">Purity rate • Distribution</div>
+                            </div>
+                        </div>
+                        
+                        <div id="N4_4" class="bpmn-node bpmn-circle-node end-node" style="left: 1530px;">
+                            <i class="fa-solid fa-circle-check text-cyan" style="font-size: 18px;"></i>
+                            <div class="bpmn-circle-label">Analytics Updated</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 2: ALL DATA SOURCES -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-2" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">All Data Sources</h1>
+                <p class="slide-subtitle">16 contributing sources totaling 227,490 waste images</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container">
+            <!-- Left Side Panel (Datasets List) -->
+            <div class="source-left-panel glass-panel">
+                <div class="col-header-badge badge-teal" style="margin-bottom: 12px;">ALL DATA SOURCES</div>
+                
+                <div class="dataset-category-card">
+                    <div class="dataset-category-header" style="color: #34d399;">
+                        <i class="fa-solid fa-recycle"></i>
+                        <span>Core Recyclable Coverage (7)</span>
+                    </div>
+                    <div class="dataset-list-container">
+                        <span class="dataset-tag">TrashNet</span>
+                        <span class="dataset-tag">Garbage Dataset (v2)</span>
+                        <span class="dataset-tag">Waste Classification data</span>
+                        <span class="dataset-tag">Garbage Classification (12 classes)</span>
+                        <span class="dataset-tag">Recyclable & Household Waste</span>
+                        <span class="dataset-tag">Waste Classification v2</span>
+                        <span class="dataset-tag">Garbage Classification (Original)</span>
+                    </div>
+                </div>
+                
+                <div class="dataset-category-card" style="margin-top: 10px;">
+                    <div class="dataset-category-header" style="color: #60a5fa;">
+                        <i class="fa-solid fa-battery-empty"></i>
+                        <span>Battery Under-Representation (4)</span>
+                    </div>
+                    <div class="dataset-list-container">
+                        <span class="dataset-tag">Unified Waste Dataset (8,000/class)</span>
+                        <span class="dataset-tag">E-Waste Image (18 Classes)</span>
+                        <span class="dataset-tag">E-Waste Image Dataset</span>
+                        <span class="dataset-tag">Waste Classification Dataset</span>
+                    </div>
+                </div>
+                
+                <div class="dataset-category-card" style="margin-top: 10px;">
+                    <div class="dataset-category-header" style="color: #c084fc;">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>Real-world Realism (2)</span>
+                    </div>
+                    <div class="dataset-list-container">
+                        <span class="dataset-tag">RealWaste Image Classification</span>
+                        <span class="dataset-tag">TACO: Trash Annotations in Context</span>
+                    </div>
+                </div>
+                
+                <div class="dataset-category-card" style="margin-top: 10px;">
+                    <div class="dataset-category-header" style="color: #fb923c;">
+                        <i class="fa-solid fa-vector-square"></i>
+                        <span>BBox Sources - Converted (3)</span>
+                    </div>
+                    <div class="dataset-list-container">
+                        <span class="dataset-tag">Trash detection for YOLOv8</span>
+                        <span class="dataset-tag">Garbage Detection - 6 Categories</span>
+                        <span class="dataset-tag">Waste Scene</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Side Panel (Workflow + Examples) -->
+            <div class="source-right-panel">
+                <!-- Top Workflow row -->
+                <div class="workflow-row">
+                    <div class="workflow-card step-card glow-teal">
+                        <div class="workflow-card-label">Sources</div>
+                        <i class="fa-solid fa-database text-teal" style="font-size: 20px; margin: 4px 0;"></i>
+                        <div class="workflow-card-value text-teal">16</div>
+                        <div class="workflow-card-details">227,490 images<br>9 waste classes</div>
+                    </div>
+                    
+                    <div class="workflow-card step-card glow-teal">
+                        <div class="workflow-card-label">Checks</div>
+                        <i class="fa-solid fa-shield-halved text-teal" style="font-size: 20px; margin: 4px 0;"></i>
+                        <div class="workflow-card-value text-teal">Integrity</div>
+                        <div class="workflow-card-details">Standardized classes<br>Leak prevention</div>
+                    </div>
+                    
+                    <div class="workflow-card step-card glow-red">
+                        <div class="workflow-card-label">Deduplicated</div>
+                        <i class="fa-solid fa-clone text-red" style="font-size: 20px; margin: 4px 0;"></i>
+                        <div class="workflow-card-value text-red">-77,466</div>
+                        <div class="workflow-card-details">MD5 exact match<br>duplicates removed</div>
+                    </div>
+                    
+                    <div class="workflow-card step-card glow-red">
+                        <div class="workflow-card-label">Cleaned</div>
+                        <i class="fa-solid fa-trash-can text-red" style="font-size: 20px; margin: 4px 0;"></i>
+                        <div class="workflow-card-value text-red">-16,468</div>
+                        <div class="workflow-card-details">Orphan/empty labels<br>invalid format files</div>
+                    </div>
+                    
+                    <div class="workflow-card step-card glow-teal" style="border-width: 2px;">
+                        <div class="workflow-card-label">Clean Dataset</div>
+                        <i class="fa-solid fa-database text-teal" style="font-size: 20px; margin: 4px 0;"></i>
+                        <div class="workflow-card-value text-teal">133,556</div>
+                        <div class="workflow-card-details">Verified images<br>134,205 valid objects</div>
+                    </div>
+                </div>
+                
+                <!-- Balanced subset banner -->
+                <div class="balanced-banner">
+                    <i class="fa-solid fa-circle-check balanced-icon"></i>
+                    <div class="balanced-text-main">Balanced Training Subset: ~5,000 / class</div>
+                    <div class="balanced-text-sub">Leak-proof splitting • 80:20 Train/Val Split</div>
+                </div>
+                
+                <!-- EDA images container -->
+                <div class="eda-container-card glass-panel" style="flex-grow: 1;">
+                    <div class="eda-header">Example: Real vs Pseudo-segmentation Data (Why EDA Matters)</div>
+                    <div class="eda-images-row" style="margin-top: 10px;">
+                        <div class="eda-image-box">
+                            <img src="./assets/slides/cropped_bottle.png" alt="Real Data Example" class="eda-img">
+                            <div class="eda-image-label">Real Dataset (Photo)</div>
+                        </div>
+                        <div class="eda-image-box">
+                            <img src="./assets/slides/cropped_bags.png" alt="Pseudo Data Example" class="eda-img">
+                            <div class="eda-image-label">Pseudo-Segmentation (Generated)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 3: YOLOv8s-seg TEST MODEL CONFIGURATION -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-3" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">YOLOv8s-seg Test Model Configuration</h1>
+                <p class="slide-subtitle">Initial test model parameters and system dimensions</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="align-items: center;">
+            <div class="config-left-panel">
+                <div class="config-card glow-blue" style="height: 180px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-circle-nodes"></i>
+                        </div>
+                        <div class="config-label-text">Model Architecture</div>
+                        <div class="config-badge">Small Seg</div>
+                    </div>
+                    <div class="config-value-text">YOLOv8s-seg</div>
+                </div>
+                
+                <div class="config-card glow-teal" style="height: 250px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <div class="config-label-text">Training Epochs</div>
+                    </div>
+                    <div class="config-value-text">150</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Patience: 30</div>
+                    <svg class="config-sparkline-svg">
+                        <path d="M0 35 Q 20 20, 40 30 T 80 15 T 120 25 T 160 5 T 200 12 T 240 18 T 280 8 T 320 2 Q 350 20, 380 5" fill="none" stroke="#34d399" stroke-width="2" />
+                    </svg>
+                </div>
+                
+                <div class="config-card glow-blue" style="height: 250px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-cubes"></i>
+                        </div>
+                        <div class="config-label-text">Batch Size</div>
+                    </div>
+                    <div class="config-value-text">8</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Images per batch</div>
+                    <svg class="config-sparkline-svg">
+                        <path d="M0 38 Q 40 38, 80 32 T 160 30 T 240 25 T 320 28 T 380 20" fill="none" stroke="#60a5fa" stroke-width="2" />
+                    </svg>
+                </div>
+                
+                <div class="config-card glow-teal" style="height: 180px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-expand"></i>
+                        </div>
+                        <div class="config-label-text">Input Dimension</div>
+                    </div>
+                    <div class="config-value-text">640 &times; 640</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Pixels</div>
+                </div>
+            </div>
+            
+            <div class="config-right-panel glass-panel" style="height: 450px; justify-content: center;">
+                <div class="col-header-badge badge-teal" style="align-self: flex-start; margin-bottom: 24px;">DATASET QUANTITY</div>
+                <div class="config-desc-text">
+                    Dataset Qty Used:
+                    <span class="config-desc-highlight">1,000 Images</span>
+                    Equally selected from our 9 classifications
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 4: TEST MODEL RESULTS -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-4" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Test Model Results</h1>
+                <p class="slide-subtitle">Performance metrics and confusion matrix to obtain initial model parameters</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container">
+            <!-- Left Panel (Confusion Matrix) -->
+            <div class="results-left-panel">
+                <div class="results-image-box">
+                    <div class="results-card-label">Confusion Matrix (Normalized)</div>
+                    <img src="./assets/slides/image21.png" alt="Confusion Matrix" class="results-img" style="filter: brightness(0.95) contrast(1.05);">
+                </div>
+            </div>
+            
+            <!-- Right Panel (Training Curves) -->
+            <div class="results-right-panel">
+                <div class="results-image-box">
+                    <div class="results-card-label">Training & Validation Curves</div>
+                    <img src="./assets/slides/image20.png" alt="Loss/Accuracy Curves" class="results-img" style="filter: invert(0.9) hue-rotate(180deg) brightness(1.2); mix-blend-mode: screen;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 5: YOLOv8s-seg BASELINE MODEL CONFIGURATION -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-5" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">YOLOv8s-seg Baseline Model Configuration</h1>
+                <p class="slide-subtitle">Baseline production parameters and system dimensions</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="align-items: center;">
+            <div class="config-left-panel">
+                <div class="config-card glow-blue" style="height: 180px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-circle-nodes"></i>
+                        </div>
+                        <div class="config-label-text">Model Architecture</div>
+                        <div class="config-badge">Small Seg</div>
+                    </div>
+                    <div class="config-value-text">YOLOv8s-seg</div>
+                </div>
+                
+                <div class="config-card glow-teal" style="height: 250px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <div class="config-label-text">Training Epochs</div>
+                    </div>
+                    <div class="config-value-text">50</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Patience: 15</div>
+                    <svg class="config-sparkline-svg">
+                        <path d="M0 35 Q 20 15, 40 25 T 80 10 T 120 20 T 160 3 T 200 8 T 240 12 T 280 4 T 320 1 Q 350 15, 380 2" fill="none" stroke="#34d399" stroke-width="2" />
+                    </svg>
+                </div>
+                
+                <div class="config-card glow-blue" style="height: 250px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-cubes"></i>
+                        </div>
+                        <div class="config-label-text">Batch Size</div>
+                    </div>
+                    <div class="config-value-text">32</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Images per batch</div>
+                    <svg class="config-sparkline-svg">
+                        <path d="M0 35 Q 40 32, 80 28 T 160 22 T 240 18 T 320 12 T 380 8" fill="none" stroke="#60a5fa" stroke-width="2" />
+                    </svg>
+                </div>
+                
+                <div class="config-card glow-teal" style="height: 180px;">
+                    <div class="config-card-header">
+                        <div class="config-icon-box">
+                            <i class="fa-solid fa-expand"></i>
+                        </div>
+                        <div class="config-label-text">Input Dimension</div>
+                    </div>
+                    <div class="config-value-text">640 &times; 640</div>
+                    <div class="step-subtext" style="margin-top: 4px;">Pixels</div>
+                </div>
+            </div>
+            
+            <div class="config-right-panel glass-panel" style="height: 450px; justify-content: center;">
+                <div class="col-header-badge badge-teal" style="align-self: flex-start; margin-bottom: 24px;">DATASET QUANTITY</div>
+                <div class="config-desc-text">
+                    Dataset Qty Used:
+                    <span class="config-desc-highlight">45,000 Images</span>
+                    Equally selected from our 9 classifications
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 6: BASELINE MODEL RESULTS & CONFUSION MATRIX -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-6" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Baseline Model Results & Confusion Matrix</h1>
+                <p class="slide-subtitle">Performance metrics and confusion matrix for 50 training epochs baseline</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container">
+            <!-- Left Panel (Confusion Matrix) -->
+            <div class="results-left-panel">
+                <div class="results-image-box">
+                    <div class="results-card-label">Confusion Matrix (Normalized)</div>
+                    <img src="./assets/slides/image30.png" alt="Confusion Matrix" class="results-img" style="filter: brightness(0.95) contrast(1.05);">
+                </div>
+            </div>
+            
+            <!-- Right Panel (Training Curves) -->
+            <div class="results-right-panel">
+                <div class="results-image-box">
+                    <div class="results-card-label">Training & Validation Curves</div>
+                    <img src="./assets/slides/image29.png" alt="Loss/Accuracy Curves" class="results-img" style="filter: invert(0.9) hue-rotate(180deg) brightness(1.2); mix-blend-mode: screen;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 7: RESULTS: TRAINING OPTIMIZATION & CLASS PENALTY TUNING -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-7" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Results: Training Optimization & Class Penalty Tuning</h1>
+                <p class="slide-subtitle">Model optimization parameters, training performance, and final class weights tuning</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="flex-direction: column; gap: 24px;">
+            <!-- Top half: Curves -->
+            <div class="threeway-top-box results-image-box">
+                <div class="results-card-label">Training & Validation Curves</div>
+                <img src="./assets/slides/image26.png" alt="Optimization Curves" class="results-img" style="filter: invert(0.9) hue-rotate(180deg) brightness(1.2); mix-blend-mode: screen; height: 100%; max-height: 330px;">
+            </div>
+            
+            <!-- Bottom half: Matrix + Config Panel -->
+            <div class="threeway-bottom-row">
+                <div class="threeway-bottom-left results-image-box">
+                    <div class="results-card-label">Confusion Matrix (Normalized)</div>
+                    <img src="./assets/slides/image27.png" alt="Optimization Matrix" class="results-img" style="filter: brightness(0.95) contrast(1.05);">
+                </div>
+                
+                <div class="threeway-bottom-right">
+                    <!-- Config Panel (AdamW settings) -->
+                    <img src="./assets/slides/image28.png" alt="AdamW Settings" style="height: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); object-fit: contain;">
+                    
+                    <!-- Dataset Quantity text -->
+                    <div class="glass-panel" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <div class="col-header-badge badge-teal" style="align-self: flex-start; margin-bottom: 15px;">DATASET QUANTITY</div>
+                        <div class="config-desc-text" style="font-size: 26px;">
+                            Dataset Qty Used:
+                            <span class="config-desc-highlight" style="font-size: 34px; margin: 4px 0;">45,000 Images</span>
+                            Equally selected from our 9 classifications
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 8: RESULTS: MODEL SCALING & REAL-WORLD IMAGE TESTING -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-8" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Results: Model Scaling & Real-World Image Testing</h1>
+                <p class="slide-subtitle">Scale settings performance compared against baseline model architecture</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="flex-direction: column; gap: 24px;">
+            <!-- Top half: Curves -->
+            <div class="threeway-top-box results-image-box">
+                <div class="results-card-label">Training & Validation Curves</div>
+                <img src="./assets/slides/image29.png" alt="Scaling Curves" class="results-img" style="filter: invert(0.9) hue-rotate(180deg) brightness(1.2); mix-blend-mode: screen; height: 100%; max-height: 330px;">
+            </div>
+            
+            <!-- Bottom half: Matrix + Config Panel -->
+            <div class="threeway-bottom-row">
+                <div class="threeway-bottom-left results-image-box">
+                    <div class="results-card-label">Confusion Matrix (Normalized)</div>
+                    <img src="./assets/slides/image30.png" alt="Scaling Matrix" class="results-img" style="filter: brightness(0.95) contrast(1.05);">
+                </div>
+                
+                <div class="threeway-bottom-right">
+                    <!-- Config Panel (Naomi's scale settings) -->
+                    <img src="./assets/slides/image31.png" alt="Nano Scale Settings" style="height: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); object-fit: contain;">
+                    
+                    <!-- Dataset Quantity text -->
+                    <div class="glass-panel" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <div class="col-header-badge badge-teal" style="align-self: flex-start; margin-bottom: 15px;">DATASET QUANTITY</div>
+                        <div class="config-desc-text" style="font-size: 26px;">
+                            Dataset Qty Used:
+                            <span class="config-desc-highlight" style="font-size: 34px; margin: 4px 0;">45,000 Images</span>
+                            Equally selected from our 9 classifications
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 9: RESULTS: DATA CLEANING & COPY-PASTE AUGMENTATIONS -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-9" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Results: Data Cleaning & Copy-Paste Augmentations</h1>
+                <p class="slide-subtitle">Talvin model data augmentation and copy-paste pipeline results</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="flex-direction: column; gap: 24px;">
+            <!-- Top half: Curves -->
+            <div class="threeway-top-box results-image-box">
+                <div class="results-card-label">Training & Validation Curves</div>
+                <img src="./assets/slides/image32.png" alt="Augmentation Curves" class="results-img" style="filter: invert(0.9) hue-rotate(180deg) brightness(1.2); mix-blend-mode: screen; height: 100%; max-height: 330px;">
+            </div>
+            
+            <!-- Bottom half: Matrix + Config Panel -->
+            <div class="threeway-bottom-row">
+                <div class="threeway-bottom-left results-image-box">
+                    <div class="results-card-label">Confusion Matrix (Normalized)</div>
+                    <img src="./assets/slides/image33.png" alt="Augmentation Matrix" class="results-img" style="filter: brightness(0.95) contrast(1.05);">
+                </div>
+                
+                <div class="threeway-bottom-right">
+                    <!-- Config Panel (Talvin's copy paste settings) -->
+                    <img src="./assets/slides/image34.png" alt="Augmentation Settings" style="height: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); object-fit: contain;">
+                    
+                    <!-- Dataset Quantity text -->
+                    <div class="glass-panel" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <div class="col-header-badge badge-teal" style="align-self: flex-start; margin-bottom: 15px;">DATASET QUANTITY</div>
+                        <div class="config-desc-text" style="font-size: 26px;">
+                            Dataset Qty Used:
+                            <span class="config-desc-highlight" style="font-size: 34px; margin: 4px 0;">45,000 Images</span>
+                            Equally selected from our 9 classifications
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 10: WEB DEVELOPMENT FRAMEWORK -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-10" class="slide-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">Web Development Framework</h1>
+                <p class="slide-subtitle">Iterative design, prototype development, and evaluation lifecycle loops</p>
+            </div>
+            <img src="./assets/logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container" style="align-items: center; justify-content: center;">
+            <!-- SVG Overlay for connecting paths -->
+            <svg id="framework-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;">
+                <defs>
+                    <marker id="fw-marker-teal" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#34d399" />
+                    </marker>
+                    <marker id="fw-marker-gray" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#475569" />
+                    </marker>
+                </defs>
+            </svg>
+
+            <div class="framework-row">
+                <!-- Step 1 -->
+                <div class="framework-card-wrapper" id="FW1">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">1</div>
+                        <div class="framework-step-title">Requirements Analysis</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Define system goals</li>
+                            <li class="framework-bullet-item">Elicit user stories</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="framework-card-wrapper" id="FW2">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">2</div>
+                        <div class="framework-step-title">System Design</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Plan database schema</li>
+                            <li class="framework-bullet-item">Plan UI layouts</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="framework-card-wrapper" id="FW3">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">3</div>
+                        <div class="framework-step-title">Prototype Development</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Build working web app</li>
+                            <li class="framework-bullet-item">SQLite integration</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="framework-card-wrapper" id="FW4">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">4</div>
+                        <div class="framework-step-title">User Evaluation</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Test Streamlit portal</li>
+                            <li class="framework-bullet-item">Collect user feedback</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="framework-card-wrapper" id="FW5">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">5</div>
+                        <div class="framework-step-title">Refinement</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Final polish & tuning</li>
+                            <li class="framework-bullet-item">Bug & error fixes</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="framework-card-wrapper" id="FW6">
+                    <div class="framework-step-card">
+                        <div class="framework-step-num">6</div>
+                        <div class="framework-step-title">Implementation</div>
+                        <ul class="framework-bullet-list">
+                            <li class="framework-bullet-item">Deploy live system</li>
+                            <li class="framework-bullet-item">Production showcase</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SLIDE 11: PURITYLOOP AI R&D PATH (BRIGHT THEME) -->
+    <!-- ========================================================================= */ -->
+    <div id="slide-11" class="slide-canvas bright-theme-canvas">
+        <div class="header">
+            <div class="title-area">
+                <h1 class="slide-title">PurityLoop AI R&D Path</h1>
+                <p class="slide-subtitle">Development Limitations & Next Steps</p>
+            </div>
+            <img src="./assets/bright_logo.png" alt="Logo" class="project-logo">
+        </div>
+        
+        <div class="content-container">
+            <div class="rd-main-panel">
+                <!-- Row 1: AI Classification -> Robotic Sorting Arm -->
+                <div class="rd-row">
+                    <div class="rd-card limit-card">
+                        <div class="rd-card-header">
+                            <div class="rd-icon-box">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <div class="rd-card-title">AI Classification Only</div>
+                            <div class="rd-badge">Current Limitation</div>
+                        </div>
+                        <ul class="rd-bullets">
+                            <li class="rd-bullet-item">AI only detects and classifies</li>
+                            <li class="rd-bullet-item">Cannot physically sort waste</li>
+                            <li class="rd-bullet-item">Limited by lack of technology</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="rd-connector-arrow">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                    
+                    <div class="rd-card step-card-bright">
+                        <div class="rd-card-header">
+                            <div class="rd-icon-box">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <div class="rd-card-title">Robotic Sorting Arm</div>
+                            <div class="rd-badge">Next Step</div>
+                        </div>
+                        <ul class="rd-bullets">
+                            <li class="rd-bullet-item">Integrate mechanical sorting</li>
+                            <li class="rd-bullet-item">Automated physical separation</li>
+                            <li class="rd-bullet-item">Complete sorting loop</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Row 2: Estimated Weight & CO2 -> Proper Weighing System -->
+                <div class="rd-row">
+                    <div class="rd-card limit-card">
+                        <div class="rd-card-header">
+                            <div class="rd-icon-box">
+                                <i class="fa-solid fa-scale-unbalanced"></i>
+                            </div>
+                            <div class="rd-card-title">Estimated Weight & CO2</div>
+                            <div class="rd-badge">Current Limitation</div>
+                        </div>
+                        <ul class="rd-bullets">
+                            <li class="rd-bullet-item">Cannot accurately weigh items</li>
+                            <li class="rd-bullet-item">Uses static weight constants</li>
+                            <li class="rd-bullet-item">Inaccurate CO2 estimates</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="rd-connector-arrow">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                    
+                    <div class="rd-card step-card-bright">
+                        <div class="rd-card-header">
+                            <div class="rd-icon-box">
+                                <i class="fa-solid fa-scale-balanced"></i>
+                            </div>
+                            <div class="rd-card-title">Proper Weighing System</div>
+                            <div class="rd-badge">Next Step</div>
+                        </div>
+                        <ul class="rd-bullets">
+                            <li class="rd-bullet-item">Integrate conveyor load scale</li>
+                            <li class="rd-bullet-item">Log exact weight of items</li>
+                            <li class="rd-bullet-item">Accurate CO2 & selling prices</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Activate slide based on URL hash (default to slide-1)
+    function activateSlide() {
+        const hash = window.location.hash || '#slide-1';
+        const slideId = hash.split('-')[0].replace('#', '') + '-' + hash.split('-')[1];
+        
+        // Deactivate all slides
+        document.querySelectorAll('.slide-canvas').forEach(el => el.classList.remove('active'));
+        
+        // Activate matching slide
+        const activeSlide = document.getElementById(slideId) || document.getElementById('slide-1');
+        if (activeSlide) {
+            activeSlide.classList.add('active');
+            
+            // Draw SVG paths if Slide 1 is active
+            if (activeSlide.id === 'slide-1') {
+                setTimeout(drawBPMNConnections, 100);
+            }
+            // Draw SVG paths if Slide 10 is active
+            if (activeSlide.id === 'slide-10') {
+                setTimeout(drawFrameworkConnections, 100);
+            }
+        }
+    }
+
+    // Helper functions for coordinates mapping
+    function getLeftCenter(el, container) {
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        return {
+            x: rect.left - containerRect.left,
+            y: rect.top + rect.height / 2 - containerRect.top
+        };
+    }
+    
+    function getRightCenter(el, container) {
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        return {
+            x: rect.right - containerRect.left,
+            y: rect.top + rect.height / 2 - containerRect.top
+        };
+    }
+    
+    function getBottomCenter(el, container) {
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2 - containerRect.left,
+            y: rect.bottom - containerRect.top
+        };
+    }
+    
+    function getTopCenter(el, container) {
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2 - containerRect.left,
+            y: rect.top - containerRect.top
+        };
+    }
+
+    // SVG Drawing function for Slide 1 BPMN
+    function drawBPMNConnections() {
+        const svg = document.getElementById('bpmn-svg');
+        const container = document.querySelector('.bpmn-grid');
+        
+        const paths = svg.querySelectorAll('path');
+        paths.forEach(p => p.remove());
+        container.querySelectorAll('.connector-label').forEach(el => el.remove());
+        
+        function drawArrow(p1, p2, color, markerId, offset = 8) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            
+            let tx = p2.x;
+            let ty = p2.y;
+            if (len > 0) {
+                tx = p2.x - (dx / len) * offset;
+                ty = p2.y - (dy / len) * offset;
+            }
+            
+            path.setAttribute('d', `M ${p1.x} ${p1.y} L ${tx} ${ty}`);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        function drawLArrow(p1, p2, color, markerId, offset = 8) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${p1.x} ${p1.y} V ${p2.y} H ${p2.x - offset}`);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        function drawDashedLine(p1, p2, color) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('stroke-dasharray', '4 4');
+            path.setAttribute('fill', 'none');
+            svg.appendChild(path);
+        }
+
+        function drawCustomLoop(p1, p2, color, markerId, offset = 8) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${p1.x} ${p1.y} V ${p1.y - 65} H ${p2.x} V ${p2.y - offset}`);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        const N1_1 = document.getElementById('N1_1');
+        const N1_2 = document.getElementById('N1_2');
+        const N1_3 = document.getElementById('N1_3');
+        const N1_4 = document.getElementById('N1_4');
+        const N1_5 = document.getElementById('N1_5');
+        const N1_6 = document.getElementById('N1_6');
+        const N1_7 = document.querySelector('#lane-1 .bpmn-gateway-wrapper');
+
+        const N2_1 = document.getElementById('N2_1');
+        const N2_2 = document.getElementById('N2_2');
+        const N2_3 = document.getElementById('N2_3');
+        const N2_4 = document.querySelector('#lane-2 .bpmn-gateway-wrapper');
+        const N2_5 = document.getElementById('N2_5');
+        const N2_6 = document.getElementById('N2_6');
+        const N2_7 = document.getElementById('N2_7');
+        const N2_8 = document.querySelectorAll('#lane-2 .bpmn-gateway-wrapper')[1];
+        const N2_9 = document.getElementById('N2_9');
+
+        const N3_1 = document.getElementById('N3_1');
+        const N3_2 = document.getElementById('N3_2');
+        const N3_3 = document.getElementById('N3_3');
+
+        const N4_1 = document.getElementById('N4_1');
+        const N4_2 = document.getElementById('N4_2');
+        const N4_3 = document.getElementById('N4_3');
+        const N4_4 = document.getElementById('N4_4');
+
+        drawArrow(getRightCenter(N1_1, container), getLeftCenter(N1_2, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getBottomCenter(N1_2, container), getTopCenter(N2_1, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N1_3, container), getLeftCenter(N1_4, container), '#64748b', 'bpmn-marker-gray');
+        drawArrow(getRightCenter(N1_5, container), getLeftCenter(N1_6, container), '#fb923c', 'bpmn-marker-orange');
+        drawArrow(getRightCenter(N1_6, container), getLeftCenter(N1_7, container), '#fb923c', 'bpmn-marker-orange');
+        
+        drawLArrow(getBottomCenter(N1_7, container), getTopCenter(N4_4, container), '#34d399', 'bpmn-marker-teal');
+        drawCustomLoop(getTopCenter(N1_7, container), getTopCenter(N1_2, container), '#fb923c', 'bpmn-marker-orange');
+
+        drawArrow(getRightCenter(N2_1, container), getLeftCenter(N2_2, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N2_2, container), getLeftCenter(N2_3, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N2_3, container), getLeftCenter(N2_4, container), '#34d399', 'bpmn-marker-teal');
+        
+        drawLArrow(getBottomCenter(N2_4, container), getLeftCenter(N2_7, container), '#34d399', 'bpmn-marker-teal');
+        drawLArrow(getTopCenter(N2_4, container), getLeftCenter(N2_5, container), '#fb923c', 'bpmn-marker-orange');
+        drawArrow(getRightCenter(N2_5, container), getLeftCenter(N2_6, container), '#fb923c', 'bpmn-marker-orange');
+        
+        drawDashedLine(getTopCenter(N2_6, container), getBottomCenter(N1_5, container), '#94a3b8');
+        drawDashedLine(getRightCenter(N2_6, container), getBottomCenter(N1_6, container), '#94a3b8');
+
+        drawArrow(getRightCenter(N2_7, container), getLeftCenter(N2_8, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N2_8, container), getLeftCenter(N2_9, container), '#ef4444', 'bpmn-marker-red');
+        drawLArrow(getBottomCenter(N2_8, container), getTopCenter(N3_1, container), '#34d399', 'bpmn-marker-teal');
+        drawLArrow(getBottomCenter(N2_9, container), getTopCenter(N4_4, container), '#ef4444', 'bpmn-marker-red');
+
+        drawArrow(getRightCenter(N3_1, container), getLeftCenter(N3_2, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N3_2, container), getLeftCenter(N3_3, container), '#34d399', 'bpmn-marker-teal');
+        drawLArrow(getBottomCenter(N3_3, container), getTopCenter(N4_1, container), '#34d399', 'bpmn-marker-teal');
+
+        drawArrow(getRightCenter(N4_1, container), getLeftCenter(N4_2, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N4_2, container), getLeftCenter(N4_3, container), '#34d399', 'bpmn-marker-teal');
+        drawArrow(getRightCenter(N4_3, container), getLeftCenter(N4_4, container), '#34d399', 'bpmn-marker-teal');
+        
+        createGatewayLabels(N1_7, 'NO', 'YES', container);
+        createGatewayLabels(N2_4, 'NO', 'YES', container, 'Pass');
+        createGatewayLabels(N2_8, 'NO', 'YES', container, 'Hazard');
+    }
+
+    // SVG Drawing function for Slide 10 Web Development Framework
+    function drawFrameworkConnections() {
+        const svg = document.getElementById('framework-svg');
+        const container = document.querySelector('.framework-row');
+        
+        const paths = svg.querySelectorAll('path');
+        paths.forEach(p => p.remove());
+        container.querySelectorAll('.connector-label').forEach(el => el.remove());
+        
+        function drawArrow(p1, p2, color, markerId, offset = 8) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            
+            let tx = p2.x - offset;
+            let ty = p2.y;
+            
+            path.setAttribute('d', `M ${p1.x} ${p1.y} L ${tx} ${ty}`);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '2.5');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        function drawTopCurveLoop(p1, p2, color, markerId) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const controlY = p1.y - 120;
+            const d = `M ${p1.x} ${p1.y} C ${p1.x - 50} ${controlY}, ${p2.x + 50} ${controlY}, ${p2.x} ${p2.y}`;
+            path.setAttribute('d', d);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        function drawBottomCurveLoop(p1, p2, color, markerId) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const controlY = p1.y + 110;
+            const d = `M ${p1.x} ${p1.y} C ${p1.x - 30} ${controlY}, ${p2.x + 30} ${controlY}, ${p2.x} ${p2.y}`;
+            path.setAttribute('d', d);
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('fill', 'none');
+            if (markerId) {
+                path.setAttribute('marker-end', `url(#${markerId})`);
+            }
+            svg.appendChild(path);
+        }
+
+        const FW1 = document.getElementById('FW1');
+        const FW2 = document.getElementById('FW2');
+        const FW3 = document.getElementById('FW3');
+        const FW4 = document.getElementById('FW4');
+        const FW5 = document.getElementById('FW5');
+        const FW6 = document.getElementById('FW6');
+
+        drawArrow(getRightCenter(FW1, container), getLeftCenter(FW2, container), '#475569', 'fw-marker-gray');
+        drawArrow(getRightCenter(FW2, container), getLeftCenter(FW3, container), '#475569', 'fw-marker-gray');
+        drawArrow(getRightCenter(FW3, container), getLeftCenter(FW4, container), '#475569', 'fw-marker-gray');
+        drawArrow(getRightCenter(FW4, container), getLeftCenter(FW5, container), '#34d399', 'fw-marker-teal');
+        drawArrow(getRightCenter(FW5, container), getLeftCenter(FW6, container), '#475569', 'fw-marker-gray');
+
+        drawTopCurveLoop(getTopCenter(FW4, container), getTopCenter(FW2, container), '#10b981', 'fw-marker-teal');
+        drawBottomCurveLoop(getBottomCenter(FW4, container), getBottomCenter(FW3, container), '#10b981', 'fw-marker-teal');
+
+        const topRect = FW3.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        let topLabel = document.createElement('div');
+        topLabel.className = 'connector-label';
+        topLabel.style.color = '#34d399';
+        topLabel.style.fontWeight = '700';
+        topLabel.style.fontSize = '12px';
+        topLabel.style.textTransform = 'uppercase';
+        topLabel.style.background = 'rgba(16, 185, 129, 0.12)';
+        topLabel.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+        topLabel.style.padding = '4px 10px';
+        topLabel.style.borderRadius = '6px';
+        topLabel.style.left = (topRect.left - containerRect.left - 15) + 'px';
+        topLabel.style.top = (topRect.top - containerRect.top - 80) + 'px';
+        topLabel.innerText = "Design Loop (Wireframe/Mockups)";
+        container.appendChild(topLabel);
+
+        let bottomLabel = document.createElement('div');
+        bottomLabel.className = 'connector-label';
+        bottomLabel.style.color = '#34d399';
+        bottomLabel.style.fontWeight = '700';
+        bottomLabel.style.fontSize = '12px';
+        bottomLabel.style.textTransform = 'uppercase';
+        bottomLabel.style.background = 'rgba(16, 185, 129, 0.12)';
+        bottomLabel.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+        bottomLabel.style.padding = '4px 10px';
+        bottomLabel.style.borderRadius = '6px';
+        bottomLabel.style.left = (topRect.left - containerRect.left + 5) + 'px';
+        bottomLabel.style.top = (topRect.bottom - containerRect.top + 50) + 'px';
+        bottomLabel.innerText = "Prototype Loop (Code/Build)";
+        container.appendChild(bottomLabel);
+
+        const r4Rect = FW4.getBoundingClientRect();
+        const r5Rect = FW5.getBoundingClientRect();
+        let approvedLabel = document.createElement('div');
+        approvedLabel.className = 'connector-label';
+        approvedLabel.style.color = '#34d399';
+        approvedLabel.style.fontWeight = '800';
+        approvedLabel.style.fontSize = '11px';
+        approvedLabel.style.textTransform = 'uppercase';
+        approvedLabel.style.background = 'rgba(16, 185, 129, 0.18)';
+        approvedLabel.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        approvedLabel.style.padding = '3px 8px';
+        approvedLabel.style.borderRadius = '5px';
+        approvedLabel.style.left = (r4Rect.right - containerRect.left + (r5Rect.left - r4Rect.right)/2 - 38) + 'px';
+        approvedLabel.style.top = (r4Rect.top - containerRect.top + r4Rect.height/2 - 12) + 'px';
+        approvedLabel.innerText = "APPROVED";
+        container.appendChild(approvedLabel);
+    }
+
+    // Draw yes/no annotations next to diamond gates
+    function createGatewayLabels(gatewayEl, labelTopText, labelRightText, container, labelRightSub = '') {
+        const rect = gatewayEl.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        
+        const x = rect.left - containerRect.left;
+        const y = rect.top - containerRect.top;
+        const size = rect.width;
+        
+        if (labelTopText) {
+            let topLbl = document.createElement('div');
+            topLbl.className = 'connector-label label-no';
+            topLbl.style.left = (x + size / 2 - 15) + 'px';
+            topLbl.style.top = (y - 30) + 'px';
+            topLbl.innerText = labelTopText;
+            container.appendChild(topLbl);
+        }
+        
+        if (labelRightText) {
+            let rightLbl = document.createElement('div');
+            rightLbl.className = (labelRightSub === 'Hazard' || labelRightText === 'Hazard') ? 'connector-label label-hazard' : 'connector-label label-yes';
+            rightLbl.style.left = (x + size + 10) + 'px';
+            rightLbl.style.top = (y + size / 2 - 12) + 'px';
+            rightLbl.innerHTML = labelRightSub ? `${labelRightSub}` : labelRightText;
+            container.appendChild(rightLbl);
+        }
+    }
+
+    // Set up lifecycle listeners
+    window.addEventListener('load', activateSlide);
+    window.addEventListener('hashchange', activateSlide);
+</script>
+
+</body>
+</html>

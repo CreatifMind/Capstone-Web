@@ -70,10 +70,7 @@ const html = `
         </div>
 
         <div class="topbar-right">
-          <div class="search-bar">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" placeholder="Search uploads, materials, confidence..." aria-label="Search" />
-          </div>
+          <div data-theme-slot="app"></div>
 
           <div class="date-pill">
             <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
@@ -114,8 +111,8 @@ const html = `
               <small>Recoverable value</small>
             </div>
             <div>
-              <span id="liveCO2Offset">No data</span>
-              <small>CO2 offset</small>
+              <span id="liveReviewNeeded">No data</span>
+              <small>Review needed</small>
             </div>
           </div>
         </section>
@@ -153,6 +150,7 @@ const html = `
               <div id="liveFeed" class="live-feed">
                 <div class="feed-empty">Upload or select an image to view detected materials.</div>
               </div>
+              <p class="estimate-method-note">Calculated from detected item counts using the configured category weight and price rates.</p>
             </section>
 
           </aside>
@@ -186,10 +184,15 @@ const html = `
               <h2>Images waiting for audit</h2>
             </div>
             <div class="finder-toolbar">
+              <div class="queue-navigation" aria-label="Selected upload navigation">
+                <button type="button" id="previousScanBtn" class="topbar-icon-btn" aria-label="Previous upload"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="finderNavigationStatus">No uploads</span>
+                <button type="button" id="nextScanBtn" class="topbar-icon-btn" aria-label="Next upload"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
               <div class="live-toggle-container" id="liveScanToggle">
                 <span class="recording-chip compact">
                   <span class="snapshot-live"></span>
-                  Simulate incoming uploads
+                  Incoming upload monitor
                 </span>
                 <label class="switch">
                   <input type="checkbox" id="autoScanCheckbox">

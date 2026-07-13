@@ -3,63 +3,6 @@
    Collapsible sidebar, mobile nav, AOS, GSAP, CountUp
    ============================================================= */
 
-/* ── 0. LIGHT / DARK / SYSTEM THEME SWITCHER ──
-   The dark-ai/dark-landing/dark-app/dark-login body classes stay applied in
-   every theme — they carry the app's layout/component treatment, not just
-   dark colors. Colors themselves come from the --ai-* custom properties,
-   which flip via the data-theme attribute below. */
-function resolvePlTheme(pref) {
-  if (pref === 'system') {
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-  return pref;
-}
-
-function applyPlTheme(pref) {
-  const resolved = resolvePlTheme(pref);
-  document.documentElement.setAttribute('data-theme', resolved);
-  document.documentElement.setAttribute('data-theme-pref', pref);
-  document.documentElement.style.colorScheme = resolved;
-
-  document.querySelectorAll('.theme-switcher button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.themeOption === pref);
-  });
-}
-window.applyPlTheme = applyPlTheme;
-
-function initThemeSwitcher() {
-  if (!document.querySelector('.theme-switcher')) {
-    const widget = document.createElement('div');
-    widget.className = 'theme-switcher';
-    widget.setAttribute('role', 'group');
-    widget.setAttribute('aria-label', 'Theme');
-    widget.innerHTML = `
-      <button type="button" data-theme-option="light" aria-label="Light theme"><i class="fa-solid fa-sun"></i></button>
-      <button type="button" data-theme-option="dark" aria-label="Dark theme"><i class="fa-solid fa-moon"></i></button>
-      <button type="button" data-theme-option="system" aria-label="Match system theme"><i class="fa-solid fa-desktop"></i></button>
-    `;
-    document.body.appendChild(widget);
-
-    widget.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const pref = btn.dataset.themeOption;
-        try { localStorage.setItem('pl_theme', pref); } catch (e) {}
-        applyPlTheme(pref);
-      });
-    });
-
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-      let currentPref = 'system';
-      try { currentPref = localStorage.getItem('pl_theme') || 'system'; } catch (e) {}
-      if (currentPref === 'system') applyPlTheme('system');
-    });
-  }
-
-  let pref = 'system';
-  try { pref = localStorage.getItem('pl_theme') || 'system'; } catch (e) {}
-  applyPlTheme(pref);
-}
-
 /* ── 1. COLLAPSIBLE SIDEBAR ── */
 function initSidebar() {
   const sidebar = document.getElementById('appSidebar');
@@ -540,6 +483,90 @@ function initLandingCharts() {
   }
 }
 
+/* ── 11A. THEME-AWARE CHART PRESENTATION ── */
+function refreshChartTheme() {
+  if (!window.Chart || typeof Chart.getChart !== 'function') return;
+
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const colors = {
+    text: isLight ? '#506259' : '#a9bbb0',
+    grid: isLight ? 'rgba(17,32,24,0.10)' : 'rgba(255,255,255,0.09)',
+    surface: isLight ? '#ffffff' : '#0c1812',
+    green: isLight ? '#15803d' : '#22c55e',
+    cyan: isLight ? '#087c91' : '#22d3ee',
+    blue: isLight ? '#2563eb' : '#60a5fa',
+    amber: isLight ? '#b45309' : '#fbbf24',
+    red: isLight ? '#dc2626' : '#f87171',
+    muted: isLight ? '#78887f' : '#73877b'
+  };
+  const categoryColors = [
+    colors.green,
+    colors.cyan,
+    colors.blue,
+    colors.amber,
+    '#8b5cf6',
+    '#14b8a6',
+    colors.muted,
+    '#0ea5e9',
+    colors.red
+  ];
+
+  [
+    'landingForecastChart',
+    'landingInventoryChart',
+    'landingRiskChart',
+    'landingProcChart',
+    'compositionChart',
+    'resaleChart',
+    'yieldChart'
+  ].forEach(id => {
+    const chart = Chart.getChart(id);
+    if (!chart) return;
+
+    const legendLabels = chart.options?.plugins?.legend?.labels;
+    if (legendLabels) legendLabels.color = colors.text;
+    ['x', 'y'].forEach(axis => {
+      const scale = chart.options?.scales?.[axis];
+      if (!scale) return;
+      if (scale.ticks) scale.ticks.color = colors.text;
+      if (scale.grid && scale.grid.display !== false) scale.grid.color = colors.grid;
+    });
+
+    const dataset = chart.data?.datasets?.[0];
+    if (id === 'landingForecastChart') {
+      chart.data.datasets[0].borderColor = colors.green;
+      chart.data.datasets[0].pointBackgroundColor = colors.green;
+      chart.data.datasets[0].backgroundColor = isLight ? 'rgba(21,128,61,0.10)' : 'rgba(34,197,94,0.12)';
+      if (chart.data.datasets[1]) {
+        chart.data.datasets[1].borderColor = colors.cyan;
+        chart.data.datasets[1].pointBackgroundColor = colors.cyan;
+      }
+    } else if (id === 'landingInventoryChart' && dataset) {
+      dataset.backgroundColor = categoryColors.slice(0, 6);
+    } else if (id === 'landingRiskChart' && dataset) {
+      dataset.backgroundColor = [colors.green, colors.cyan, colors.red, colors.amber, '#14b8a6'];
+    } else if (id === 'landingProcChart' && dataset) {
+      dataset.backgroundColor = isLight ? 'rgba(21,128,61,0.64)' : 'rgba(34,197,94,0.64)';
+      dataset.borderColor = colors.green;
+    } else if (id === 'compositionChart' && dataset) {
+      dataset.backgroundColor = categoryColors;
+      dataset.borderColor = colors.surface;
+    } else if ((id === 'resaleChart' || id === 'yieldChart') && dataset) {
+      dataset.backgroundColor = categoryColors;
+    }
+
+    chart.update('none');
+  });
+
+  if (!Chart.getChart('compositionChart') && typeof window.drawEmptyAnalyticsCharts === 'function') {
+    window.drawEmptyAnalyticsCharts();
+  }
+}
+
+window.addEventListener('purityloop:theme-change', () => {
+  window.requestAnimationFrame(refreshChartTheme);
+});
+
 /* ── 12. PASSWORD TOGGLE (login page) ── */
 function initPasswordToggle() {
   const btn = document.getElementById('passwordToggle');
@@ -638,7 +665,6 @@ function initMetricCountUp() {
 
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
-  initThemeSwitcher();
   initSidebar();
   initLiveClock();
   initActiveNav();
@@ -655,6 +681,7 @@ function initPurityLoopTheme() {
   initMotionEffects();
   initMetricCountUp();
   animateProgressBars();
+  refreshChartTheme();
 }
 
 window.initPurityLoopTheme = initPurityLoopTheme;
