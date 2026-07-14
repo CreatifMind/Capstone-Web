@@ -47,6 +47,9 @@ add column if not exists drive_file_id text,
 add column if not exists drive_file_name text,
 add column if not exists drive_web_url text;
 
+alter table mock_detected_materials
+add column if not exists original_category text;
+
 create table if not exists scan_review_decisions (
   id uuid primary key default gen_random_uuid(),
   scan_result_id uuid not null references mock_scan_results(id) on delete cascade,

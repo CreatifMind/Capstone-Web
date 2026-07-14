@@ -9,13 +9,32 @@ type PageHtmlProps = {
   html: string;
 };
 
+type PageLifecycleState = {
+  activeKey?: string;
+  cleanupFrame?: number;
+};
+
+type PageWindow = Window & {
+  __PURITYLOOP_PAGE_LIFECYCLE__?: PageLifecycleState;
+};
+
 export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
+  const pageKey = `${dataPage || "root"}:${bodyClass}`;
+  const pageStateScript = `document.body.className=${JSON.stringify(bodyClass)};${dataPage ? `document.body.setAttribute("data-page",${JSON.stringify(dataPage)});` : 'document.body.removeAttribute("data-page");'}`;
+
   useLayoutEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") return;
     let firstFrame = 0;
     let secondFrame = 0;
 
     try {
+      const pageWindow = window as PageWindow;
+      const lifecycle = pageWindow.__PURITYLOOP_PAGE_LIFECYCLE__ ||= {};
+      if (lifecycle.cleanupFrame) window.cancelAnimationFrame(lifecycle.cleanupFrame);
+      lifecycle.cleanupFrame = undefined;
+      const isNewPage = lifecycle.activeKey !== pageKey;
+      lifecycle.activeKey = pageKey;
+
       Object.assign(window, { __PURITYLOOP_ZIP__: { unzip } });
       document.body.className = bodyClass;
       if (dataPage) {
@@ -41,23 +60,34 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
         });
       }
 
-      window.dispatchEvent(new CustomEvent("purityloop:page-ready"));
+      if (isNewPage) window.dispatchEvent(new CustomEvent("purityloop:page-ready"));
     } catch {
       // Keep rendering even if a browser extension or restricted context blocks DOM updates.
     }
 
     return () => {
-      window.dispatchEvent(new CustomEvent("purityloop:page-cleanup"));
       if (firstFrame) window.cancelAnimationFrame(firstFrame);
       if (secondFrame) window.cancelAnimationFrame(secondFrame);
+      const pageWindow = window as PageWindow;
+      const lifecycle = pageWindow.__PURITYLOOP_PAGE_LIFECYCLE__;
+      if (!lifecycle) return;
+      lifecycle.cleanupFrame = window.requestAnimationFrame(() => {
+        if (lifecycle.activeKey !== pageKey) return;
+        lifecycle.activeKey = undefined;
+        lifecycle.cleanupFrame = undefined;
+        window.dispatchEvent(new CustomEvent("purityloop:page-cleanup"));
+      });
     };
-  }, [bodyClass, dataPage, html]);
+  }, [bodyClass, dataPage, pageKey]);
 
   return (
-    <div
-      className={bodyClass}
-      data-page={dataPage}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <script dangerouslySetInnerHTML={{ __html: pageStateScript }} />
+      <div
+        className={bodyClass}
+        data-page={dataPage}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </>
   );
 }

@@ -221,8 +221,7 @@ function plNormalizeScan(scan) {
   };
 }
 
-async function plRefreshScanResultsFromSupabase(options = {}) {
-  const isCurrent = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+async function plRefreshScanResultsFromSupabase() {
   if (!plUseSupabase()) {
     if (plConfig().useSupabase) console.error("PurityLoop: Supabase config missing.");
     return false;
@@ -234,11 +233,10 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
     Authorization: `Bearer ${config.supabaseAnonKey}`
   };
   try {
-    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_type,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
+    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_name,source_size,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
     const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
     if (!scansResponse.ok) {
-      const error = await scansResponse.json().catch(() => ({}));
-      console.error({ message: error.message || "PurityLoop: mock_scan_results fetch failed.", details: error.details, hint: error.hint, code: error.code || scansResponse.status });
+      console.error("PurityLoop: mock_scan_results fetch failed.", scansResponse.status, await scansResponse.text());
       return false;
     }
 
@@ -249,7 +247,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
     }
 
     const reviewsResponse = await fetch(`${baseUrl}/rest/v1/scan_review_decisions?select=*`, { headers });
-    const scansPayload = plSafeArray(await scansResponse.json()).map(scan => ({ ...scan, source_name: scan.source_type }));
+    const scansPayload = await scansResponse.json();
     const materialsPayload = await materialsResponse.json();
     const reviewsPayload = reviewsResponse.ok ? await reviewsResponse.json() : [];
     const latestReviews = plSafeArray(reviewsPayload).reduce((acc, review) => {
@@ -268,7 +266,6 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
       .map(scan => ({ ...scan, detected_materials: groupedMaterials[String(scan.id || "")] || [] }))
       .map(plNormalizeScan)
       .filter(Boolean);
-    if (!isCurrent()) return false;
     plSetScanResults(scans);
     return true;
   } catch (error) {
@@ -392,54 +389,14 @@ function plScanToLedger(scan, material = {}, index = 0) {
 
 async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed") {
   const apiBase = plApiBaseUrl();
-  if (!apiBase || !scan?.id) throw new Error("Review persistence is not configured for this scan.");
-  let persistedScan = scan;
-  let persistedMaterial = material;
-  if (!persistedMaterial?.id) {
-    let response;
-    try {
-      response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scan.id)}`);
-    } catch {
-      throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
-    }
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(response.status === 404 ? "The deployed backend is missing the scan lookup route. Restart or deploy the updated FastAPI backend." : (payload.detail || "Unable to retrieve the persisted scan for review."));
-    persistedScan = plNormalizeScan(payload.scan_result);
-    const candidates = plSafeArray(persistedScan?.detected_materials).filter(item => (
-      plCategoryKey(item.category) === plCategoryKey(material?.category) &&
-      Math.abs(Number(item.bbox_x || 0) - Number(material?.bbox_x || 0)) < 0.01 &&
-      Math.abs(Number(item.bbox_y || 0) - Number(material?.bbox_y || 0)) < 0.01 &&
-      Math.abs(Number(item.bbox_width || 0) - Number(material?.bbox_width || 0)) < 0.01 &&
-      Math.abs(Number(item.bbox_height || 0) - Number(material?.bbox_height || 0)) < 0.01
-    ));
-    if (candidates.length !== 1) throw new Error("This scan cannot be matched to one persisted material for review.");
-    persistedMaterial = candidates[0];
-  }
+  if (!apiBase || !scan?.id || !material?.id) throw new Error("Review persistence is not configured for this scan.");
   const reviewer = plSafeJsonParse(sessionStorage.getItem("purityloop_demo_user"), {})?.email || null;
-  const action = outcome === "rejected" ? "reject" : "verify";
-  let response;
-  try {
-    response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_result_id: persistedScan.id, detected_material_id: persistedMaterial.id, action, manual_category: chosenCategory, reviewer_email: reviewer }) });
-  } catch {
-    throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
-  }
+  const disposition = PL_CATEGORY_CLASS_MAP[plCategoryKey(chosenCategory)] || "unknown";
+  const response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_result_id: scan.id, detected_material_id: material.id, chosen_category: chosenCategory, disposition, outcome, reviewer_email: reviewer }) });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 404 ? "The scan or detected material no longer exists in Supabase." : (payload.detail || "Unable to save review."));
-  const updatedScan = plNormalizeScan({
-    ...persistedScan,
-    overall_status: payload.overall_status || persistedScan.overall_status,
-    human_review_required: typeof payload.human_review_required === "boolean" ? payload.human_review_required : persistedScan.human_review_required,
-    recommended_action: payload.recommended_action || persistedScan.recommended_action,
-    detected_materials: plSafeArray(persistedScan.detected_materials).map(item => item.id === persistedMaterial.id ? {
-      ...item,
-      ...payload.material,
-      category: payload.material?.category || chosenCategory,
-      review_decision: payload.decision || { chosen_category: chosenCategory, outcome: action === "verify" ? "confirmed" : "rejected" }
-    } : item)
-  });
-  if (updatedScan) plSaveScanResult(updatedScan);
+  if (!response.ok) throw new Error(payload.detail || "Unable to save review.");
   await plRefreshScanResultsFromSupabase();
-  return { ...payload, scan: updatedScan };
+  return payload;
 }
 
 const FINAL_CATEGORIES = ["general trash", "food organic", "metal", "plastic", "glass", "textile", "paper", "battery", "cardboard"];
@@ -584,22 +541,8 @@ function plGetAnalyticsSummary(options = {}) {
     acc[source] = (acc[source] || 0) + 1;
     return acc;
   }, {});
-  const scanDates = scans
-    .map(scan => new Date(scan.created_at || 0))
-    .filter(date => Number.isFinite(date.getTime()));
-  // Default summaries include all saved scans, but their chart must only span saved dates.
-  const trendRangeStart = hasRange
-    ? rangeStart
-    : scanDates.length
-      ? plAnalyticsDayStart(Math.min(...scanDates.map(date => date.getTime())))
-      : plAnalyticsDayStart(now);
-  const trendRangeEnd = hasRange
-    ? rangeEnd
-    : scanDates.length
-      ? plAnalyticsDayStart(Math.max(...scanDates.map(date => date.getTime())))
-      : plAnalyticsDayStart(now);
   const trendByDay = new Map();
-  for (let cursor = plAnalyticsDayStart(trendRangeStart); cursor <= trendRangeEnd; cursor.setDate(cursor.getDate() + 1)) {
+  for (let cursor = plAnalyticsDayStart(rangeStart); cursor <= rangeEnd; cursor.setDate(cursor.getDate() + 1)) {
     trendByDay.set(cursor.toLocaleDateString([], { month: "short", day: "numeric" }), 0);
   }
   scans.forEach(scan => {
@@ -1753,16 +1696,17 @@ function initResultPage() {
     renderEmptyResult();
   }
 
-  // Redraw canvas on window resize to stay responsive.
-  const onResultResize = () => {
+  // Redraw canvas on window resize to stay responsive
+  window.addEventListener('resize', () => {
     if (activeImageObj) drawCanvasFrame();
-  };
-  const onResultThemeChange = () => {
-    if (activeImageObj) drawCanvasFrame();
-    else drawEmptyScanCanvas("No scan data");
-  };
-  window.addEventListener('resize', onResultResize);
-  window.addEventListener("purityloop:theme-change", onResultThemeChange);
+  });
+  if (canvas.dataset.themeRedrawReady !== "true") {
+    canvas.dataset.themeRedrawReady = "true";
+    window.addEventListener("purityloop:theme-change", () => {
+      if (activeImageObj) drawCanvasFrame();
+      else drawEmptyScanCanvas("No scan data");
+    });
+  }
 
   // Live Auto-Scan simulation
   const autoScanCheckbox = document.getElementById("autoScanCheckbox");
@@ -1779,11 +1723,6 @@ function initResultPage() {
       autoScanInterval = null;
     }
   }
-  window.addEventListener("purityloop:page-cleanup", () => {
-    stopAutoScanSimulation();
-    window.removeEventListener('resize', onResultResize);
-    window.removeEventListener("purityloop:theme-change", onResultThemeChange);
-  }, { once: true });
 
   if (autoScanCheckbox) {
     autoScanCheckbox.addEventListener("change", () => {
@@ -2443,8 +2382,8 @@ function initReviewModal() {
     window.requestAnimationFrame(() => document.getElementById("closeReviewModal")?.focus());
   }
 
-  function closeModal(force = false) {
-    if (!modal.classList.contains("active") || (isSaving && !force)) return;
+  function closeModal() {
+    if (!modal.classList.contains("active")) return;
     modal.classList.remove("active");
     modal.setAttribute("aria-hidden", "true");
     activeLog = null;
@@ -2492,7 +2431,7 @@ function initReviewModal() {
   document.getElementById("showAllHistory")?.addEventListener("click", () => { if (statusInput) statusInput.value = ""; state.page = 1; render(); });
   document.getElementById("exportHistory")?.addEventListener("click", () => { const headers = ["Timestamp", "Source", "Category", "Class", "Weight (kg)", "AI Confidence", "Status"]; const records = filteredRows(getAuditLedger()).map(row => [row.time, row.source, row.category, row.materialClass, row.weight, row.confidenceText, row.status]); const csv = [headers, ...records].map(record => record.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = "purityloop-scan-history.csv"; link.click(); URL.revokeObjectURL(url); });
   document.getElementById("closeReviewModal")?.addEventListener("click", closeModal);
-  modal.addEventListener("click", event => { if (!isSaving && event.target === modal) closeModal(); });
+  modal.addEventListener("click", event => { if (event.target === modal) closeModal(); });
   document.addEventListener("keydown", onModalKeydown);
   window.addEventListener("purityloop:page-cleanup", () => {
     unlockPageScroll();
@@ -2501,19 +2440,16 @@ function initReviewModal() {
   async function saveReview(outcome, message) {
     if (!activeLog || isSaving) return;
     isSaving = true;
-    const controls = [document.getElementById("clearSegment"), document.getElementById("quarantineSegment"), document.getElementById("reclassifySelect"), document.getElementById("closeReviewModal")].filter(Boolean);
-    controls.forEach(control => { control.disabled = true; });
     const log = activeLog;
     try {
       await plSaveReview(plGetScanResultById(log.scanId), log.material, document.getElementById("reclassifySelect")?.value || log.category, outcome);
-      closeModal(true);
+      closeModal();
       render();
       showToast(message, "success");
     } catch (error) {
       showToast(error.message, "error");
     } finally {
       isSaving = false;
-      controls.forEach(control => { control.disabled = false; });
     }
   }
   document.getElementById("clearSegment")?.addEventListener("click", () => saveReview("confirmed", "Review saved."));
@@ -2563,7 +2499,7 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
       retry.type = "button";
       retry.className = "secondary-btn";
       retry.textContent = "Retry";
-      retry.addEventListener("click", () => window.location.reload());
+      retry.addEventListener("click", () => document.getElementById("analyticsRefresh")?.click());
       stateEl.appendChild(retry);
     }
     stateEl.hidden = !message;
@@ -2606,6 +2542,10 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   plOverviewSet("last-upload", lastUpload ? plFormatScanTime(lastUpload) : "No uploads yet");
   plOverviewSet("last-upload-meta", lastUpload ? `${summary.lastUploadBatchCount} scan${summary.lastUploadBatchCount === 1 ? "" : "s"} in this upload batch` : "Upload images to begin");
 
+  const visible = (name, shown) => overview.querySelectorAll(`[data-overview="${name}"]`).forEach(element => { element.hidden = !shown; });
+  visible("mix-empty", !summary.materials.length);
+  visible("value-empty", !summary.resaleRows.some(row => row.estimatedResaleValueRm > 0));
+  visible("trend-empty", !summary.scans.length);
   plOverviewSet("mix-subtitle", summary.materials.length ? "By estimated weight" : "By weight");
   plOverviewSet("mix-summary", summary.materials.length ? `${plFormatKg(summary.totalEstimatedWeightKg)} across ${summary.materials.length} detected item${summary.materials.length === 1 ? "" : "s"}.` : "");
   plOverviewSet("value-summary", summary.highestValue ? `${summary.highestValue.label} leads estimated recoverable value.` : "");
@@ -2622,26 +2562,22 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   };
   chartSummary("overviewMaterialMix", summary.materialMixRows.length ? `Material mix by estimated weight: ${summary.materialMixRows.map(row => `${row.label} ${plFormatKg(row.estimatedWeightKg)}`).join(", ")}.` : "Material mix: no material data in the selected period.");
 
-  const isDark = document.documentElement.dataset.theme === "dark";
-  const colors = isDark ? ["#4ade80", "#22d3ee", "#60a5fa", "#fbbf24", "#86efac", "#f87171", "#5eead4", "#94a3b8", "#fb923c"] : ["#54c979", "#35bfb4", "#4285e8", "#dca73a", "#90caa8", "#d85769", "#5e9f9d", "#7a8893", "#f08b58"];
-  const chartText = isDark ? "#a9bbb0" : "#52635a";
-  const chartGrid = isDark ? "rgba(255,255,255,0.09)" : "#e8efea";
-  const chartSurface = isDark ? "#0c1812" : "#fff";
-  const chartValueText = isDark ? "#f3f7f4" : "#26382d";
-  const chartPrimary = isDark ? "#4ade80" : "#1d7048";
+  const colors = ["#54c979", "#35bfb4", "#4285e8", "#dca73a", "#90caa8", "#d85769", "#5e9f9d", "#7a8893", "#f08b58"];
+  const chartText = "#52635a";
+  const chartGrid = "#e8efea";
   const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } };
   if (summary.materialMixRows.length) {
-    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.materialMixRows.map(row => row.label), datasets: [{ data: summary.materialMixRows.map(row => row.estimatedWeightKg), backgroundColor: colors, borderColor: chartSurface, borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${plFormatKg(context.raw)}` } } } } });
+    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.materialMixRows.map(row => row.label), datasets: [{ data: summary.materialMixRows.map(row => row.estimatedWeightKg), backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${plFormatKg(context.raw)}` } } } } });
   } else if (plOverviewCharts.overviewMaterialMix) { plOverviewCharts.overviewMaterialMix.destroy(); delete plOverviewCharts.overviewMaterialMix; }
   const valueRows = summary.resaleRows.filter(row => row.estimatedResaleValueRm > 0);
   chartSummary("overviewValueByCategory", valueRows.length ? `Estimated recoverable value by category: ${valueRows.map(row => `${row.label} ${plFormatRm(row.estimatedResaleValueRm)}`).join(", ")}.` : "Recoverable value: no priced materials in the selected period.");
   chartSummary("overviewDailyTrend", summary.scans.length ? `Daily scan trend for the selected period: ${summary.trendRows.map(row => `${row.label} ${row.value}`).join(", ")}.` : "Daily scan trend: no scan activity in the selected period.");
   if (valueRows.length) {
-    const valueLabelsPlugin = { id: "overviewValueLabels", afterDatasetsDraw(chart) { const { ctx } = chart; const meta = chart.getDatasetMeta(0); ctx.save(); ctx.fillStyle = chartValueText; ctx.font = "700 10px IBM Plex Sans, Arial"; ctx.textAlign = "center"; meta.data.forEach((bar, index) => ctx.fillText(Number(valueRows[index].estimatedResaleValueRm).toFixed(2), bar.x, Math.max(13, bar.y - 7))); ctx.restore(); } };
+    const valueLabelsPlugin = { id: "overviewValueLabels", afterDatasetsDraw(chart) { const { ctx } = chart; const meta = chart.getDatasetMeta(0); ctx.save(); ctx.fillStyle = "#26382d"; ctx.font = "700 10px IBM Plex Sans, Arial"; ctx.textAlign = "center"; meta.data.forEach((bar, index) => ctx.fillText(Number(valueRows[index].estimatedResaleValueRm).toFixed(2), bar.x, Math.max(13, bar.y - 7))); ctx.restore(); } };
     plOverviewChart("overviewValueByCategory", { type: "bar", plugins: [valueLabelsPlugin], data: { labels: valueRows.map(row => row.label), datasets: [{ data: valueRows.map(row => row.estimatedResaleValueRm), backgroundColor: colors.slice(0, valueRows.length), borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, layout: { padding: { top: 18 } }, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, maxRotation: 0, minRotation: 0 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: value => `RM ${value}` } } }, plugins: { ...chartBase.plugins, tooltip: { callbacks: { label: context => plFormatRm(context.raw) } } } } });
   } else if (plOverviewCharts.overviewValueByCategory) { plOverviewCharts.overviewValueByCategory.destroy(); delete plOverviewCharts.overviewValueByCategory; }
   if (summary.scans.length) {
-    plOverviewChart("overviewDailyTrend", { type: "line", data: { labels: summary.trendRows.map(row => row.label), datasets: [{ data: summary.trendRows.map(row => row.value), borderColor: chartPrimary, backgroundColor: isDark ? "rgba(74, 222, 128, 0.14)" : "rgba(84, 201, 121, 0.12)", fill: true, tension: 0.3, pointBackgroundColor: chartSurface, pointBorderColor: chartPrimary, pointBorderWidth: 2, pointRadius: 3 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, autoSkip: true, maxTicksLimit: 7 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, precision: 0 } } } } });
+    plOverviewChart("overviewDailyTrend", { type: "line", data: { labels: summary.trendRows.map(row => row.label), datasets: [{ data: summary.trendRows.map(row => row.value), borderColor: "#1d7048", backgroundColor: "rgba(84, 201, 121, 0.12)", fill: true, tension: 0.3, pointBackgroundColor: "#fff", pointBorderColor: "#1d7048", pointBorderWidth: 2, pointRadius: 3 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, autoSkip: true, maxTicksLimit: 7 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, precision: 0 } } } } });
   } else if (plOverviewCharts.overviewDailyTrend) { plOverviewCharts.overviewDailyTrend.destroy(); delete plOverviewCharts.overviewDailyTrend; }
 
   const actions = [
@@ -2659,33 +2595,202 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
 
 function initAnalyticsOverview() {
   const range = document.getElementById("analyticsRange");
+  const refresh = document.getElementById("analyticsRefresh");
   if (!range) return;
   const render = state => renderAnalyticsOverview(Number(range.value) || 7, state);
   render();
   if (!range.dataset.overviewBound) {
     range.addEventListener("change", () => render());
-    const onThemeChange = () => render();
-    window.addEventListener("purityloop:theme-change", onThemeChange);
-    window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", onThemeChange), { once: true });
     range.dataset.overviewBound = "true";
+  }
+  if (refresh && !refresh.dataset.overviewBound) {
+    refresh.addEventListener("click", async () => {
+      refresh.disabled = true;
+      refresh.classList.add("is-loading");
+      render("loading");
+      const refreshed = await plRefreshScanResultsFromSupabase();
+      render(refreshed || !plUseSupabase() ? "ready" : "error");
+      refresh.disabled = false;
+      refresh.classList.remove("is-loading");
+    });
+    refresh.dataset.overviewBound = "true";
   }
 }
 
 function initAnalyticsCharts() {
-  const range = document.getElementById("analyticsRange");
-  if (!range || range.dataset.analyticsReady === "true") return;
-  range.dataset.analyticsReady = "true";
   initAnalyticsOverview();
-  updateAnalyticsDetailPanels(plGetAnalyticsSummary({ days: Number(range.value) || 7 }));
-  window.addEventListener("purityloop:page-cleanup", () => {
-    Object.values(plOverviewCharts).forEach(chart => chart.destroy());
-    Object.keys(plOverviewCharts).forEach(key => delete plOverviewCharts[key]);
-  }, { once: true });
+  updateAnalyticsDetailPanels(plGetAnalyticsSummary());
 }
 
 /******************************************
  * 5. SIDEBAR DRILL-DOWN INTERACTIONS     *
  ******************************************/
+const drillMaterialData = {
+  Metal: {
+    color: "#b7791f",
+    isContaminant: false,
+    tonnage: "450 tons",
+    value: "$540,000",
+    rate: "@ $1,200/ton market rate",
+    purity: "99.1%",
+    status: "Clean recyclable metal grade",
+    subtitle: "30-day recovery trend, purity grade, and upload source mix for audited metals.",
+    trend: [12, 14, 15, 13, 16, 18, 17, 15, 14, 15, 16, 14, 13, 15, 17, 19, 18, 16, 15, 14],
+    zones: [["Single image", 180], ["ZIP batch", 150], ["Demo dataset", 120]]
+  },
+  Plastic: {
+    color: "#2f6f8f",
+    isContaminant: false,
+    tonnage: "380 tons",
+    value: "$152,000",
+    rate: "@ $400/ton market rate",
+    purity: "97.4%",
+    status: "Bale-ready recyclables",
+    subtitle: "Plastic recovery trend, resale value, and uploaded image review logs.",
+    trend: [10, 11, 12, 11, 13, 14, 13, 12, 11, 12, 13, 11, 10, 12, 14, 15, 14, 12, 11, 10],
+    zones: [["Single image", 150], ["ZIP batch", 130], ["Demo dataset", 100]]
+  },
+  Glass: {
+    color: "#8b5cf6",
+    isContaminant: false,
+    tonnage: "127 tons",
+    value: "$107,051",
+    rate: "@ $843/ton market rate",
+    purity: "91.8%",
+    status: "Recalibration recommended",
+    subtitle: "Glass recovery is stable, but audit reviews suggest color segregation holds potential value.",
+    trend: [2, 3, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 4, 3, 2, 3, 4, 3],
+    zones: [["Single image", 60], ["ZIP batch", 40], ["Demo dataset", 27]]
+  },
+  Paper: {
+    color: "#8aa0a8",
+    isContaminant: false,
+    tonnage: "150 tons",
+    value: "$15,000",
+    rate: "@ $100/ton market rate",
+    purity: "93.2%",
+    status: "Clean recyclable paper grade",
+    subtitle: "Paper recovery logs showing dry-fiber bale consistency.",
+    trend: [4, 5, 4, 6, 5, 4, 5, 6, 4, 5, 4, 6, 7, 5, 4, 5, 6, 4, 5, 6],
+    zones: [["Single image", 40], ["ZIP batch", 80], ["Demo dataset", 30]]
+  },
+  Cardboard: {
+    color: "#e67e22",
+    isContaminant: false,
+    tonnage: "140 tons",
+    value: "$21,000",
+    rate: "@ $150/ton market rate",
+    purity: "95.4%",
+    status: "Bale-ready high-grade fibers",
+    subtitle: "Cardboard recovery, fiber purity, and sorting source distribution.",
+    trend: [3, 4, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 6, 5, 4, 3, 4, 5, 4],
+    zones: [["Single image", 30], ["ZIP batch", 90], ["Demo dataset", 20]]
+  },
+  "Food Organics": {
+    color: "#27ae60",
+    isContaminant: true,
+    tonnage: "1,420 incidents",
+    value: "-$12,000",
+    rate: "Estimated washing / bale sorting overhead",
+    purity: "Medium",
+    status: "High residue hazard",
+    subtitle: "Organic contamination flags, cleaning costs, and incident hotspots.",
+    trend: [50, 48, 52, 45, 60, 55, 49, 45, 42, 50, 48, 44, 46, 52, 55, 60, 58, 45, 40, 38],
+    zones: [["Single image", 600], ["ZIP batch", 500], ["Demo dataset", 320]]
+  },
+  "General Trash": {
+    color: "#7f8c8d",
+    isContaminant: true,
+    tonnage: "950 incidents",
+    value: "-$14,200",
+    rate: "Estimated landfill disposal fees",
+    purity: "Low",
+    status: "Unrecoverable waste logs",
+    subtitle: "General trash contamination patterns and landfill diversion rates.",
+    trend: [30, 32, 28, 35, 30, 29, 31, 33, 30, 28, 35, 34, 32, 30, 29, 31, 33, 35, 30, 28],
+    zones: [["Single image", 400], ["ZIP batch", 350], ["Demo dataset", 200]]
+  },
+  Textile: {
+    color: "#1abc9c",
+    isContaminant: true,
+    tonnage: "780 incidents",
+    value: "-$8,500",
+    rate: "Estimated machine downtime cost",
+    purity: "High",
+    status: "Tangling / Jamming risk",
+    subtitle: "Fabric logs showing machine safety overrides and manual redirects.",
+    trend: [25, 24, 26, 28, 25, 24, 27, 26, 25, 23, 28, 29, 25, 24, 26, 27, 25, 24, 23, 25],
+    zones: [["Single image", 300], ["ZIP batch", 280], ["Demo dataset", 200]]
+  },
+  Battery: {
+    color: "#b42318",
+    isContaminant: true,
+    tonnage: "210 incidents",
+    value: "-$28,000",
+    rate: "Estimated fire safety containment risk",
+    purity: "Critical",
+    status: "Fire risk - immediate quarantine",
+    subtitle: "Quarantined lithium battery incidents found in uploaded images.",
+    trend: [8, 6, 9, 7, 5, 8, 10, 6, 7, 5, 9, 8, 6, 7, 5, 8, 9, 6, 7, 5],
+    zones: [["Single image", 100], ["ZIP batch", 70], ["Demo dataset", 40]]
+  }
+};
+
+const drillStationData = {
+  "UPLOAD-HUB": {
+    load: "On-demand",
+    capacity: "Upload queue",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Web upload",
+    motor: "Online",
+    air: "100 MB batch limit",
+    action: "Operational",
+    insight: "Uploaded images are queued for classification, confidence scoring, and human review.",
+    uptime: [["Completed reviews", 82], ["Pending review", 18]],
+    composition: [["Single images", 52], ["ZIP batches", 36], ["Demo samples", 12]]
+  },
+  "SINGLE-IMAGE": {
+    load: "Single file",
+    capacity: "JPG, PNG, WEBP",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Local image upload",
+    motor: "Online",
+    air: "10 MB image limit",
+    action: "Operational",
+    insight: "Single image uploads are processed immediately and can be approved or moved to human review.",
+    uptime: [["Auto-cleared", 74], ["Manual review", 26]],
+    composition: [["Plastic", 34], ["Metal", 26], ["Paper", 22], ["Contaminants", 18]]
+  },
+  "ZIP-BATCH": {
+    load: "Batch archive",
+    capacity: "Up to 100 MB",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Batch Precision",
+    scanner: "ZIP image batch",
+    motor: "Online",
+    air: "50 file cap",
+    action: "Review recommended",
+    insight: "ZIP batches can contain mixed materials, so low-confidence images are routed into human review.",
+    uptime: [["Auto-cleared", 61], ["Manual review", 39]],
+    composition: [["Glass", 28], ["Plastic", 24], ["Cardboard", 21], ["Contaminants", 27]]
+  },
+  "QUARANTINE-UPLOAD": {
+    load: "Flagged upload",
+    capacity: "Human decision required",
+    speed: "AI-Model active",
+    maxSpeed: "v2.4 Core Precision",
+    scanner: "Rejected or hazard image",
+    motor: "Online",
+    air: "Override required",
+    action: "Quarantine",
+    insight: "Hazards, organics, textile scraps, and general trash are isolated in the review queue before final logging.",
+    uptime: [["Rejected", 68], ["Corrected", 32]],
+    composition: [["General Trash", 45], ["Food Organics", 27], ["Batteries", 18], ["Textile", 10]]
+  }
+};
+
 function activateDetailPanel(targetId) {
   const panel = document.getElementById(targetId);
   if (!panel) return;
@@ -2850,7 +2955,7 @@ function renderMaterialDetail(materialName, options = {}) {
   const recyclable = materials.filter(plIsRecyclable).length;
   const avgConfidence = count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
   const isContaminant = contaminated > 0 && recyclable === 0;
-  const color = "#00F08A";
+  const color = drillMaterialData[normName]?.color || "#00F08A";
   const subtitle = count ? `${count} saved detection(s) from scan results.` : "No saved detections for this material yet.";
   const zones = count ? [["Recyclable", recyclable], ["Contaminated", contaminated], ["Other", Math.max(count - recyclable - contaminated, 0)]] : [];
 
@@ -3110,68 +3215,31 @@ function animateProgressBars() {
   });
 }
 
-function plRevealPageFallback() {
-  document.body.classList.remove("page-loading", "page-leaving");
-  document.body.classList.add("page-loaded");
-}
-
-async function plRunAppInit(name, init) {
-  try {
-    return await init();
-  } catch (error) {
-    console.error(`PurityLoop: ${name} failed.`, error);
-    plRevealPageFallback();
-    return null;
-  }
-}
-
-let plAppInitKey = "";
-let plAppInitPromise = null;
-let plAppInitializedKey = "";
-
-function plCurrentRouteKey() {
-  return `${window.location.pathname}${window.location.search}::${document.body.dataset.page || "root"}`;
-}
-
 /* Page Navigation Match & Trigger */
 async function initPurityLoopApp() {
-  const routeKey = plCurrentRouteKey();
-  if (plAppInitializedKey === routeKey) return plAppInitPromise;
-  if (plAppInitPromise && plAppInitKey === routeKey) return plAppInitPromise;
-
-  plAppInitKey = routeKey;
-  plAppInitPromise = (async () => {
-    await plRunAppInit("navigation label init", () => {
-      const sideLinks = document.querySelectorAll(".side-nav a");
-      sideLinks.forEach(link => {
-        const text = link.textContent.trim();
-        if (text === "Live AI Stream") {
-          link.textContent = "Classification Result";
-        } else if (text === "Review Logs") {
-          link.textContent = "Verification Logs";
-        } else if (text === "Analytics & Reports") {
-          link.textContent = "Operations Dashboard";
-        }
-      });
-    });
-
-    await plRunAppInit("password toggle init", initPasswordToggle);
-    await plRunAppInit("progress bar init", animateProgressBars);
-    await plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
-    if (plCurrentRouteKey() !== routeKey) return;
-    await plRunAppInit("upload page init", initUploadPage);
-    await plRunAppInit("result page init", initResultPage);
-    await plRunAppInit("submit ticket init", initSubmitTicketPage);
-    await plRunAppInit("review modal init", initReviewModal);
-    await plRunAppInit("analytics charts init", initAnalyticsCharts);
-    await plRunAppInit("drill-through init", initDrillThrough);
-    plAppInitializedKey = routeKey;
-    plRevealPageFallback();
-  })().finally(() => {
-    if (plAppInitKey === routeKey) plAppInitPromise = null;
+  // Navigation terminology updates across all files
+  const sideLinks = document.querySelectorAll(".side-nav a");
+  sideLinks.forEach(link => {
+    const text = link.textContent.trim();
+    if (text === "Live AI Stream") {
+      link.textContent = "Classification Result";
+    } else if (text === "Review Logs") {
+      link.textContent = "Verification Logs";
+    } else if (text === "Analytics & Reports") {
+      link.textContent = "Operations Dashboard";
+    }
   });
 
-  return plAppInitPromise;
+  initPasswordToggle();
+  // initMobileNav(); // Handled by theme.js
+  animateProgressBars();
+  await plRefreshScanResultsFromSupabase();
+  initUploadPage();
+  initResultPage();
+  initSubmitTicketPage();
+  initReviewModal();
+  initAnalyticsCharts();
+  initDrillThrough();
 }
 
 window.initPurityLoopApp = initPurityLoopApp;

@@ -84,9 +84,20 @@ const html = `
               <option value="90">Last 90 days</option>
             </select>
           </label>
-          <button id="analyticsRefresh" class="topbar-icon-btn" type="button" aria-label="Refresh analytics" title="Refresh analytics">
-            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+          <div class="date-pill">
+            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
+            <span id="liveClock">00:00:00 AM</span>
+          </div>
+
+          <button class="topbar-icon-btn" aria-label="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span class="notif-dot"></span>
           </button>
+
+          <div class="user-badge">
+            <div class="user-badge-avatar">AD</div>
+            <span style="margin-left: 6px;">Admin Mode</span>
+          </div>
         </div>
       </header>
 
@@ -118,9 +129,9 @@ const html = `
           </section>
 
           <section class="analytics-overview-grid">
-            <article class="analytics-overview-card analytics-material-mix"><header><div><h2>Material Mix</h2><p data-overview="mix-subtitle">By weight</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewMaterialMix"></canvas><div class="analytics-donut-center" data-overview="mix-center" hidden><strong data-overview="mix-total">0</strong><span data-overview="mix-total-label">Total items</span></div><p class="analytics-chart-empty" data-overview="mix-empty" hidden>No material data is available for this period.</p></div><p class="analytics-chart-summary" data-overview="mix-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-composition">View full breakdown <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
-            <article class="analytics-overview-card analytics-value-card"><header><div><h2>Recoverable Value by Category</h2><p>Estimated value (RM)</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewValueByCategory"></canvas><p class="analytics-chart-empty" data-overview="value-empty" hidden>No recoverable value is available for this period.</p></div><p class="analytics-chart-summary" data-overview="value-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-resale">View value details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
-            <article class="analytics-overview-card analytics-trend-card"><header><div><h2>Daily Scan Trend</h2><p>Scans over time</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewDailyTrend"></canvas><p class="analytics-chart-empty" data-overview="trend-empty" hidden>No scan activity is available for this period.</p></div><p class="analytics-chart-summary" data-overview="trend-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-yield">View trend analysis <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-material-mix"><header><div><h2>Material Mix</h2><p data-overview="mix-subtitle">By weight</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewMaterialMix"></canvas><div class="analytics-donut-center" data-overview="mix-center" hidden><strong data-overview="mix-total">0</strong><span data-overview="mix-total-label">Total items</span></div></div><p class="analytics-chart-summary" data-overview="mix-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-composition">View full breakdown <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-value-card"><header><div><h2>Recoverable Value by Category</h2><p>Estimated value (RM)</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewValueByCategory"></canvas></div><p class="analytics-chart-summary" data-overview="value-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-resale">View value details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-trend-card"><header><div><h2>Daily Scan Trend</h2><p>Scans over time</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewDailyTrend"></canvas></div><p class="analytics-chart-summary" data-overview="trend-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-yield">View trend analysis <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
             <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/log">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
           </section>
 
@@ -202,8 +213,8 @@ const html = `
               </div>
               <div class="action-card warning" style="border-left: 4px solid var(--amber);">
                 <span>System Alert</span>
-                <strong>Glass purity dropped by 4.2%</strong>
-                <p>High impurity count in mixed ZIP uploads. Review image quality and batch composition.</p>
+                <strong>No active purity alerts</strong>
+                <p>Alerts appear here when saved scan data needs attention.</p>
               </div>
             </div>
             <div class="bar-list">
@@ -320,12 +331,12 @@ const html = `
             </div>
 
             <div class="detail-grid three">
-              <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>8.5 t/h
-                  equiv.</strong><small data-belt-capacity>/ 10 t/h cap</small></div>
-              <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>v2.4
-                  Active</strong><small data-belt-max-speed>Core Model</small></div>
+              <div class="metric-tile static"><span>Processing Load</span><strong data-belt-load>—</strong><small
+                  data-belt-capacity>Awaiting upload data</small></div>
+              <div class="metric-tile static"><span>AI Core Version</span><strong data-belt-speed>—</strong><small
+                  data-belt-max-speed>Awaiting model data</small></div>
               <div class="metric-tile static"><span>Review State</span><strong
-                  data-belt-action>Operational</strong><small>Human validation available</small></div>
+                  data-belt-action>—</strong><small>Awaiting review data</small></div>
             </div>
 
             <div class="detail-grid two">
@@ -338,11 +349,11 @@ const html = `
                   </div>
                   <div>
                     <dt>Compute Core Temp</dt>
-                    <dd data-belt-motor>42°C</dd>
+                    <dd data-belt-motor>Not available</dd>
                   </div>
                   <div>
                     <dt>File policy</dt>
-                    <dd data-belt-air>100 MB batch limit</dd>
+                    <dd data-belt-air>Not available</dd>
                   </div>
                 </dl>
               </div>

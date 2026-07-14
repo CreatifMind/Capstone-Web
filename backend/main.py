@@ -427,9 +427,8 @@ def summarize(materials: list[dict]) -> dict:
 class ReviewDecisionInput(BaseModel):
     scan_result_id: str
     detected_material_id: str
-    chosen_category: str
-    disposition: str
-    outcome: str = "confirmed"
+    action: str
+    manual_category: str | None = None
     reviewer_email: str | None = None
 
 
@@ -454,28 +453,79 @@ def health():
 def create_review(decision: ReviewDecisionInput):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    category = material_category(decision.chosen_category)
-    disposition = CATEGORY_CLASS_MAP.get(category)
-    outcome = str(decision.outcome or "confirmed").strip().lower()
-    if category == "unknown" or disposition not in {"recyclable", "contaminant"} or outcome not in {"confirmed", "rejected"}:
-        raise HTTPException(status_code=400, detail="Invalid review category or disposition.")
-    scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", decision.scan_result_id).execute()
-    material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
-    if not scan_response.data or not material_response.data:
-        raise HTTPException(status_code=404, detail="Scan or detected material was not found.")
-    inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert({
-        "scan_result_id": decision.scan_result_id,
-        "detected_material_id": decision.detected_material_id,
-        "chosen_category": category,
-        "disposition": disposition,
-        "outcome": outcome,
-        "reviewer_email": decision.reviewer_email,
-    }).execute()
-    materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
-    decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
-    next_status = review_status(scan_response.data[0], materials, decisions)
-    supabase.table(SCAN_RESULTS_TABLE).update(next_status).eq("id", decision.scan_result_id).execute()
-    return {"decision": inserted.data[0] if inserted.data else None, **next_status}
+    action = str(decision.action or "").strip().lower()
+    if action not in {"verify", "reject"}:
+        raise HTTPException(status_code=400, detail="Review action must be 'verify' or 'reject'.")
+    try:
+        scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", decision.scan_result_id).execute()
+        material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
+        if not scan_response.data or not material_response.data:
+            raise HTTPException(status_code=404, detail="Scan result or detected material was not found.")
+
+        material = material_response.data[0]
+        category = material_category(decision.manual_category or material.get("category"))
+        disposition = CATEGORY_CLASS_MAP.get(category)
+        if category == "unknown" or disposition not in {"recyclable", "contaminant"}:
+            raise HTTPException(status_code=400, detail="Manual category is not supported.")
+
+        updated_material = material
+        if action == "verify" and category != material.get("category"):
+            material_update = {"category": category}
+            if not material.get("original_category"):
+                material_update["original_category"] = material.get("category")
+            update_response = supabase.table(DETECTED_MATERIALS_TABLE).update(material_update).eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
+            updated_material = update_response.data[0] if update_response.data else {**material, **material_update}
+
+        outcome = "confirmed" if action == "verify" else "rejected"
+        inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert({
+            "scan_result_id": decision.scan_result_id,
+            "detected_material_id": decision.detected_material_id,
+            "chosen_category": category,
+            "disposition": disposition,
+            "outcome": outcome,
+            "reviewer_email": decision.reviewer_email,
+        }).execute()
+        materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
+        decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
+        next_status = review_status(scan_response.data[0], materials, decisions)
+        supabase.table(SCAN_RESULTS_TABLE).update(next_status).eq("id", decision.scan_result_id).execute()
+        return {
+            "decision": inserted.data[0] if inserted.data else None,
+            "material": updated_material,
+            "review_status": "verified" if action == "verify" else "rejected",
+            **next_status,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[review] Supabase update failed: {safe_error_message(exc)}")
+        if getattr(exc, "code", "") == "PGRST205":
+            raise HTTPException(status_code=500, detail="Supabase review schema is missing. Apply the review migration, then retry.") from exc
+        raise HTTPException(status_code=500, detail="Unable to save review. Check the backend Supabase configuration.") from exc
+
+
+@app.get("/api/scans/{scan_result_id}")
+def get_scan_result(scan_result_id: str):
+    """Return the persisted material IDs needed to review a previously loaded scan."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id).execute()
+    if not scan_response.data:
+        raise HTTPException(status_code=404, detail="Scan result was not found.")
+    materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
+    decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
+    latest_decisions = {}
+    for item in sorted(decisions, key=lambda entry: str(entry.get("created_at", ""))):
+        latest_decisions[str(item.get("detected_material_id", ""))] = item
+    return {
+        "scan_result": {
+            **scan_response.data[0],
+            "detected_materials": [
+                {**material, "review_decision": latest_decisions.get(str(material.get("id", "")))}
+                for material in materials
+            ],
+        }
+    }
 
 
 @app.get("/api/debug/model")
@@ -615,21 +665,26 @@ async def predict(file: UploadFile = File(...)):
         scan_result_id = scan_data[0]["id"]
         stored_material_keys = {"material_name", "category", "confidence", "recyclable_status", "contaminant_status", "bbox_x", "bbox_y", "bbox_width", "bbox_height"}
         linked_materials = [{key: value for key, value in item.items() if key in stored_material_keys} | {"scan_result_id": scan_result_id} for item in materials]
+        stored_materials = []
         if linked_materials:
             print(f"[predict] inserting {DETECTED_MATERIALS_TABLE}: {len(linked_materials)} row(s)")
             try:
-                supabase.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute()
+                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or []
             except Exception as exc:
                 print(f"[predict] Supabase {DETECTED_MATERIALS_TABLE} insert failed")
                 print(f"[predict] Supabase error: {exc}")
                 traceback.print_exc()
                 raise
+            if len(stored_materials) != len(linked_materials):
+                raise HTTPException(status_code=500, detail="Unable to retrieve saved detected materials.")
 
         return {
             "scan_result_id": scan_result_id,
             **summary,
             **drive_metadata,
-            "detected_materials": materials,
+            # Return the inserted rows, including their database IDs. These IDs are
+            # required by /api/reviews and must travel with the browser's scan state.
+            "detected_materials": stored_materials,
         }
     except HTTPException:
         raise

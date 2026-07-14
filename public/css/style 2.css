@@ -8522,14 +8522,16 @@ html[data-theme="dark"] img[alt="PurityLoop AI Logo"] {
    Motion layer: subtle, lightweight interaction and page motion
    ============================================================ */
 body.page-loading {
-  opacity: 1;
-  transform: none;
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 body.page-loaded {
   opacity: 1;
-  transform: none;
-  transition: none;
+  transform: translateY(0);
+  transition:
+    opacity 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .motion-ready {
@@ -11993,8 +11995,10 @@ body[data-page="analytics"] .analytics-overview {
   color: #17241c;
   font-variant-numeric: tabular-nums;
 }
-body[data-page="analytics"] .analytics-date-control { display: inline-flex; align-items: center; height: 40px; min-height: 40px; gap: 8px; padding: 0 12px; border: 1px solid var(--app-line); border-radius: var(--pl-control-radius); background: rgba(255,255,255,.78); color: var(--app-ink); box-shadow: none; font: inherit; font-size: .875rem; font-weight: 600; }
-body[data-page="analytics"] .analytics-date-control select { min-height: 38px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: inherit; font-weight: inherit; }
+body[data-page="analytics"] .analytics-date-control { display: inline-flex; align-items: center; min-height: 42px; gap: 8px; padding: 0 11px; border: 1px solid var(--app-line); border-radius: 10px; background: rgba(255,255,255,.9); color: var(--app-ink); box-shadow: 0 8px 22px rgba(9,40,30,.05); }
+body[data-page="analytics"] .analytics-date-control select { min-height: 38px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; }
+body[data-page="analytics"] #analyticsRefresh { min-width: 42px; min-height: 42px; }
+body[data-page="analytics"] #analyticsRefresh.is-loading i { animation: overviewSpin .7s linear infinite; }
 body[data-page="analytics"] .analytics-overview-state { padding: 10px 14px; border: 1px solid #b9ddc5; border-radius: 10px; background: #f0fbf3; color: #1d7048; font-size: .82rem; }
 body[data-page="analytics"] .analytics-overview-state.is-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-color: #e7b2a9; background: #fff5f2; color: #a43321; }
 body[data-page="analytics"] .analytics-overview-state .secondary-btn { min-height: 34px; padding: 5px 10px; box-shadow: none; }
@@ -12028,6 +12032,7 @@ body[data-page="analytics"] .analytics-overview-card h2, body[data-page="analyti
 body[data-page="analytics"] .analytics-overview-card header p { margin: 4px 0 0; color: #65746b; font-size: .68rem; }
 body[data-page="analytics"] .analytics-chart-wrap { position: relative; height: 230px; margin-top: 10px; }
 body[data-page="analytics"] .analytics-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+body[data-page="analytics"] .analytics-chart-empty { display: grid; position: absolute; inset: 0; place-items: center; margin: 0; color: #65746b; font-size: .76rem; text-align: center; }
 body[data-page="analytics"] .analytics-chart-summary { min-height: 1.1rem; margin: 9px 0 0; color: #65746b; font-size: .7rem; }
 body[data-page="analytics"] .analytics-manager-actions { display: flex; flex-direction: column; }
 body[data-page="analytics"] .analytics-action-list { display: grid; flex: 1; gap: 8px; margin: 12px 0; }
@@ -12074,7 +12079,7 @@ body[data-page="analytics"] .analytics-recent-log { border-radius: 12px; box-sha
 body[data-page="analytics"] .analytics-overview-card { display: flex; flex-direction: column; min-height: 318px; padding: 14px; }
 body[data-page="analytics"] .analytics-chart-wrap { height: 208px; margin-top: 8px; }
 body[data-page="analytics"] .analytics-material-mix .analytics-chart-wrap { height: 218px; }
-body[data-page="analytics"] .analytics-donut-center { position: absolute; inset: 0 0 52px; display: grid; place-content: center; pointer-events: none; text-align: center; }
+body[data-page="analytics"] .analytics-donut-center { position: absolute; inset: 0; display: grid; place-content: center; pointer-events: none; text-align: center; }
 body[data-page="analytics"] .analytics-donut-center strong { color: #17241c; font-size: .92rem; line-height: 1.15; letter-spacing: -.02em; }
 body[data-page="analytics"] .analytics-donut-center span { margin-top: 2px; color: #65746b; font-size: .61rem; }
 body[data-page="analytics"] .analytics-chart-summary { min-height: 1rem; margin: 5px 0 8px; }
@@ -12104,75 +12109,7 @@ body[data-page="analytics"] .analytics-overview.is-error .analytics-chart-wrap {
 @keyframes analyticsOverviewShimmer { to { background-position: -220% 0; } }
 @media (max-width: 1280px) { body[data-page="analytics"] .analytics-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { body[data-page="analytics"] .analytics-overview-grid { grid-template-columns: 1fr; } body[data-page="analytics"] .analytics-overview-card { min-height: 300px; } body[data-page="analytics"] .analytics-manager-actions { min-height: 292px; } }
-@media (prefers-reduced-motion: reduce) { body[data-page="analytics"] .analytics-overview.is-loading * { animation: none; } }
-
-/* Analytics uses the shared dark palette rather than its light-only card colors. */
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-overview { color: var(--text-primary); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-date-control,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-insights,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-overview-card,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-recent-log {
-  border-color: var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  color: var(--text-primary);
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-date-control { color: var(--text-primary); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi-review,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-attention-banner {
-  border-color: color-mix(in srgb, var(--status-warning) 46%, var(--border));
-  background: color-mix(in srgb, var(--status-warning) 8%, var(--surface));
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-attention-banner.is-clear {
-  border-color: color-mix(in srgb, var(--status-success) 42%, var(--border));
-  background: color-mix(in srgb, var(--status-success) 7%, var(--surface));
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi-icon,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-insight-grid i,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row > i,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row b,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-status {
-  background: var(--primary-soft);
-  color: var(--status-success);
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi-review .analytics-kpi-icon,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-banner-icon,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row.warning > i,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-status.review,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row.warning b {
-  background: color-mix(in srgb, var(--status-warning) 16%, var(--surface));
-  color: var(--status-warning);
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row.danger > i,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-status.rejected,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row.danger b {
-  background: color-mix(in srgb, var(--status-danger) 16%, var(--surface));
-  color: var(--status-danger);
-}
-:root[data-theme="dark"] body[data-page="analytics"] :where(.analytics-kpi > span:not(.analytics-kpi-icon), .analytics-kpi strong, .analytics-attention-banner h2, .analytics-insights > h2, .analytics-insight-grid strong, .analytics-overview-card h2, .analytics-recent-log h2, .analytics-action-row strong, .analytics-donut-center strong) { color: var(--text-primary); }
-:root[data-theme="dark"] body[data-page="analytics"] :where(.analytics-kpi p, .analytics-attention-banner p, .analytics-insight-grid span, .analytics-insight-grid small, .analytics-overview-card header p, .analytics-chart-summary, .analytics-action-row span, .analytics-empty-action, .analytics-donut-center span, .analytics-recent-log th, .analytics-recent-log td) { color: var(--text-secondary); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi small { background: var(--primary-soft); color: var(--status-success); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi-review small { background: color-mix(in srgb, var(--status-warning) 16%, var(--surface)); color: var(--status-warning); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi > span:not(.analytics-kpi-icon),
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi strong {
-  color: var(--text-primary);
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-kpi p {
-  color: var(--text-secondary);
-}
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-insight-grid,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-insight-grid article,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-recent-log th,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-recent-log td { border-color: var(--border); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-action-row { border-color: var(--border); background: var(--surface-elevated); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-attention-banner .primary-btn,
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-manager-actions > .primary-btn { background: var(--primary); border-color: var(--primary); color: #06140c; }
-:root[data-theme="dark"] body[data-page="analytics"] :where(.analytics-detail-link, .analytics-recent-log > header a, .analytics-log-empty a) { color: var(--status-success); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-detail-link:hover { color: var(--primary); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-overview-state { border-color: color-mix(in srgb, var(--status-success) 42%, var(--border)); background: color-mix(in srgb, var(--status-success) 9%, var(--surface)); color: var(--status-success); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-overview-state.is-error { border-color: color-mix(in srgb, var(--status-danger) 42%, var(--border)); background: color-mix(in srgb, var(--status-danger) 9%, var(--surface)); color: var(--status-danger); }
-:root[data-theme="dark"] body[data-page="analytics"] .analytics-overview.is-loading :is(.analytics-kpi strong, .analytics-insight-grid strong, .analytics-insight-grid small, .analytics-chart-summary) { background: linear-gradient(90deg, var(--surface-muted) 20%, var(--surface-elevated) 45%, var(--surface-muted) 70%); }
+@media (prefers-reduced-motion: reduce) { body[data-page="analytics"] #analyticsRefresh.is-loading i, body[data-page="analytics"] .analytics-overview.is-loading * { animation: none; } }
 
 /* Result-page audit layout: image inspection stays dominant; review stays beside it. */
 body[data-page="result"] .result-workbench {
@@ -12316,34 +12253,6 @@ body[data-page="review-log"].page-loaded { transform: none; }
   padding-right: 4px;
 }
 #reviewModal .modal-body .history-reclassify { margin-bottom: 16px; }
-
-/* Shared topbar text rhythm for Analytics and Audit Verification. */
-body[data-page="analytics"] .topbar-right :where(.theme-control-trigger, .analytics-date-control, .date-pill, .user-badge, .topbar-logout-btn),
-body[data-page="review-log"] .topbar-right :where(.history-export, .theme-control-trigger, .date-pill, .user-badge, .topbar-logout-btn) {
-  font-size: .875rem;
-}
-
-/* Keep the History KPI cards independent of the shared hero container. */
-body[data-page="review-log"] .history-kpis {
-  border: 0 !important;
-  border-radius: 0;
-  box-shadow: none !important;
-}
-body[data-page="review-log"] .history-kpis::before { display: none; }
-
-/* Result summary uses the same KPI card treatment as History. */
-body[data-page="result"] .result-hero .ops-hero-metrics { gap: 14px; }
-body[data-page="result"] .result-hero .ops-hero-metrics > div {
-  min-height: 134px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 @media (max-width: 480px) {
   #reviewModal { padding: 12px; }
   #reviewModal .modal-card { max-height: calc(100dvh - 24px); padding: 22px 18px; }
