@@ -117,7 +117,6 @@ const html = `
               <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
                 No images selected</p>
 
-              <p class="upload-file-policy">Upload up to 10 images directly. For larger batches, upload a ZIP file containing up to 50 images.</p>
               <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
               <div id="uploadQueue" class="upload-queue" aria-label="Selected image queue">
                 <p class="upload-queue-empty">No images selected.</p>
@@ -187,6 +186,7 @@ const html = `
                       Formats</strong>
                     <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Images: JPG, PNG,
                       WEBP. Maximum recommended size: 10 MB.</p>
+                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 4px 0 0;">Upload up to 10 images directly. For larger batches, upload a ZIP file containing up to 50 images.</p>
                   </div>
                 </li>
               </ul>

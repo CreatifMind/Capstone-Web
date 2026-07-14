@@ -1,0 +1,38 @@
+import unittest
+
+from backend.main import evaluate_material, material_category, summarize
+
+
+class ClassificationTests(unittest.TestCase):
+    def test_category_variants(self):
+        self.assertEqual(material_category("General Trash"), "general_trash")
+        self.assertEqual(material_category("general_trash"), "general_trash")
+        self.assertEqual(material_category("Food Organics"), "food_organics")
+        self.assertEqual(material_category("battery"), "battery")
+
+    def test_confirmed_classes_and_routes(self):
+        glass = evaluate_material("glass", 0.95)
+        battery = evaluate_material("battery", 0.98)
+        self.assertEqual((glass["material_class"], glass["display_status"], glass["review_required"]), ("recyclable", "Confirmed Recyclable", False))
+        self.assertEqual((battery["material_class"], battery["display_status"], battery["review_required"], battery["disposal_route"]), ("contaminant", "Confirmed Contaminant", False, "Battery / E-Waste Collection"))
+
+    def test_low_confidence_requires_review_regardless_of_class(self):
+        self.assertTrue(evaluate_material("plastic", 0.79)["review_required"])
+        self.assertTrue(evaluate_material("textile", 0.55)["review_required"])
+
+    def test_threshold_boundary_confirms_at_exactly_85_percent(self):
+        self.assertFalse(evaluate_material("plastic", 0.85)["review_required"])
+        self.assertTrue(evaluate_material("plastic", 0.8499)["review_required"])
+
+    def test_mixed_scan_only_counts_low_confidence_detection(self):
+        materials = [
+            {**evaluate_material("plastic", 0.95), "confidence": 0.95, "contaminant_status": "clean"},
+            {**evaluate_material("food_organics", 0.88), "confidence": 0.88, "contaminant_status": "contaminated"},
+            {**evaluate_material("cardboard", 0.62), "confidence": 0.62, "contaminant_status": "clean"},
+        ]
+        self.assertEqual(sum(item["review_required"] for item in materials), 1)
+        self.assertTrue(summarize(materials)["human_review_required"])
+
+
+if __name__ == "__main__":
+    unittest.main()

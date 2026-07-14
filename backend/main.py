@@ -21,7 +21,11 @@ APP_ROOT = BACKEND_ROOT.parent
 
 load_dotenv(BACKEND_ROOT / ".env")
 
-MODEL_PATH = os.getenv("MODEL_PATH", "models/best.pt")
+_model_path = Path(os.getenv("MODEL_PATH", "models/best.pt")).expanduser()
+if _model_path.is_absolute():
+    MODEL_PATH = _model_path
+else:
+    MODEL_PATH = next((path for path in (BACKEND_ROOT / _model_path, APP_ROOT / _model_path) if path.exists()), BACKEND_ROOT / _model_path)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -48,16 +52,39 @@ DETECTED_MATERIALS_TABLE = "mock_detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+CONFIRMATION_THRESHOLD = 0.85
+CATEGORY_CLASS_MAP = {
+    "general_trash": "contaminant",
+    "food_organics": "contaminant",
+    "textile": "contaminant",
+    "battery": "contaminant",
+    "metal": "recyclable",
+    "plastic": "recyclable",
+    "glass": "recyclable",
+    "paper": "recyclable",
+    "cardboard": "recyclable",
+}
+CATEGORY_ROUTES = {
+    "general_trash": "General-Waste Disposal",
+    "food_organics": "Organic Waste / Compost",
+    "textile": "Textile Recovery / Contaminant Route",
+    "battery": "Battery / E-Waste Collection",
+    "metal": "Metal Sorting Bin",
+    "plastic": "Plastic Sorting Bin",
+    "glass": "Glass Sorting Bin",
+    "paper": "Paper Sorting Bin",
+    "cardboard": "Cardboard Sorting Bin",
+}
 
 
 def get_model():
     global model
     if model is None:
         print(f"[startup] Loading YOLO model from: {MODEL_PATH}")
-        if not os.path.exists(MODEL_PATH):
+        if not MODEL_PATH.exists():
             print(f"[startup] YOLO model file not found at: {MODEL_PATH}")
             raise HTTPException(status_code=500, detail="YOLO model file not found.")
-        model = YOLO(MODEL_PATH)
+        model = YOLO(str(MODEL_PATH))
     return model
 
 
@@ -97,15 +124,8 @@ def safe_error_message(exc: Exception) -> str:
 
 def config_path(env_name: str, default_relative: str) -> Path:
     raw_path = os.getenv(env_name, default_relative)
-    path = Path(raw_path)
-    if path.is_absolute():
-        return path
-
-    candidates = [APP_ROOT / path, Path.cwd() / path, BACKEND_ROOT / path]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+    path = Path(raw_path).expanduser()
+    return path if path.is_absolute() else BACKEND_ROOT / path
 
 
 def google_credentials_path() -> Path | None:
@@ -147,26 +167,27 @@ def upload_original_to_drive(file_bytes: bytes, original_filename: str | None, c
 
     created = (
         service.files()
-        .create(body=metadata, media_body=media, fields="id,name,webViewLink")
+        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink")
         .execute()
     )
     return {
         "drive_file_id": created.get("id"),
-        "drive_file_name": created.get("name") or drive_file_name,
+        "drive_file_name": drive_file_name,
         "drive_web_url": created.get("webViewLink"),
+        "image_url": created.get("webViewLink"),
     }
 
 
 def google_oauth_client_path() -> Path:
-    return config_path("GOOGLE_OAUTH_CLIENT_SECRET_FILE", "backend/google-oauth-client.json")
+    return config_path("GOOGLE_OAUTH_CLIENT_SECRET_FILE", "google-oauth-client.json")
 
 
 def google_oauth_token_path() -> Path:
-    return config_path("GOOGLE_OAUTH_TOKEN_FILE", "backend/google-oauth-token.json")
+    return config_path("GOOGLE_OAUTH_TOKEN_FILE", "google-oauth-token.json")
 
 
 def google_oauth_state_path() -> Path:
-    return config_path("GOOGLE_OAUTH_STATE_FILE", "backend/google-oauth-state.json")
+    return config_path("GOOGLE_OAUTH_STATE_FILE", "google-oauth-state.json")
 
 
 def oauth_flow():
@@ -261,13 +282,14 @@ def upload_original_to_drive_oauth(file_bytes: bytes, original_filename: str | N
 
     created = (
         service.files()
-        .create(body=metadata, media_body=media, fields="id,name,webViewLink")
+        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink")
         .execute()
     )
     return {
         "drive_file_id": created.get("id"),
-        "drive_file_name": created.get("name") or drive_file_name,
+        "drive_file_name": drive_file_name,
         "drive_web_url": created.get("webViewLink"),
+        "image_url": created.get("webViewLink"),
     }
 
 
@@ -275,6 +297,9 @@ def legacy_scan_row(scan_row: dict, original_filename: str | None) -> dict:
     keep_keys = {
         "image_url",
         "preview_image_url",
+        "drive_file_id",
+        "drive_file_name",
+        "drive_web_url",
         "source_type",
         "upload_status",
         "processing_status",
@@ -291,7 +316,7 @@ def legacy_scan_row(scan_row: dict, original_filename: str | None) -> dict:
 
 
 def material_category(name: str) -> str:
-    text = name.lower()
+    text = re.sub(r"[_-]+", " ", str(name or "").lower()).strip()
     if "battery" in text:
         return "battery"
     if "food" in text or "organic" in text:
@@ -314,9 +339,38 @@ def material_category(name: str) -> str:
 
 
 def material_status(category: str) -> tuple[str, str]:
-    if category in {"battery", "food_organics", "general_trash", "textile", "unknown"}:
+    if CATEGORY_CLASS_MAP.get(category) == "contaminant":
         return "non_recyclable", "contaminated"
-    return "recyclable", "clean"
+    if CATEGORY_CLASS_MAP.get(category) == "recyclable":
+        return "recyclable", "clean"
+    return "unknown", "unknown"
+
+
+def evaluate_material(category: str, confidence: float) -> dict:
+    material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
+    review_required = confidence < CONFIRMATION_THRESHOLD
+    decision_status = "review_needed" if review_required else "confirmed"
+    if review_required:
+        display_status = "Review Needed"
+        disposal_route = "Manual Audit Queue"
+    elif material_class == "recyclable":
+        display_status = "Confirmed Recyclable"
+        disposal_route = CATEGORY_ROUTES[category]
+    elif material_class == "contaminant":
+        display_status = "Confirmed Contaminant"
+        disposal_route = CATEGORY_ROUTES[category]
+    else:
+        display_status = "Review Needed"
+        disposal_route = "Manual Audit Queue"
+        review_required = True
+        decision_status = "review_needed"
+    return {
+        "material_class": material_class,
+        "review_required": review_required,
+        "decision_status": decision_status,
+        "display_status": display_status,
+        "disposal_route": disposal_route,
+    }
 
 
 def to_detected_materials(result) -> list[dict]:
@@ -337,6 +391,7 @@ def to_detected_materials(result) -> list[dict]:
                 "confidence": round(confidence, 4),
                 "recyclable_status": recyclable_status,
                 "contaminant_status": contaminant_status,
+                **evaluate_material(category, confidence),
                 "bbox_x": round((float(xyxy[0]) / image_width) * 100, 2),
                 "bbox_y": round((float(xyxy[1]) / image_height) * 100, 2),
                 "bbox_width": round((float(xyxy[2] - xyxy[0]) / image_width) * 100, 2),
@@ -357,16 +412,13 @@ def summarize(materials: list[dict]) -> dict:
         }
 
     avg_confidence = sum(item["confidence"] for item in materials) / len(materials)
-    contaminated = any(item["contaminant_status"] != "clean" for item in materials)
-    low_confidence = avg_confidence < 0.85
-    review_required = contaminated or low_confidence
+    contaminated = any(item["contaminant_status"] == "contaminated" for item in materials)
+    review_required = any(item["review_required"] for item in materials)
 
     return {
         "overall_status": "review_required" if review_required else "accepted",
         "contamination_risk": "medium" if contaminated else "low",
-        "recommended_action": "Human review recommended before sorting."
-        if review_required
-        else "Accept scan after operator verification.",
+        "recommended_action": "Human review required before sorting." if review_required else "Confirmed sorting routes applied.",
         "human_review_required": review_required,
         "overall_confidence": round(avg_confidence, 4),
     }
@@ -377,6 +429,7 @@ class ReviewDecisionInput(BaseModel):
     detected_material_id: str
     chosen_category: str
     disposition: str
+    outcome: str = "confirmed"
     reviewer_email: str | None = None
 
 
@@ -384,9 +437,9 @@ def review_status(scan: dict, materials: list[dict], decisions: list[dict]) -> d
     latest = {}
     for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
         latest[str(decision.get("detected_material_id", ""))] = decision
-    qualifying = [item for item in materials if float(item.get("confidence") or 0) < 0.8 or scan.get("human_review_required")]
-    if any(item.get("disposition") == "contaminant" for item in latest.values()):
+    if any(str(item.get("outcome") or "confirmed") == "rejected" for item in latest.values()):
         return {"overall_status": "rejected", "human_review_required": False, "recommended_action": "Rejected after operator review."}
+    qualifying = [item for item in materials if float(item.get("confidence") or 0) < CONFIRMATION_THRESHOLD]
     if qualifying and all(str(item.get("id")) in latest for item in qualifying):
         return {"overall_status": "confirmed", "human_review_required": False, "recommended_action": "Confirmed after operator review."}
     return {"overall_status": "review_required", "human_review_required": True, "recommended_action": "Human review required before sorting."}
@@ -402,7 +455,9 @@ def create_review(decision: ReviewDecisionInput):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     category = material_category(decision.chosen_category)
-    if category == "unknown" or decision.disposition not in {"recyclable", "contaminant"}:
+    disposition = CATEGORY_CLASS_MAP.get(category)
+    outcome = str(decision.outcome or "confirmed").strip().lower()
+    if category == "unknown" or disposition not in {"recyclable", "contaminant"} or outcome not in {"confirmed", "rejected"}:
         raise HTTPException(status_code=400, detail="Invalid review category or disposition.")
     scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", decision.scan_result_id).execute()
     material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
@@ -412,7 +467,8 @@ def create_review(decision: ReviewDecisionInput):
         "scan_result_id": decision.scan_result_id,
         "detected_material_id": decision.detected_material_id,
         "chosen_category": category,
-        "disposition": decision.disposition,
+        "disposition": disposition,
+        "outcome": outcome,
         "reviewer_email": decision.reviewer_email,
     }).execute()
     materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
@@ -493,37 +549,14 @@ async def predict(file: UploadFile = File(...)):
         print(f"[predict] reading uploaded file: {file.filename or 'uploaded-image'} ({file.content_type})")
         file_bytes = await file.read()
         drive_metadata = {
-            "storage_provider": "supabase_storage_failed",
-            "upload_status": "preview_upload_failed",
+            "storage_provider": "google_drive_and_supabase_storage",
+            "upload_status": "pending",
             "drive_file_id": None,
             "drive_file_name": file.filename or "uploaded-image",
             "drive_web_url": None,
             "image_url": None,
             "preview_image_url": None,
         }
-        try:
-            print(f"[predict] uploading preview to Supabase Storage bucket: {PREVIEW_BUCKET}")
-            preview_upload = upload_original_to_supabase_storage(file_bytes, file.filename, content_type)
-            drive_metadata["preview_image_url"] = preview_upload["public_url"]
-            drive_metadata["storage_provider"] = "supabase_storage"
-            drive_metadata["upload_status"] = "uploaded"
-            print(f"[predict] Supabase Storage preview upload complete: {preview_upload['path']}")
-        except Exception as exc:
-            print(f"[predict] Supabase Storage upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
-
-        try:
-            print("[predict] uploading to Google Drive with OAuth")
-            uploaded_drive_file = upload_original_to_drive_oauth(file_bytes, file.filename, content_type)
-            drive_metadata = {
-                **drive_metadata,
-                **uploaded_drive_file,
-            }
-            print(
-                f"[predict] Google Drive upload complete: "
-                f"{drive_metadata['drive_file_name']} ({drive_metadata['drive_file_id']})"
-            )
-        except Exception as exc:
-            print(f"[predict] Google Drive upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
@@ -534,6 +567,24 @@ async def predict(file: UploadFile = File(...)):
         print("[predict] converting YOLO results")
         materials = to_detected_materials(result)
         summary = summarize(materials)
+
+        try:
+            print("[Google Drive] Upload started")
+            uploaded_drive_file = upload_original_to_drive_oauth(file_bytes, file.filename, content_type)
+            drive_metadata = {**drive_metadata, **uploaded_drive_file}
+            print(f"[Google Drive] Upload successful: {drive_metadata['drive_file_id']}")
+        except Exception as exc:
+            print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+        try:
+            print("[Supabase Storage] Upload started")
+            preview_upload = upload_original_to_supabase_storage(file_bytes, file.filename, content_type)
+            drive_metadata["preview_image_url"] = preview_upload["public_url"]
+            print(f"[Supabase Storage] Upload successful: {preview_upload['public_url']}")
+        except Exception as exc:
+            print(f"[Supabase Storage] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+        drive_metadata["upload_status"] = "uploaded" if drive_metadata["preview_image_url"] else "preview_upload_failed"
         scan_row = {
             **drive_metadata,
             "source_type": "image",
@@ -545,12 +596,14 @@ async def predict(file: UploadFile = File(...)):
         try:
             scan_response = supabase.table(SCAN_RESULTS_TABLE).insert(scan_row).execute()
             scan_data = scan_response.data
+            print("[Database] Scan record inserted")
         except Exception as exc:
             print(f"[predict] Supabase {SCAN_RESULTS_TABLE} insert failed: {safe_error_message(exc)}")
             print("[predict] retrying scan insert without Drive metadata")
             try:
                 scan_response = supabase.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, file.filename)).execute()
                 scan_data = scan_response.data
+                print("[Database] Scan record inserted")
             except Exception as retry_exc:
                 print(f"[predict] Supabase {SCAN_RESULTS_TABLE} retry failed: {safe_error_message(retry_exc)}")
                 traceback.print_exc()
@@ -560,7 +613,8 @@ async def predict(file: UploadFile = File(...)):
             raise HTTPException(status_code=500, detail="Unable to save scan result.")
 
         scan_result_id = scan_data[0]["id"]
-        linked_materials = [{**item, "scan_result_id": scan_result_id} for item in materials]
+        stored_material_keys = {"material_name", "category", "confidence", "recyclable_status", "contaminant_status", "bbox_x", "bbox_y", "bbox_width", "bbox_height"}
+        linked_materials = [{key: value for key, value in item.items() if key in stored_material_keys} | {"scan_result_id": scan_result_id} for item in materials]
         if linked_materials:
             print(f"[predict] inserting {DETECTED_MATERIALS_TABLE}: {len(linked_materials)} row(s)")
             try:

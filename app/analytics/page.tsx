@@ -67,234 +67,64 @@ const html = `
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Analytics</h1>
-            <p>Track upload throughput, material recovery, contamination risk, and review workload.</p>
+            <h1>Analytics Overview</h1>
+            <p>Operational insights and next actions</p>
           </div>
         </div>
 
         <div class="topbar-right">
           <div data-theme-slot="app"></div>
 
-          <!-- Live Clock / Date Pill -->
-          <div class="date-pill">
-            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
-            <span id="liveClock">00:00:00 AM</span>
-          </div>
-
-          <!-- Notification Button -->
-          <button class="topbar-icon-btn" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="notif-dot"></span>
+          <label class="analytics-date-control" for="analyticsRange">
+            <span class="sr-only">Analytics date range</span>
+            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+            <select id="analyticsRange" aria-label="Analytics date range">
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </label>
+          <button id="analyticsRefresh" class="topbar-icon-btn" type="button" aria-label="Refresh analytics" title="Refresh analytics">
+            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
           </button>
-
-          <!-- User Badge -->
-          <div class="user-badge">
-            <div class="user-badge-avatar">AD</div>
-            <span style="margin-left: 6px;">Admin Mode</span>
-          </div>
         </div>
       </header>
 
       <div class="page-body">
-        <!-- KPI ROW: 4 Cards -->
-        <section class="kpi-grid kpi-grid-four">
-          <article class="kpi-card material drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
-            <div class="kpi-icon-row">
-              <span class="kpi-badge badge-blue"><i class="fa-solid fa-recycle"></i></span>
-              <span class="kpi-trend trend-neutral">no data</span>
-            </div>
-            <span>Detected Materials</span>
-            <strong>0</strong>
-            <p>No scan data yet</p>
-            <div class="kpi-progress-meta"><span>Saved scan progress</span><strong>0%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
-          </article>
+        <section class="analytics-overview" aria-label="Analytics overview">
+          <div id="analyticsOverviewState" class="analytics-overview-state" role="status" aria-live="polite" hidden></div>
+          <section class="analytics-kpi-grid" aria-label="Analytics key performance indicators">
+            <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></span><span>Needs Review</span><strong data-overview="needs-review">-</strong><p data-overview="needs-review-note">Loading analytics...</p></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">-</strong><p>High-confidence items</p></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar"></i></span><span>Recoverable Value</span><strong data-overview="recoverable-value">-</strong><p>Estimated recoverable value</p></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved"></i></span><span>Average Confidence</span><strong data-overview="average-confidence">-</strong><p>Across all scans</p></article>
+          </section>
 
-          <article class="kpi-card revenue drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
-            <div class="kpi-icon-row">
-              <span class="kpi-badge badge-green"><i class="fa-solid fa-sack-dollar"></i></span>
-              <span class="kpi-trend trend-neutral">no data</span>
-            </div>
-            <span>Revenue Data</span>
-            <strong>No data</strong>
-            <p>No material data yet</p>
-            <div class="kpi-progress-meta"><span>Revenue data availability</span><strong>0%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
-          </article>
+          <section class="analytics-attention-banner" data-overview="attention-banner">
+            <span class="analytics-banner-icon"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <div><h2 data-overview="attention-title">Loading analytics...</h2><p data-overview="attention-copy"></p></div>
+            <div class="analytics-banner-actions"><a data-overview="review-link" class="primary-btn" href="/log">Open Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="secondary-btn" href="/log">View History</a></div>
+          </section>
 
-          <article class="kpi-card purity drill-trigger bbox-card" data-drill-target="detail-purity" tabindex="0">
-            <div class="kpi-icon-row">
-              <span class="kpi-badge badge-amber"><i class="fa-solid fa-chart-simple"></i></span>
-              <span class="kpi-trend trend-neutral">no data</span>
+          <section class="analytics-insights" aria-labelledby="analyticsInsightsHeading">
+            <h2 id="analyticsInsightsHeading">Key Insights</h2>
+            <div class="analytics-insight-grid">
+              <article><i class="fa-solid fa-biohazard"></i><div><span>Top Contamination Source</span><strong data-overview="top-contaminant">-</strong><small data-overview="top-contaminant-meta"></small></div></article>
+              <article><i class="fa-solid fa-recycle"></i><div><span>Top Recyclable Material</span><strong data-overview="top-recyclable">-</strong><small data-overview="top-recyclable-meta"></small></div></article>
+              <article><i class="fa-regular fa-clock"></i><div><span>Avg. Review Turnaround</span><strong data-overview="review-turnaround">-</strong><small>Completed human reviews</small></div></article>
+              <article><i class="fa-solid fa-tag"></i><div><span>Highest-Value Category</span><strong data-overview="highest-value">-</strong><small data-overview="highest-value-meta"></small></div></article>
+              <article><i class="fa-solid fa-cloud-arrow-up"></i><div><span>Last Upload</span><strong data-overview="last-upload">-</strong><small data-overview="last-upload-meta"></small></div></article>
             </div>
-            <span>Average Confidence</span>
-            <strong>0.0%</strong>
-            <p>No scan data yet</p>
-            <div class="kpi-progress-meta"><span>Saved scan confidence</span><strong>0%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
-          </article>
+          </section>
 
-          <article class="kpi-card hazard drill-trigger bbox-card" data-drill-target="detail-contaminants" tabindex="0">
-            <div class="kpi-icon-row">
-              <span class="kpi-badge badge-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
-              <span class="kpi-trend trend-neutral">stable</span>
-            </div>
-            <span>Contaminated Items</span>
-            <strong>0</strong>
-            <p>No contamination data yet</p>
-            <div class="kpi-progress-meta"><span>Current risk load</span><strong>0%</strong></div>
-            <div class="kpi-progress-bar"><span class="kpi-progress-fill" style="width: 0%"></span></div>
-          </article>
-        </section>
+          <section class="analytics-overview-grid">
+            <article class="analytics-overview-card drill-trigger" data-drill-target="detail-composition" tabindex="0"><header><div><h2>Material Mix</h2><p data-overview="mix-subtitle">By weight</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewMaterialMix"></canvas><p class="analytics-chart-empty" data-overview="mix-empty" hidden>No material data is available for this period.</p></div><p class="analytics-chart-summary" data-overview="mix-summary"></p></article>
+            <article class="analytics-overview-card drill-trigger" data-drill-target="detail-resale" tabindex="0"><header><div><h2>Recoverable Value by Category</h2><p>Estimated value (RM)</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewValueByCategory"></canvas><p class="analytics-chart-empty" data-overview="value-empty" hidden>No recoverable value is available for this period.</p></div><p class="analytics-chart-summary" data-overview="value-summary"></p></article>
+            <article class="analytics-overview-card drill-trigger" data-drill-target="detail-yield" tabindex="0"><header><div><h2>Daily Scan Trend</h2><p>Scans over time</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewDailyTrend"></canvas><p class="analytics-chart-empty" data-overview="trend-empty" hidden>No scan activity is available for this period.</p></div><p class="analytics-chart-summary" data-overview="trend-summary"></p></article>
+            <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/log">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
+          </section>
 
-        <!-- Row 2 -->
-        <section class="dashboard-row-3col">
-          <!-- System Alerts Panel -->
-          <article class="panel alert-stack bbox-card">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">System Alerts</p>
-                <h2>Live Status</h2>
-              </div>
-            </div>
-
-            <a href="/log" class="alert-row review">
-              <div class="alert-row-icon"><i class="fa-solid fa-bell"></i></div>
-              <div class="alert-row-body">
-                <strong>0 Pending Reviews</strong>
-                <p>No scan data yet.</p>
-              </div>
-              <span class="alert-row-value">0</span>
-            </a>
-
-            <div class="alert-row success drill-trigger" data-drill-target="detail-purity" tabindex="0">
-              <div class="alert-row-icon"><i class="fa-solid fa-bullseye"></i></div>
-              <div class="alert-row-body">
-                <strong>AI Detection Precision</strong>
-                <p>No saved scans yet.</p>
-              </div>
-              <span class="alert-row-value">0.0%</span>
-            </div>
-
-            <div class="alert-row neutral drill-trigger" data-drill-target="detail-contaminants" tabindex="0">
-              <div class="alert-row-icon"><i class="fa-solid fa-ban"></i></div>
-              <div class="alert-row-body">
-                <strong>Anomalies Blocked</strong>
-                <p>No contamination data yet.</p>
-              </div>
-              <span class="alert-row-value">0</span>
-            </div>
-
-            <div class="alert-row danger-row drill-trigger" data-drill-target="detail-purity" tabindex="0">
-              <div class="alert-row-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
-              <div class="alert-row-body">
-                <strong>No review alerts</strong>
-                <p>Upload scans to generate review signals.</p>
-              </div>
-              <span class="alert-row-value" style="color: var(--danger);">!</span>
-            </div>
-          </article>
-
-          <!-- Composition Donut Chart -->
-          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-composition"
-            tabindex="0">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Composition</p>
-                <h2>Material Mix</h2>
-              </div>
-            </div>
-            <p class="chart-subtitle">No material data yet. Upload scans to populate this chart.</p>
-            <div class="chart-box">
-              <canvas id="compositionChart"></canvas>
-            </div>
-          </article>
-
-          <!-- Commodity Resale Bar Chart -->
-          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-resale" tabindex="0">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Commodity Value</p>
-                <h2>Resale Value by Category</h2>
-              </div>
-            </div>
-            <p class="chart-subtitle">No resale data yet. Upload scans to populate this chart.</p>
-            <div class="chart-box">
-              <canvas id="resaleChart"></canvas>
-            </div>
-          </article>
-        </section>
-
-        <!-- Row 3 -->
-        <section class="dashboard-row-3col analytics-operational-row">
-          <article class="panel chart-panel review-workload-panel drill-trigger bbox-card"
-            data-drill-target="detail-ledger" tabindex="0">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Review Workload</p>
-                <h2>Human Review Queue</h2>
-              </div>
-            </div>
-            <p class="chart-subtitle">Operator workload by upload type and confidence risk.</p>
-            <div class="review-workload-viz" aria-label="Human review workload visualisation">
-              <div class="workload-meter">
-                <strong>0</strong>
-                <span>Pending reviews</span>
-              </div>
-              <div class="workload-bars">
-                <div class="workload-row">
-                  <span>Mixed batches</span>
-                  <strong>0%</strong>
-                  <i style="width: 0%"></i>
-                </div>
-                <div class="workload-row">
-                  <span>Low confidence scans</span>
-                  <strong>0%</strong>
-                  <i style="width: 0%"></i>
-                </div>
-                <div class="workload-row warning">
-                  <span>Hazard checks</span>
-                  <strong>0%</strong>
-                  <i style="width: 0%"></i>
-                </div>
-                <div class="workload-row quiet">
-                  <span>Operator corrections</span>
-                  <strong>0%</strong>
-                  <i style="width: 0%"></i>
-                </div>
-              </div>
-            </div>
-          </article>
-
-          <!-- Recent Ledger Preview -->
-          <article class="panel ledger-preview bbox-card">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Log Trail</p>
-                <h2>Recent Verification Ledger</h2>
-              </div>
-              <a href="/log" class="secondary-btn">Full Ledger</a>
-            </div>
-
-            <div class="ledger-list" id="dashLedgerList">
-              <div class="feed-empty">No scan history yet.</div>
-            </div>
-          </article>
-
-          <!-- Yield Line Chart -->
-          <article class="panel chart-panel drill-trigger bbox-card" data-drill-target="detail-yield" tabindex="0">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Yield</p>
-                <h2>Material Diverted Over Time</h2>
-              </div>
-            </div>
-            <p class="chart-subtitle">No scan data yet. Saved material counts appear here after uploads.</p>
-            <div class="chart-box">
-              <canvas id="yieldChart"></canvas>
-            </div>
-          </article>
-
+          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><h2 id="analyticsRecentLogHeading">Recent Verification Log</h2><a href="/log">View all history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
         </section>
 
         <!-- DETAIL DOCK -->
@@ -485,7 +315,7 @@ const html = `
                 <p class="eyebrow">AI Upload Diagnostics</p>
                 <h2>Upload Source: <span data-belt-id>Upload queue</span></h2>
                 <p class="detail-copy" data-belt-insight>Uploaded images are processed by the classifier and routed to
-                  human review when confidence or contamination risk requires a decision.</p>
+                  human review only when confidence is below 85%.</p>
               </div>
             </div>
 

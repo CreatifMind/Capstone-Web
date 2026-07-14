@@ -109,7 +109,17 @@ Example response:
   "recommended_action": "Accept scan after operator verification.",
   "human_review_required": false,
   "overall_confidence": 0.94,
-  "detected_materials": []
+  "detected_materials": [
+    {
+      "category": "battery",
+      "confidence": 0.98,
+      "material_class": "contaminant",
+      "decision_status": "confirmed",
+      "review_required": false,
+      "display_status": "Confirmed Contaminant",
+      "disposal_route": "Battery / E-Waste Collection"
+    }
+  ]
 }
 ```
 
