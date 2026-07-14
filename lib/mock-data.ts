@@ -1,4 +1,5 @@
 export type DetectedMaterial = {
+  id?: string;
   material_name: string;
   category: string;
   confidence: number;
@@ -8,6 +9,16 @@ export type DetectedMaterial = {
   bbox_y: number;
   bbox_width: number;
   bbox_height: number;
+  review_decision?: ReviewDecision | null;
+};
+
+export type ReviewDecision = {
+  id: string;
+  detected_material_id: string;
+  chosen_category: string;
+  disposition: "recyclable" | "contaminant";
+  reviewer_email?: string | null;
+  created_at: string;
 };
 
 export type ScanResult = {

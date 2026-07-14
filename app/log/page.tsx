@@ -24,9 +24,9 @@ const html = `
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
           <span class="nav-item-label">Result</span>
         </a>
-        <a href="/log" class="nav-item active" data-tooltip="Log">
+        <a href="/log" class="nav-item active" data-tooltip="History">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Log</span>
+          <span class="nav-item-label">History</span>
         </a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
@@ -64,8 +64,8 @@ const html = `
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Log</h1>
-            <p>Validate uploaded image results before they become final classification records.</p>
+            <h1>History</h1>
+            <p>Review recorded scans and their current decision status.</p>
           </div>
         </div>
 
@@ -84,57 +84,43 @@ const html = `
 
           <div class="user-badge review-badge">
             <div class="user-badge-avatar">QA</div>
-            <span>0 pending</span>
+            <span>0 review needed</span>
           </div>
         </div>
       </header>
 
       <div class="page-body">
-        <section class="ops-hero log-hero">
-          <div class="ops-hero-copy">
-            <span class="ops-kicker">Human-in-the-loop log</span>
-            <h2>Approve, correct, or reject each AI result.</h2>
-            <p>The log page records every uploaded image result and gives operators a clear place to verify uncertain or
-              contaminated classifications.</p>
-          </div>
+        <section class="ops-hero log-hero history-kpis">
           <div class="ops-status-stack">
             <div class="ops-status-card cleared">
-              <span>Verified</span>
+              <span>Confirmed</span>
               <strong>0</strong>
-              <small>No verified scans yet</small>
+              <small>Confirmed scans</small>
             </div>
             <div class="ops-status-card review">
               <span>Needs review</span>
               <strong>0</strong>
-              <small>No review scans yet</small>
+              <small>Requires attention</small>
             </div>
             <div class="ops-status-card quarantine">
               <span>Rejected</span>
               <strong>0</strong>
-              <small>No rejected scans yet</small>
+              <small>Rejected scans</small>
             </div>
           </div>
         </section>
 
         <section class="ledger-shell">
-          <div class="ledger-command-panel">
-            <span class="panel-kicker">Review queue</span>
-            <h2>Records awaiting operator decision</h2>
-            <p>Sort by confidence and inspect the material. The second column now tracks the file or batch that created
-              the record.</p>
-            <div class="ledger-filter-row" aria-label="Review filters">
-              <button type="button" class="active">All records</button>
-              <button type="button">Needs review</button>
-              <button type="button">Quarantined</button>
-            </div>
-            <a href="/result" class="secondary-btn">Back to results</a>
-          </div>
-
           <section class="panel ledger-panel bbox-card">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Audit verification</p>
-                <h2>Uploaded Image Ledger</h2>
+                <p class="eyebrow">Scan history</p>
+                <h2>Recorded scans</h2>
+              </div>
+              <div class="history-filters" aria-label="History filters">
+                <input id="historySearch" type="search" placeholder="Search result" aria-label="Search result" />
+                <input id="historyDate" type="date" aria-label="Filter by date" />
+                <select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed</option><option>Rejected</option><option>Review Needed</option></select>
               </div>
             </div>
 
@@ -143,7 +129,7 @@ const html = `
                 <thead>
                   <tr>
                     <th>Timestamp</th>
-                    <th>Upload Source</th>
+                    <th>Image</th>
                     <th>Material</th>
                     <th>Weight</th>
                     <th>AI Confidence</th>

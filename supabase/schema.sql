@@ -43,6 +43,19 @@ add column if not exists source_type text default 'image';
 alter table mock_scan_results
 add column if not exists preview_image_url text;
 
+create table if not exists scan_review_decisions (
+  id uuid primary key default gen_random_uuid(),
+  scan_result_id uuid not null references mock_scan_results(id) on delete cascade,
+  detected_material_id uuid not null references mock_detected_materials(id) on delete cascade,
+  chosen_category text not null,
+  disposition text not null check (disposition in ('recyclable', 'contaminant')),
+  reviewer_email text,
+  created_at timestamp with time zone default now()
+);
+
+create index if not exists scan_review_decisions_scan_material_created_idx
+  on scan_review_decisions (scan_result_id, detected_material_id, created_at desc);
+
 create table if not exists detected_materials (
   id uuid primary key default gen_random_uuid(),
   scan_result_id uuid references scan_results(id) on delete cascade,

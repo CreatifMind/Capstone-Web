@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect } from "react";
+import { unzip } from "fflate";
 
 type PageHtmlProps = {
   bodyClass: string;
@@ -15,6 +16,7 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
     let secondFrame = 0;
 
     try {
+      Object.assign(window, { __PURITYLOOP_ZIP__: { unzip } });
       document.body.className = bodyClass;
       if (dataPage) {
         document.body.setAttribute("data-page", dataPage);

@@ -26,9 +26,9 @@ const html = `
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
           <span class="nav-item-label">Result</span>
         </a>
-        <a href="/log" class="nav-item" data-tooltip="Log">
+        <a href="/log" class="nav-item" data-tooltip="History">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Log</span>
+          <span class="nav-item-label">History</span>
         </a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
@@ -68,7 +68,7 @@ const html = `
           </button>
           <div class="topbar-title">
             <h1>Upload</h1>
-            <p>Select an image, confirm the preview, then start the AI scan.</p>
+            <p>Select waste images, review the queue, then start detection.</p>
           </div>
         </div>
 
@@ -103,35 +103,33 @@ const html = `
               <div class="upload-icon">
                 <i class="fa-solid fa-arrow-up-from-bracket"></i>
               </div>
-              <h2>Select waste image</h2>
-              <p>
-                Upload one waste image for classification. Results appear only after scanning.
-              </p>
+              <h2>Upload Waste Images</h2>
+              <p>Select one or multiple clear waste images for detection.</p>
               <label for="fileUpload" class="upload-label"
                 style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
-                <i class="fa-solid fa-file-image"></i> Choose Image
+                <i class="fa-solid fa-file-image"></i> Choose Images
               </label>
-              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp,.zip,application/zip" style="display: none;" />
+              <label for="zipUpload" class="secondary-btn upload-zip-label">
+                <i class="fa-solid fa-file-zipper"></i> Upload ZIP
+              </label>
+              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple style="display: none;" />
+              <input type="file" id="zipUpload" accept=".zip,application/zip" style="display: none;" />
               <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
-                No file selected</p>
+                No images selected</p>
 
-              <!-- Preview container -->
-              <div id="uploadPreviewContainer"
-                style="display: none; margin-top: 20px; flex-direction: column; align-items: center; gap: 8px;">
-                <img id="uploadPreviewImage" src="" alt="Selected Preview"
-                  style="max-height: 120px; border-radius: 12px; border: 1px solid var(--border);" />
-                <span id="uploadCheckmark"
-                  style="color: var(--primary); font-weight: 700; display: flex; align-items: center; gap: 6px; font-size: 14px;">
-                  <i class="fa-solid fa-circle-check"></i> Ready for AI Audit
-                </span>
-                <div class="upload-preview-actions">
-                  <button type="button" id="replaceUploadBtn" class="secondary-btn">Replace image</button>
-                  <button type="button" id="removeUploadBtn" class="text-btn">Remove</button>
-                </div>
+              <p class="upload-file-policy">Upload up to 10 images directly. For larger batches, upload a ZIP file containing up to 50 images.</p>
+              <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
+              <div id="uploadQueue" class="upload-queue" aria-label="Selected image queue">
+                <p class="upload-queue-empty">No images selected.</p>
               </div>
-              <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
-                <i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image
-              </button>
+              <div class="upload-batch-actions">
+                <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
+                  <i class="fa-solid fa-magnifying-glass-chart"></i> Detect Images
+                </button>
+                <button type="button" id="clearUploadBtn" class="text-btn" disabled>Clear Selection</button>
+              </div>
+              <div id="batchProcessingStatus" class="batch-processing-status" aria-live="polite"></div>
+              <div id="batchSummary" class="batch-summary" hidden></div>
               <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
                 <div class="upload-progress-row">
                   <span id="uploadProgressLabel">Uploading image</span>
@@ -201,8 +199,7 @@ const html = `
                 <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i> SCAN START
               </h4>
               <p style="font-size: 0.8125rem; color: var(--muted); line-height: 1.5; margin: 0;">
-                The upload page only prepares the image. Press Scan Image to route the file into the Result page for
-                YOLOv8-style detection output.
+                Each image is processed one at a time. Successful scans appear in Results after the batch finishes.
               </p>
             </div>
           </div>

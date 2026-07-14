@@ -1,5 +1,5 @@
 import { DEMO_MODE, USE_SUPABASE, isSupabaseConfigured } from "./config";
-import type { DetectedMaterial, ScanResult } from "./mock-data";
+import type { DetectedMaterial, ReviewDecision, ScanResult } from "./mock-data";
 import { supabase } from "./supabase";
 import { uploadImageToSupabase } from "./storage";
 import { safeArray, safeId, safeJsonParse } from "./utils";
@@ -40,6 +40,7 @@ function toFiniteNumber(value: unknown, fallback = 0) {
 function normalizeDetectedMaterials(value: unknown): DetectedMaterial[] {
   return safeArray<Partial<DetectedMaterial>>(value).map((material, index) => ({
     material_name: material.material_name || material.category || `Detected material ${index + 1}`,
+    id: material.id || undefined,
     category: material.category || "Unknown",
     confidence: toFiniteNumber(material.confidence),
     recyclable_status: material.recyclable_status || "Unknown",
@@ -110,7 +111,15 @@ async function getScansWithMaterials() {
     return null;
   }
 
-  return attachMaterialsToScans(scans || [], materials || []);
+  const { data: reviews } = await supabase.from("scan_review_decisions").select("*");
+  const latestReviews = safeArray<ReviewDecision>(reviews).reduce<Record<string, ReviewDecision>>((all, review) => {
+    if (!all[review.detected_material_id] || all[review.detected_material_id].created_at < review.created_at) all[review.detected_material_id] = review;
+    return all;
+  }, {});
+  return attachMaterialsToScans(scans || [], materials || []).map(scan => ({
+    ...scan,
+    detected_materials: safeArray<Record<string, unknown>>(scan.detected_materials).map(material => ({ ...material, review_decision: latestReviews[String(material.id || "")] || null }))
+  }));
 }
 
 export async function loginUser(email?: string) {

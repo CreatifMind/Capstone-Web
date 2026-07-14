@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from supabase import create_client
 from ultralytics import YOLO
 
@@ -44,6 +45,7 @@ model = None
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
 SCAN_RESULTS_TABLE = "mock_scan_results"
 DETECTED_MATERIALS_TABLE = "mock_detected_materials"
+REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
@@ -370,9 +372,54 @@ def summarize(materials: list[dict]) -> dict:
     }
 
 
+class ReviewDecisionInput(BaseModel):
+    scan_result_id: str
+    detected_material_id: str
+    chosen_category: str
+    disposition: str
+    reviewer_email: str | None = None
+
+
+def review_status(scan: dict, materials: list[dict], decisions: list[dict]) -> dict:
+    latest = {}
+    for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+        latest[str(decision.get("detected_material_id", ""))] = decision
+    qualifying = [item for item in materials if float(item.get("confidence") or 0) < 0.8 or scan.get("human_review_required")]
+    if any(item.get("disposition") == "contaminant" for item in latest.values()):
+        return {"overall_status": "rejected", "human_review_required": False, "recommended_action": "Rejected after operator review."}
+    if qualifying and all(str(item.get("id")) in latest for item in qualifying):
+        return {"overall_status": "confirmed", "human_review_required": False, "recommended_action": "Confirmed after operator review."}
+    return {"overall_status": "review_required", "human_review_required": True, "recommended_action": "Human review required before sorting."}
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/api/reviews")
+def create_review(decision: ReviewDecisionInput):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    category = material_category(decision.chosen_category)
+    if category == "unknown" or decision.disposition not in {"recyclable", "contaminant"}:
+        raise HTTPException(status_code=400, detail="Invalid review category or disposition.")
+    scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", decision.scan_result_id).execute()
+    material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
+    if not scan_response.data or not material_response.data:
+        raise HTTPException(status_code=404, detail="Scan or detected material was not found.")
+    inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert({
+        "scan_result_id": decision.scan_result_id,
+        "detected_material_id": decision.detected_material_id,
+        "chosen_category": category,
+        "disposition": decision.disposition,
+        "reviewer_email": decision.reviewer_email,
+    }).execute()
+    materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
+    decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
+    next_status = review_status(scan_response.data[0], materials, decisions)
+    supabase.table(SCAN_RESULTS_TABLE).update(next_status).eq("id", decision.scan_result_id).execute()
+    return {"decision": inserted.data[0] if inserted.data else None, **next_status}
 
 
 @app.get("/api/debug/model")

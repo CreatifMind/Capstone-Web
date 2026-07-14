@@ -2,9 +2,11 @@
 
 /* RELIABLE prototype limits */
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB per image
+const MAX_BATCH_IMAGES = 10;
 const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100 MB per ZIP file
-const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100 MB total upload
-const MAX_TOTAL_FILES = 50;
+const MAX_ZIP_IMAGES = 50;
+const MAX_ZIP_ENTRIES = 200;
+const MAX_ZIP_EXTRACTED_SIZE = 500 * 1024 * 1024;
 const DEFAULT_SCAN_ASSET = "/assets/items/upload-result-reference.png";
 
 function plSafeArray(value) {
@@ -116,8 +118,16 @@ function plConfidencePercent(value) {
   return numeric <= 1 ? numeric * 100 : numeric;
 }
 
+function plScanNeedsReview(scan) {
+  const materials = plSafeArray(scan?.detected_materials);
+  return Boolean(scan?.human_review_required) ||
+    plNormalizeStatus(scan?.overall_status) === "review_required" ||
+    materials.some(material => plConfidencePercent(material?.confidence) < 80 || material?.review_decision?.disposition === "contaminant");
+}
+
 function plNormalizeMaterial(material) {
   return {
+    id: material?.id || "",
     material_name: material?.material_name || material?.category || "Detected material",
     category: plNormalizeCategory(material?.category),
     confidence: Number(material?.confidence || 0),
@@ -126,7 +136,8 @@ function plNormalizeMaterial(material) {
     bbox_x: Number(material?.bbox_x || 0),
     bbox_y: Number(material?.bbox_y || 0),
     bbox_width: Number(material?.bbox_width || 0),
-    bbox_height: Number(material?.bbox_height || 0)
+    bbox_height: Number(material?.bbox_height || 0),
+    review_decision: material?.review_decision || null
   };
 }
 
@@ -191,13 +202,20 @@ async function plRefreshScanResultsFromSupabase() {
       return false;
     }
 
+    const reviewsResponse = await fetch(`${baseUrl}/rest/v1/scan_review_decisions?select=*`, { headers });
     const scansPayload = await scansResponse.json();
     const materialsPayload = await materialsResponse.json();
+    const reviewsPayload = reviewsResponse.ok ? await reviewsResponse.json() : [];
+    const latestReviews = plSafeArray(reviewsPayload).reduce((acc, review) => {
+      const key = String(review.detected_material_id || "");
+      if (!key || !acc[key] || String(acc[key].created_at || "") < String(review.created_at || "")) acc[key] = review;
+      return acc;
+    }, {});
     const groupedMaterials = plSafeArray(materialsPayload).reduce((acc, material) => {
       const scanResultId = String(material.scan_result_id || "");
       if (!scanResultId) return acc;
       acc[scanResultId] = acc[scanResultId] || [];
-      acc[scanResultId].push(material);
+      acc[scanResultId].push({ ...material, review_decision: latestReviews[String(material.id || "")] || null });
       return acc;
     }, {});
     const scans = plSafeArray(scansPayload)
@@ -310,7 +328,7 @@ function plMaterialsToBoxes(materials) {
 
 function plFormatScanTime(scan) {
   const date = new Date(scan?.created_at || Date.now());
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function plScanToLedger(scan) {
@@ -323,10 +341,22 @@ function plScanToLedger(scan) {
     source: scan.source_name || "Uploaded image",
     sourceKey: scan.source_name && scan.source_name.toLowerCase().endsWith(".zip") ? "ZIP-BATCH" : plNormalizeStatus(scan.overall_status) === "quarantined" ? "QUARANTINE-UPLOAD" : "SINGLE-IMAGE",
     category: firstMaterial.category || "Unknown",
-    weight: scan.source_size ? formatFileSize(scan.source_size) : "N/A",
+    weight: plFormatKg(materials.reduce((sum, material) => sum + getEstimatedWeightKg(material.category || material.material_name), 0)),
     confidence: `${Math.round(plConfidencePercent(scan.overall_confidence))}%`,
-    status: plNormalizeStatus(scan.overall_status) === "accepted" ? "Cleared" : plNormalizeStatus(scan.overall_status) === "quarantined" ? "Quarantined" : "Review Needed"
+    status: plNormalizeStatus(scan.overall_status) === "confirmed" || plNormalizeStatus(scan.overall_status) === "accepted" ? "Confirmed" : plNormalizeStatus(scan.overall_status) === "rejected" || plNormalizeStatus(scan.overall_status) === "quarantined" ? "Rejected" : "Review Needed",
+    preview: scan.preview_image_url || scan.image_url || plStoragePreviewUrl(scan.source_name || scan.drive_file_name)
   };
+}
+
+async function plSaveReview(scan, material, chosenCategory, disposition) {
+  const apiBase = plApiBaseUrl();
+  if (!apiBase || !scan?.id || !material?.id) throw new Error("Review persistence is not configured for this scan.");
+  const reviewer = plSafeJsonParse(sessionStorage.getItem("purityloop_demo_user"), {})?.email || null;
+  const response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_result_id: scan.id, detected_material_id: material.id, chosen_category: chosenCategory, disposition, reviewer_email: reviewer }) });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || "Unable to save review.");
+  await plRefreshScanResultsFromSupabase();
+  return payload;
 }
 
 const FINAL_CATEGORIES = ["general trash", "food organic", "metal", "plastic", "glass", "textile", "paper", "battery", "cardboard"];
@@ -755,7 +785,7 @@ function getUploadSourceDisplayName(sourceKey) {
   return labels[sourceKey] || "Uploaded image";
 }
 
-async function plRunBackendPrediction(file) {
+async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) {
   const apiBaseUrl = plApiBaseUrl();
   if (!apiBaseUrl) throw new Error("Backend API URL is not configured.");
   if (!file || !String(file.type || "").startsWith("image/")) throw new Error("Upload one image file.");
@@ -763,19 +793,19 @@ async function plRunBackendPrediction(file) {
   const formData = new FormData();
   formData.append("file", file, file.name || "uploaded-image.jpg");
 
-  plSetUploadProgress(1);
+  if (showUploadProgress) plSetUploadProgress(1);
   const payload = await new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${apiBaseUrl}/api/predict`);
     request.timeout = 120000;
     request.upload.onprogress = event => {
       if (!event.lengthComputable) return;
-      plSetUploadProgress((event.loaded / event.total) * 90);
+      if (showUploadProgress) plSetUploadProgress((event.loaded / event.total) * 90);
     };
     request.onload = () => {
       const body = plSafeJsonParse(request.responseText, {});
       if (request.status >= 200 && request.status < 300) {
-        plSetUploadProgress(100, "Scan complete");
+        if (showUploadProgress) plSetUploadProgress(100, "Scan complete");
         resolve(body);
         return;
       }
@@ -811,15 +841,21 @@ async function plRunBackendPrediction(file) {
  *****************************************/
 function initUploadPage() {
   const fileUpload = document.getElementById("fileUpload");
+  const zipUpload = document.getElementById("zipUpload");
   if (!fileUpload) return; // Not on upload page
   if (fileUpload.dataset.uploadReady === "true") return;
   fileUpload.dataset.uploadReady = "true";
 
   const fileName = document.getElementById("fileName");
   const scanImageBtn = document.getElementById("scanImageBtn");
-  const fileList = document.getElementById("fileList");
-  const fileCountText = document.getElementById("fileCountText");
-  const uploadSummary = document.getElementById("uploadSummary");
+  const clearUploadBtn = document.getElementById("clearUploadBtn");
+  const queueEl = document.getElementById("uploadQueue");
+  const messagesEl = document.getElementById("uploadMessages");
+  const processingStatusEl = document.getElementById("batchProcessingStatus");
+  const batchSummaryEl = document.getElementById("batchSummary");
+  let queue = [];
+  let isProcessing = false;
+  let batchId = "";
 
   // Set up webcam modal
   createWebcamModalElements();
@@ -833,8 +869,6 @@ function initUploadPage() {
 
   // Drag and drop events
   const uploadBox = document.querySelector(".upload-box");
-  const replaceUploadBtn = document.getElementById("replaceUploadBtn");
-  const removeUploadBtn = document.getElementById("removeUploadBtn");
   if (uploadBox) {
     ["dragenter", "dragover"].forEach(evt => {
       uploadBox.addEventListener(evt, (e) => {
@@ -864,42 +898,15 @@ function initUploadPage() {
       processSelectedFiles(fileUpload.files);
     }
   });
-
-  if (replaceUploadBtn) replaceUploadBtn.addEventListener("click", () => fileUpload.click());
-  if (removeUploadBtn) {
-    removeUploadBtn.addEventListener("click", () => {
-      plSelectedUploadFiles = [];
-      fileUpload.value = "";
-      fileName.textContent = "No file selected";
-      document.getElementById("uploadPreviewContainer")?.style.setProperty("display", "none");
-      if (scanImageBtn) scanImageBtn.disabled = true;
+  if (zipUpload) {
+    zipUpload.addEventListener("change", function () {
+      const archive = zipUpload.files?.[0];
+      if (archive) processZipUpload(archive);
     });
   }
 
-  if (scanImageBtn) {
-    scanImageBtn.addEventListener("click", async () => {
-      const uploadFile = plSelectedUploadFiles[0];
-      if (!uploadFile) {
-        showToast("Choose an image before scanning.", "warning");
-        return;
-      }
-      scanImageBtn.disabled = true;
-      scanImageBtn.classList.add("is-scanning");
-      if (uploadBox) uploadBox.classList.add("is-processing");
-      scanImageBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
-      try {
-        const scan = await plRunBackendPrediction(uploadFile);
-        window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
-      } catch (error) {
-        showToast(error.message || "AI scan failed. Check backend and try again.", "error");
-        scanImageBtn.disabled = false;
-        scanImageBtn.classList.remove("is-scanning");
-        if (uploadBox) uploadBox.classList.remove("is-processing");
-        plHideUploadProgress();
-        scanImageBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass-chart"></i> Scan Image';
-      }
-    });
-  }
+  if (clearUploadBtn) clearUploadBtn.addEventListener("click", clearQueue);
+  if (scanImageBtn) scanImageBtn.addEventListener("click", () => runBatch(queue.filter(item => item.status === "ready")));
 
   // Open Webcam Modal
   const cameraLauncher = document.createElement("button");
@@ -985,108 +992,418 @@ function initUploadPage() {
     }, "image/jpeg", 0.9);
   }
 
-  function processSelectedFiles(files) {
+  async function processSelectedFiles(files) {
+    if (isProcessing) return;
     const list = plSafeFiles(files);
-    plSelectedUploadFiles = [];
-    plHideUploadProgress();
-    if (!list.length) {
-      alert("No files selected.");
+    if (!list.length) return;
+    const directTotal = queue.length + list.length;
+    if (list.length > MAX_BATCH_IMAGES || directTotal > MAX_BATCH_IMAGES) {
+      showDirectUploadLimit(directTotal);
+      if (fileUpload) fileUpload.value = "";
       return;
     }
 
-    // Validate sizes and types
-    let totalSize = list.reduce((s, f) => s + Number(f.size || 0), 0);
-    if (list.length > MAX_TOTAL_FILES) {
-      alert(`Too many files selected. Maximum is ${MAX_TOTAL_FILES} files.`);
-      return;
-    }
-    if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
-      alert("Total files size exceeds 100MB threshold.");
-      return;
-    }
+    const rejected = [];
+    const keys = new Set(queue.map(item => item.key));
 
-    fileName.textContent = `Selected: ${list[0].name || "selected file"}${list.length > 1 ? ` (+${list.length - 1} more)` : ''}`;
-
-    // Render Preview Thumbnail & Checkmark
-    const previewContainer = document.getElementById("uploadPreviewContainer");
-    const previewImage = document.getElementById("uploadPreviewImage");
-    if (previewContainer && previewImage) {
-      const firstFile = list.find(f => String(f.type || "").startsWith("image/"));
-      if (firstFile) {
-        const previewReader = new FileReader();
-        previewReader.onload = function (e) {
-          previewImage.src = e.target.result;
-          previewContainer.style.display = "flex";
-          previewContainer.classList.remove("preview-visible");
-          requestAnimationFrame(() => previewContainer.classList.add("preview-visible"));
-        };
-        previewReader.readAsDataURL(firstFile);
-      } else {
-        // Fallback for non-image files (e.g. ZIP)
-        previewImage.src = "/assets/logo.png";
-        previewContainer.style.display = "flex";
-        previewContainer.classList.remove("preview-visible");
-        requestAnimationFrame(() => previewContainer.classList.add("preview-visible"));
+    for (const file of list) {
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (!/^image\/(jpeg|png|webp)$/.test(String(file.type || "").toLowerCase())) {
+        rejected.push(`${file.name} - Unsupported file type.`);
+        continue;
+      }
+      if (Number(file.size || 0) > MAX_IMAGE_SIZE) {
+        rejected.push(`${file.name} - File exceeds 10 MB.`);
+        continue;
+      }
+      if (keys.has(key)) {
+        rejected.push(`${file.name} - Duplicate file.`);
+        continue;
+      }
+      try {
+        const item = await createQueueItem(file, key);
+        queue.push(item);
+        keys.add(key);
+      } catch {
+        rejected.push(`${file.name} - Image could not be read.`);
       }
     }
 
-    // Compress images asynchronously using canvas to fit localStorage limits
-    let loadedCount = 0;
-    const compressedList = [];
-    const imageFiles = list.filter(f => String(f.type || "").startsWith("image/"));
+    if (fileUpload) fileUpload.value = "";
+    if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (uploadBox) uploadBox.dataset.batchId = batchId;
+    setMessages(queue.length ? `${queue.length} image${queue.length === 1 ? "" : "s"} added.` : "None of the selected files could be added.", rejected);
+    renderQueue();
+  }
 
-    if (imageFiles.length === 0) {
-      showToast("Direct backend test supports one image file first.", "warning");
-      if (scanImageBtn) scanImageBtn.disabled = true;
+  function showDirectUploadLimit(count) {
+    setMessages(`You selected ${count} images. Direct upload supports up to 10 images. Upload the images as a ZIP file to process them together.`);
+    if (!messagesEl) return;
+    const actions = document.createElement("div");
+    actions.className = "upload-message-actions";
+    const uploadZip = document.createElement("button");
+    uploadZip.type = "button";
+    uploadZip.className = "secondary-btn";
+    uploadZip.textContent = "Upload ZIP";
+    uploadZip.addEventListener("click", () => zipUpload?.click());
+    const chooseFewer = document.createElement("button");
+    chooseFewer.type = "button";
+    chooseFewer.className = "text-btn";
+    chooseFewer.textContent = "Choose Fewer Images";
+    chooseFewer.addEventListener("click", () => fileUpload?.click());
+    actions.append(uploadZip, chooseFewer);
+    messagesEl.appendChild(actions);
+  }
+
+  async function processZipUpload(archive) {
+    if (isProcessing) return;
+    if (!archive || !/\.zip$/i.test(archive.name) || Number(archive.size || 0) > MAX_ZIP_SIZE) {
+      setMessages("ZIP upload failed. Choose a ZIP file no larger than 100 MB.");
+      if (zipUpload) zipUpload.value = "";
       return;
     }
 
-    plSelectedUploadFiles = [imageFiles[0]];
+    try {
+      const bytes = new Uint8Array(await archive.arrayBuffer());
+      const entries = inspectZipEntries(bytes);
+      const relevantEntries = entries.filter(entry => !entry.isDirectory && !isIgnoredZipEntry(entry.name));
+      if (relevantEntries.length > MAX_ZIP_ENTRIES) {
+        setMessages(`This ZIP contains ${relevantEntries.length} archive entries. The maximum ZIP archive is ${MAX_ZIP_ENTRIES} entries.`);
+        return;
+      }
 
-    imageFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        const img = new Image();
-        img.onload = function () {
-          const canvas = document.createElement("canvas");
-          const max_size = 400; // Low resolution resize (approx 15-20KB JPEGs)
-          let w = img.width;
-          let h = img.height;
-          if (w > h) {
-            if (w > max_size) {
-              h *= max_size / w;
-              w = max_size;
-            }
-          } else {
-            if (h > max_size) {
-              w *= max_size / h;
-              h = max_size;
-            }
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+      const supported = relevantEntries.filter(entry => isSupportedImageName(entry.name));
+      const extractedSize = supported.reduce((total, entry) => total + entry.originalSize, 0);
+      const oversized = supported.filter(entry => entry.originalSize > MAX_IMAGE_SIZE);
+      if (oversized.length || extractedSize > MAX_ZIP_EXTRACTED_SIZE) {
+        setMessages(
+          oversized.length ? "This ZIP contains an image above the 10 MB extracted image limit." : "This ZIP exceeds the 500 MB total extracted size limit.",
+          oversized.map(entry => `${entry.name} - File exceeds 10 MB.`)
+        );
+        return;
+      }
 
-          compressedList.push({
-            name: file.name || "uploaded-image",
-            size: Number(file.size || 0),
-            dataUrl: dataUrl,
-            resultAssetPath: ""
-          });
+      const extracted = await unzipArchive(bytes, new Set(supported.map(entry => entry.name)));
+      const rejected = relevantEntries
+        .filter(entry => !isSupportedImageName(entry.name))
+        .map(entry => `${entry.name} - Unsupported file type.`);
+      const keys = new Set(queue.map(item => item.key));
+      const stagedItems = [];
 
-          loadedCount++;
-          if (loadedCount === imageFiles.length) {
-            plSetJson(PL_UPLOADS_KEY, compressedList);
-            if (scanImageBtn) scanImageBtn.disabled = false;
-          }
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      for (const entry of supported) {
+        const data = extracted[entry.name];
+        if (!data || data.length !== entry.originalSize) {
+          rejected.push(`${entry.name} - Image could not be extracted.`);
+          continue;
+        }
+        const mimeType = imageMimeTypeFromBytes(data);
+        if (!mimeType) {
+          rejected.push(`${entry.name} - Image MIME type is invalid.`);
+          continue;
+        }
+        const key = `${archive.name}|${entry.name}|${entry.originalSize}|${archive.lastModified}`;
+        if (keys.has(key)) {
+          rejected.push(`${entry.name} - Duplicate file.`);
+          continue;
+        }
+        try {
+          const imageFile = new File([data], entry.name, { type: mimeType, lastModified: archive.lastModified });
+          stagedItems.push(await createQueueItem(imageFile, key));
+          keys.add(key);
+        } catch {
+          rejected.push(`${entry.name} - Image could not be read.`);
+        }
+      }
+
+      if (stagedItems.length > MAX_ZIP_IMAGES) {
+        stagedItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
+        setMessages(`This ZIP contains ${stagedItems.length} supported images. The maximum ZIP batch is 50 images. Reduce the archive and try again.`, rejected);
+        return;
+      }
+      if (queue.length + stagedItems.length > MAX_ZIP_IMAGES) {
+        stagedItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
+        setMessages(`This ZIP contains ${stagedItems.length} supported images, but the current queue can contain up to ${MAX_ZIP_IMAGES} images. Remove queued images and try again.`, rejected);
+        return;
+      }
+      queue.push(...stagedItems);
+
+      if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (uploadBox) uploadBox.dataset.batchId = batchId;
+      setMessages(
+        stagedItems.length <= MAX_BATCH_IMAGES
+          ? `This ZIP contains ${stagedItems.length} images. Direct image upload is recommended for batches of 10 or fewer.`
+          : `${stagedItems.length} ZIP image${stagedItems.length === 1 ? "" : "s"} added.`,
+        rejected
+      );
+      renderQueue();
+    } catch (error) {
+      setMessages(error?.message || "ZIP upload failed. Check the archive and try again.");
+    } finally {
+      if (zipUpload) zipUpload.value = "";
+    }
+  }
+
+  function isSupportedImageName(name) {
+    return /\.(jpe?g|png|webp)$/i.test(String(name || ""));
+  }
+
+  function isIgnoredZipEntry(entryPath) {
+    const normalized = String(entryPath || "").replace(/\\/g, "/");
+    const segments = normalized.split("/");
+    const baseName = segments[segments.length - 1];
+    return normalized.startsWith("__MACOSX/") ||
+      segments.includes("__MACOSX") ||
+      baseName.startsWith("._") ||
+      baseName === ".DS_Store" ||
+      baseName === "Thumbs.db" ||
+      segments.some(segment => segment.startsWith("."));
+  }
+
+  function imageMimeTypeFromBytes(data) {
+    if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
+    if (data.length >= 8 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47 && data[4] === 0x0d && data[5] === 0x0a && data[6] === 0x1a && data[7] === 0x0a) return "image/png";
+    if (data.length >= 12 && data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 && data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) return "image/webp";
+    return "";
+  }
+
+  function inspectZipEntries(bytes) {
+    let eocd = -1;
+    for (let index = Math.max(0, bytes.length - 65557); index <= bytes.length - 22; index += 1) {
+      if (bytes[index] === 0x50 && bytes[index + 1] === 0x4b && bytes[index + 2] === 0x05 && bytes[index + 3] === 0x06) eocd = index;
+    }
+    if (eocd < 0) throw new Error("ZIP archive could not be read.");
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const entryCount = view.getUint16(eocd + 10, true);
+    let cursor = view.getUint32(eocd + 16, true);
+    if (entryCount === 0xffff || cursor === 0xffffffff) throw new Error("ZIP64 archives are not supported.");
+    const entries = [];
+    for (let index = 0; index < entryCount; index += 1) {
+      if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error("ZIP archive has an invalid directory.");
+      const originalSize = view.getUint32(cursor + 24, true);
+      const nameLength = view.getUint16(cursor + 28, true);
+      const extraLength = view.getUint16(cursor + 30, true);
+      const commentLength = view.getUint16(cursor + 32, true);
+      const name = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
+      entries.push({ name, originalSize, isDirectory: name.endsWith("/") });
+      cursor += 46 + nameLength + extraLength + commentLength;
+    }
+    return entries;
+  }
+
+  function unzipArchive(bytes, acceptedNames) {
+    const unzip = window.__PURITYLOOP_ZIP__?.unzip;
+    if (!unzip) return Promise.reject(new Error("ZIP support is still loading. Try again."));
+    return new Promise((resolve, reject) => {
+      unzip(bytes, { filter: entry => acceptedNames.has(entry.name) }, (error, files) => {
+        if (error) reject(new Error("ZIP archive could not be extracted."));
+        else resolve(files || {});
+      });
     });
   }
+
+  async function createQueueItem(file, key) {
+    const previewUrl = URL.createObjectURL(file);
+    const image = new Image();
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = previewUrl;
+      });
+      return {
+        localId: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        key,
+        file,
+        previewUrl,
+        dataUrl: createResultPreview(image),
+        status: "ready",
+        errorMessage: "",
+        scanId: ""
+      };
+    } catch (error) {
+      URL.revokeObjectURL(previewUrl);
+      throw error;
+    }
+  }
+
+  function createResultPreview(image) {
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 400 / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+    canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return "";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.7);
+  }
+
+  function renderQueue() {
+    const hasItems = queue.length > 0;
+    plSelectedUploadFiles = queue.map(item => item.file);
+    if (fileName) fileName.textContent = hasItems ? `${queue.length} image${queue.length === 1 ? "" : "s"} selected` : "No images selected";
+    if (scanImageBtn) {
+      const readyCount = queue.filter(item => item.status === "ready").length;
+      scanImageBtn.disabled = isProcessing || !readyCount;
+      scanImageBtn.innerHTML = isProcessing
+        ? '<i class="fa-solid fa-spinner fa-spin"></i> Detecting Images'
+        : `<i class="fa-solid fa-magnifying-glass-chart"></i> Detect ${readyCount} Image${readyCount === 1 ? "" : "s"}`;
+    }
+    if (fileUpload) fileUpload.disabled = isProcessing;
+    if (zipUpload) zipUpload.disabled = isProcessing;
+    if (clearUploadBtn) clearUploadBtn.disabled = isProcessing || !hasItems;
+    if (!queueEl) return;
+    queueEl.innerHTML = "";
+    if (!hasItems) {
+      queueEl.innerHTML = '<p class="upload-queue-empty">No images selected.</p>';
+      return;
+    }
+    queue.forEach(item => {
+      const row = document.createElement("div");
+      row.className = `upload-queue-item status-${item.status}`;
+      const image = document.createElement("img");
+      image.src = item.previewUrl;
+      image.alt = "";
+      const details = document.createElement("div");
+      details.className = "upload-queue-details";
+      const name = document.createElement("strong");
+      name.textContent = item.file.name;
+      const meta = document.createElement("span");
+      meta.textContent = formatFileSize(item.file.size);
+      details.append(name, meta);
+      const status = document.createElement("span");
+      status.className = "upload-queue-status";
+      status.textContent = queueStatusLabel(item.status);
+      if (item.errorMessage) status.title = item.errorMessage;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "text-btn upload-queue-remove";
+      remove.textContent = "Remove";
+      remove.disabled = isProcessing || item.status === "processing";
+      remove.setAttribute("aria-label", `Remove ${item.file.name}`);
+      remove.addEventListener("click", () => removeQueueItem(item.localId));
+      row.append(image, details, status, remove);
+      queueEl.appendChild(row);
+    });
+  }
+
+  function queueStatusLabel(status) {
+    return ({ ready: "Ready", waiting: "Waiting", processing: "Analysing", completed: "Completed", review_needed: "Review Needed", failed: "Failed" })[status] || "Ready";
+  }
+
+  function setMessages(message, rejected = []) {
+    if (!messagesEl) return;
+    messagesEl.innerHTML = "";
+    const text = document.createElement("p");
+    text.textContent = message;
+    messagesEl.appendChild(text);
+    if (rejected.length) {
+      const list = document.createElement("ul");
+      rejected.forEach(item => {
+        const line = document.createElement("li");
+        line.textContent = item;
+        list.appendChild(line);
+      });
+      messagesEl.appendChild(list);
+    }
+  }
+
+  function removeQueueItem(localId) {
+    const item = queue.find(entry => entry.localId === localId);
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    queue = queue.filter(entry => entry.localId !== localId);
+    if (!queue.length) batchId = "";
+    renderQueue();
+  }
+
+  function clearQueue() {
+    if (isProcessing) return;
+    queue.forEach(item => URL.revokeObjectURL(item.previewUrl));
+    queue = [];
+    batchId = "";
+    if (uploadBox) delete uploadBox.dataset.batchId;
+    plSelectedUploadFiles = [];
+    plSetJson(PL_UPLOADS_KEY, []);
+    if (fileUpload) fileUpload.value = "";
+    if (batchSummaryEl) batchSummaryEl.hidden = true;
+    if (processingStatusEl) processingStatusEl.textContent = "";
+    setMessages("No images selected.");
+    renderQueue();
+  }
+
+  async function runBatch(items) {
+    if (isProcessing || !items.length) return;
+    const retrying = items.every(item => item.status === "failed");
+    isProcessing = true;
+    plHideUploadProgress();
+    if (batchSummaryEl) batchSummaryEl.hidden = true;
+    items.forEach(item => { item.status = "waiting"; item.errorMessage = ""; });
+    renderQueue();
+    if (uploadBox) uploadBox.classList.add("is-processing");
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      item.status = "processing";
+      if (processingStatusEl) processingStatusEl.textContent = `${retrying ? "Retrying" : "Processing"} ${index + 1} of ${items.length} images`;
+      renderQueue();
+      try {
+        const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
+        item.scanId = scan.id;
+        item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+      } catch (error) {
+        item.status = "failed";
+        item.errorMessage = error?.message || "The image could not be processed. Check the connection and try again.";
+      }
+      saveCompletedPreviewCache();
+      renderQueue();
+    }
+
+    isProcessing = false;
+    if (uploadBox) uploadBox.classList.remove("is-processing");
+    plHideUploadProgress();
+    if (processingStatusEl) processingStatusEl.textContent = "";
+    renderQueue();
+    renderBatchSummary();
+  }
+
+  function saveCompletedPreviewCache() {
+    plSetJson(PL_UPLOADS_KEY, queue
+      .filter(item => item.status === "completed" || item.status === "review_needed")
+      .map(item => ({ name: item.file.name, size: item.file.size, dataUrl: item.dataUrl, resultAssetPath: "" })));
+  }
+
+  function renderBatchSummary() {
+    if (!batchSummaryEl) return;
+    const completed = queue.filter(item => item.status === "completed").length;
+    const review = queue.filter(item => item.status === "review_needed").length;
+    const failed = queue.filter(item => item.status === "failed").length;
+    const firstScan = queue.find(item => item.scanId)?.scanId;
+    batchSummaryEl.hidden = false;
+    batchSummaryEl.innerHTML = "";
+    const summary = document.createElement("p");
+    summary.textContent = failed ? "Some images could not be processed." : review ? "Processing complete. Some detections require manager review." : "All images were processed successfully.";
+    batchSummaryEl.appendChild(summary);
+    const count = document.createElement("p");
+    count.textContent = `${completed} completed, ${review} require review, ${failed} failed`;
+    batchSummaryEl.appendChild(count);
+    if (firstScan) {
+      const view = document.createElement("button");
+      view.type = "button";
+      view.className = "primary-btn";
+      view.textContent = review ? "Review Results" : "View Results";
+      view.addEventListener("click", () => { window.location.href = `/result?scanId=${encodeURIComponent(firstScan)}`; });
+      batchSummaryEl.appendChild(view);
+    }
+    if (failed) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "secondary-btn";
+      retry.textContent = "Retry Failed Images";
+      retry.addEventListener("click", () => runBatch(queue.filter(item => item.status === "failed")));
+      batchSummaryEl.appendChild(retry);
+    }
+  }
+
+  window.addEventListener("beforeunload", () => queue.forEach(item => URL.revokeObjectURL(item.previewUrl)), { once: true });
 
   function createWebcamModalElements() {
     if (document.getElementById("webcamModal")) return;
@@ -1446,7 +1763,8 @@ function initResultPage() {
     if (itemsPurityEl) itemsPurityEl.textContent = "0%";
     const marketValueEl = document.getElementById("liveMarketValue");
     const reviewNeededEl = document.getElementById("liveReviewNeeded");
-    if (marketValueEl) marketValueEl.textContent = "No data";
+    const totalEstimatedResaleValueRm = boxes.reduce((sum, box) => sum + getEstimatedResaleValueRm(box.label), 0);
+    if (marketValueEl) marketValueEl.textContent = plFormatRm(totalEstimatedResaleValueRm);
     if (reviewNeededEl) reviewNeededEl.textContent = "No data";
     if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">No scan selected. Upload an image to generate results.</div>`;
     if (actionText) {
@@ -1541,9 +1859,8 @@ function initResultPage() {
     const reviewNeededEl = document.getElementById("liveReviewNeeded");
     if (marketValueEl) marketValueEl.textContent = "No data";
     if (reviewNeededEl) {
-      const lowConfidence = boxes.filter(box => plConfidencePercent(box.confidence) < 80).length;
-      const pendingStatus = activeScan.human_review_required || plNormalizeStatus(activeScan.overall_status) === "review_required";
-      const reviewCount = lowConfidence + (pendingStatus ? 1 : 0);
+      const pendingStatus = plScanNeedsReview(activeScan);
+      const reviewCount = boxes.filter(box => plConfidencePercent(box.confidence) < 80 || pendingStatus).length;
       reviewNeededEl.textContent = reviewCount ? `${reviewCount} item${reviewCount === 1 ? "" : "s"}` : "Clear";
     }
 
@@ -1617,6 +1934,8 @@ function initResultPage() {
       listContainer.style.marginBottom = "10px";
 
       boxes.forEach((box, index) => {
+        const material = activeScan?.detected_materials?.[index];
+        const reviewRequired = plConfidencePercent(box.confidence) < 80 || plScanNeedsReview(activeScan);
         const itemDiv = document.createElement("div");
         const estimatedWeightKg = getEstimatedWeightKg(box.label);
         const estimatedResaleValueRm = getEstimatedResaleValueRm(box.label);
@@ -1636,7 +1955,12 @@ function initResultPage() {
             <small>Estimated resale value: ${plFormatRm(estimatedResaleValueRm)}</small>
           </span>
           <b>${box.confidence}</b>
+          ${reviewRequired && material?.id ? `<div class="inline-review"><select aria-label="Correct ${box.label} category"><option>${plNormalizeCategory(material.category)}</option><option>Plastic</option><option>Metal</option><option>Glass</option><option>Paper</option><option>Cardboard</option><option>Food Organics</option><option>General Trash</option><option>Textile</option><option>Battery</option></select><div><button type="button" data-disposition="recyclable">Recyclable</button><button type="button" data-disposition="contaminant">Contaminant</button></div></div>` : ""}
         `;
+        itemDiv.querySelectorAll(".inline-review button").forEach(button => button.addEventListener("click", () => {
+          const chosenCategory = itemDiv.querySelector("select")?.value || material.category;
+          plSaveReview(activeScan, material, chosenCategory, button.dataset.disposition).then(() => window.location.reload()).catch(error => showToast(error.message, "error"));
+        }));
         listContainer.appendChild(itemDiv);
       });
       liveFeed.appendChild(listContainer);
@@ -1841,10 +2165,10 @@ function initReviewModal() {
   if (sectionTitle) sectionTitle.textContent = "Uploaded Image Ledger";
 
   const mainHeaderTitle = document.querySelector(".main-content h1");
-  if (mainHeaderTitle) mainHeaderTitle.textContent = "Human Review Logs";
+  if (mainHeaderTitle) mainHeaderTitle.textContent = "History";
 
   const mainHeaderDesc = document.querySelector(".main-content header p");
-  if (mainHeaderDesc) mainHeaderDesc.textContent = "Validate uploaded image results before they become final classification records.";
+  if (mainHeaderDesc) mainHeaderDesc.textContent = "Review recorded scans and their current decision status.";
 
   const ledgerSidebarNote = document.querySelector(".sidebar-note");
   if (ledgerSidebarNote) {
@@ -1862,6 +2186,9 @@ function initReviewModal() {
   // Pre-load reclassification controls inside the modal
   const snapshotItems = document.querySelector(".review-snapshot .snapshot-items");
   const modalActions = document.querySelector(".modal-actions");
+  const searchInput = document.getElementById("historySearch");
+  const dateInput = document.getElementById("historyDate");
+  const statusInput = document.getElementById("historyStatus");
 
   if (modalActions && !document.getElementById("reclassifySelect")) {
     // Inject custom reclassificaton dropdown
@@ -1896,16 +2223,23 @@ function initReviewModal() {
 
   function buildLedgerTable() {
     if (!tableBody) return;
-    const ledger = getAuditLedger();
+    const allLedger = getAuditLedger();
+    const ledger = allLedger.filter(log => {
+      const query = String(searchInput?.value || "").trim().toLowerCase();
+      const date = String(dateInput?.value || "");
+      const status = String(statusInput?.value || "");
+      const scan = plGetScanResultById(log.scanId);
+      return (!query || `${log.category} ${log.source}`.toLowerCase().includes(query)) && (!date || String(scan?.created_at || "").slice(0, 10) === date) && (!status || log.status === status);
+    });
     tableBody.innerHTML = "";
 
     const statusCards = document.querySelectorAll(".ops-status-card strong");
-    if (statusCards[0]) statusCards[0].textContent = String(ledger.filter(log => log.status === "Cleared").length);
-    if (statusCards[1]) statusCards[1].textContent = String(ledger.filter(log => log.status === "Review Needed").length);
-    if (statusCards[2]) statusCards[2].textContent = String(ledger.filter(log => log.status === "Quarantined").length);
+    if (statusCards[0]) statusCards[0].textContent = String(allLedger.filter(log => log.status === "Confirmed").length);
+    if (statusCards[1]) statusCards[1].textContent = String(allLedger.filter(log => log.status === "Review Needed").length);
+    if (statusCards[2]) statusCards[2].textContent = String(allLedger.filter(log => log.status === "Rejected").length);
 
     const reviewBadge = document.querySelector(".review-badge span");
-    if (reviewBadge) reviewBadge.textContent = `${ledger.filter(log => log.status === "Review Needed").length} pending`;
+    if (reviewBadge) reviewBadge.textContent = `${allLedger.filter(log => log.status === "Review Needed").length} review needed`;
 
     if (!ledger.length) {
       tableBody.innerHTML = `
@@ -1931,9 +2265,9 @@ function initReviewModal() {
 
       let statusPillClass = "cleared";
       let statusText = log.status;
-      if (log.status === "Quarantined" || log.status === "Quarantine Active" || log.status === "Quarantine") {
+      if (log.status === "Rejected") {
         statusPillClass = "quarantine";
-        statusText = "Quarantined";
+        statusText = "Rejected";
       } else if (log.status === "Review Needed") {
         statusPillClass = "review review-action";
       } else if (log.status.includes("Corrected") || log.status.includes("Verified")) {
@@ -1942,7 +2276,7 @@ function initReviewModal() {
 
       tr.innerHTML = `
         <td>${log.time}</td>
-        <td><button type="button" class="text-drill source-drill" data-station-detail="${sourceKey}">${sourceLabel}</button></td>
+        <td>${log.preview ? `<img class="history-thumb" src="${log.preview}" alt="Scan preview" />` : "No preview"}</td>
         <td><button type="button" class="text-drill" data-material-detail="${log.category}">${log.category}</button></td>
         <td>${log.weight}</td>
         <td class="${confidenceClass}">${log.confidence}</td>
@@ -2004,15 +2338,16 @@ function initReviewModal() {
 
         // Set matching sample item in review window
         if (snapshotItems) {
+          const activeScan = plGetScanResultById(activeLog.scanId);
           let categoryKey = activeLog.category.toLowerCase().replace(" ", "_");
           if (categoryKey === "food_organics" || categoryKey === "food") categoryKey = "food_organics";
           const itemMeta = detectionResults[categoryKey] || detectionResults.unknown;
 
           snapshotItems.innerHTML = `
-            <img src="${itemMeta.imageSrc}" alt="${activeLog.category}" style="max-height:90px; object-fit:contain;" />
+            <img src="${activeScan?.preview_image_url || activeScan?.image_url || itemMeta.imageSrc}" alt="${activeLog.category}" class="review-preview" />
             <div style="display:flex; flex-direction:column; gap:4px; font-size:13px; text-align:left;">
               <div><strong>Initial Prediction:</strong> ${activeLog.category}</div>
-              <div><strong>Upload Source:</strong> ${getLogSourceLabel(activeLog)}</div>
+              <div class="review-source"><strong>Upload Source:</strong> ${getLogSourceLabel(activeLog)}</div>
               <div><strong>Weight:</strong> ${activeLog.weight}</div>
               <div><strong>Confidence:</strong> ${activeLog.confidence}</div>
             </div>
@@ -2030,6 +2365,9 @@ function initReviewModal() {
       });
     });
   }
+
+  [searchInput, dateInput, statusInput].forEach(input => input?.addEventListener("input", buildLedgerTable));
+  statusInput?.addEventListener("change", buildLedgerTable);
 
   function closeModal() {
     modal.classList.remove("active");
@@ -2057,15 +2395,10 @@ function initReviewModal() {
         const reclassifySelect = document.getElementById("reclassifySelect");
         const chosenCategory = reclassifySelect ? reclassifySelect.value : activeLog.category;
 
-        if (chosenCategory !== activeLog.category) {
-          showToast("Category changes need a persisted review endpoint before they can be saved.", "warning");
-          closeModal();
-          return;
-        }
-        activeLog.status = "Verified (Cleared)";
-        saveAuditLedger(ledger);
-        buildLedgerTable();
-        showToast(`Record ${activeLog.id} verified and cleared.`, "success");
+        const scan = plGetScanResultById(activeLog.scanId);
+        plSaveReview(scan, scan?.detected_materials?.[0], chosenCategory, "recyclable")
+          .then(() => { buildLedgerTable(); showToast("Review saved as recyclable.", "success"); })
+          .catch(error => showToast(error.message, "error"));
       }
       closeModal();
     });
@@ -2081,10 +2414,11 @@ function initReviewModal() {
           closeModal();
           return;
         }
-        activeLog.status = "Quarantined";
-        saveAuditLedger(ledger);
-        buildLedgerTable();
-        showToast(`Record ${activeLog.id} flagged as contaminated and rejected.`, "error");
+        const scan = plGetScanResultById(activeLog.scanId);
+        const chosenCategory = document.getElementById("reclassifySelect")?.value || activeLog.category;
+        plSaveReview(scan, scan?.detected_materials?.[0], chosenCategory, "contaminant")
+          .then(() => { buildLedgerTable(); showToast("Review saved as contaminant.", "success"); })
+          .catch(error => showToast(error.message, "error"));
       }
       closeModal();
     });

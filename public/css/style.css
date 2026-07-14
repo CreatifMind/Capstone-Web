@@ -10840,6 +10840,177 @@ button:disabled,
   background: var(--status-processing);
 }
 
+.dark-app .upload-file-policy,
+.dark-app .upload-messages,
+.dark-app .batch-processing-status {
+  width: min(620px, 100%);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.dark-app .upload-file-policy {
+  margin: -4px 0 12px;
+}
+
+.dark-app .upload-zip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  cursor: pointer;
+}
+
+.dark-app .upload-messages:empty,
+.dark-app .batch-processing-status:empty {
+  display: none;
+}
+
+.dark-app .upload-messages p,
+.dark-app .upload-messages ul {
+  margin: 0 0 8px;
+}
+
+.dark-app .upload-messages ul {
+  padding-left: 18px;
+  text-align: left;
+}
+
+.dark-app .upload-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.dark-app .upload-queue {
+  width: min(620px, 100%);
+  max-height: 290px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.dark-app .upload-queue-empty {
+  margin: 0;
+  padding: 14px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.dark-app .upload-queue-item {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.dark-app .upload-queue-item img {
+  width: 52px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--surface-muted);
+}
+
+.dark-app .upload-queue-details {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.dark-app .upload-queue-details strong,
+.dark-app .upload-queue-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dark-app .upload-queue-details strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.dark-app .upload-queue-details span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.dark-app .upload-queue-status {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.dark-app .status-failed .upload-queue-status { color: var(--danger); }
+.dark-app .status-review_needed .upload-queue-status { color: var(--warning); }
+.dark-app .status-processing .upload-queue-status { color: var(--status-processing); }
+.dark-app .status-completed .upload-queue-status { color: var(--success); }
+
+.dark-app .upload-batch-actions,
+.dark-app .batch-summary {
+  width: min(620px, 100%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dark-app .upload-batch-actions .upload-scan-btn {
+  margin-top: 0;
+}
+
+.dark-app .batch-summary {
+  margin-top: 14px;
+  padding: 14px;
+  align-items: flex-start;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.dark-app .batch-summary[hidden] {
+  display: none !important;
+}
+
+.dark-app .batch-summary p {
+  width: 100%;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.dark-app .batch-summary > .primary-btn {
+  align-self: center;
+}
+
+@media (max-width: 640px) {
+  .dark-app .upload-queue-item {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+
+  .dark-app .upload-queue-item img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dark-app .upload-queue-status {
+    grid-column: 2;
+  }
+
+  .dark-app .upload-queue-remove {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
 /* Result */
 .dark-app .result-workbench {
   grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.8fr);
@@ -11725,4 +11896,52 @@ html[data-theme="light"] body[data-page="result"] .result-workbench .stream-pane
 html[data-theme="light"] body[data-page="result"] .result-workbench .stream-panel.bbox-card .recording-chip span:first-child {
   background: var(--primary) !important;
   box-shadow: 0 0 0 5px var(--primary-soft) !important;
+}
+
+/* Compact manager QA pass: data stays visible; decorative copy does not. */
+body[data-page="review-log"] .history-kpis { padding: 0 !important; background: transparent !important; }
+body[data-page="review-log"] .history-kpis,
+body[data-page="result"] .result-hero { grid-template-columns: minmax(0, 1fr) !important; }
+body[data-page="review-log"] .history-kpis .ops-status-stack { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 12px; }
+body[data-page="review-log"] .history-kpis .ops-status-card { min-height: 0; }
+body[data-page="review-log"] .ledger-shell { grid-template-columns: minmax(0, 1fr) !important; }
+body[data-page="review-log"] .ledger-command-panel { display: none !important; }
+.history-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.history-filters input, .history-filters select { min-height: 36px; border: 1px solid var(--border); border-radius: 6px; padding: 0 10px; color: var(--text-primary); background: var(--surface); }
+.history-thumb { width: 52px; height: 38px; object-fit: contain; display: block; border-radius: 4px; background: var(--surface-muted); }
+.review-preview { width: 100px; height: 90px; object-fit: contain; flex: 0 0 auto; }
+.review-snapshot .snapshot-items { color: var(--text-primary) !important; align-items: flex-start; overflow: visible; }
+.review-source { overflow-wrap: anywhere; word-break: break-word; }
+body[data-page="result"] .result-hero .ops-hero-copy { display: none; }
+body[data-page="result"] .result-hero { padding: 0 !important; background: transparent !important; }
+body[data-page="result"] .result-hero .ops-hero-metrics { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+body[data-page="result"] .estimate-method-note { display: none; }
+body[data-page="result"] .result-inspector { align-self: stretch; }
+body[data-page="result"] .detection-panel { height: 100%; display: flex; flex-direction: column; }
+body[data-page="result"] .live-feed { max-height: 380px; overflow: auto; padding-right: 4px; }
+.inline-review { width: 100%; margin-top: 8px; display: grid; gap: 6px; }
+.inline-review select { min-height: 34px; width: 100%; color: var(--text-primary); background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 0 8px; }
+.inline-review div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.inline-review button { border: 0; border-radius: 5px; min-height: 32px; font-weight: 700; cursor: pointer; }
+.inline-review button[data-disposition="recyclable"] { background: var(--primary); color: #fff; }
+.inline-review button[data-disposition="contaminant"] { background: var(--danger); color: #fff; }
+@media (max-width: 760px) { body[data-page="review-log"] .history-kpis .ops-status-stack, body[data-page="result"] .result-hero .ops-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .history-filters { width: 100%; } .history-filters input, .history-filters select { flex: 1 1 140px; } }
+
+/* Fill the KPI containers evenly; no unused desktop space. */
+body[data-page="result"] .result-hero .ops-hero-metrics > div,
+body[data-page="review-log"] .history-kpis .ops-status-stack > .ops-status-card { width: auto !important; min-width: 0 !important; }
+body[data-page="result"] .result-hero .ops-hero-metrics > div { display: flex; flex-direction: column; justify-content: center; }
+/* Upload actions are a single primary action with a secondary reset beneath it. */
+.dark-app .upload-batch-actions { flex-direction: column; justify-content: center; align-items: center; width: 100%; }
+.dark-app .upload-batch-actions .upload-scan-btn { width: auto; min-width: 180px; }
+.dark-app .upload-batch-actions #clearUploadBtn { width: auto; }
+@media (min-width: 761px) {
+  body[data-page="result"] .result-hero .ops-hero-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+  body[data-page="review-log"] .history-kpis .ops-status-stack { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  body[data-page="result"] .result-hero .ops-hero-metrics > div,
+  body[data-page="review-log"] .history-kpis .ops-status-stack > .ops-status-card { border-radius: 0; }
+  body[data-page="result"] .result-hero .ops-hero-metrics > div:first-child,
+  body[data-page="review-log"] .history-kpis .ops-status-stack > .ops-status-card:first-child { border-radius: 6px 0 0 6px; }
+  body[data-page="result"] .result-hero .ops-hero-metrics > div:last-child,
+  body[data-page="review-log"] .history-kpis .ops-status-stack > .ops-status-card:last-child { border-radius: 0 6px 6px 0; }
 }

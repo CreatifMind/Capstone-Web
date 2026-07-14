@@ -15,8 +15,8 @@ const html = `
             class="nav-item-icon fa-solid fa-cloud-arrow-up"></i><span class="nav-item-label">Upload</span></a>
         <a href="/result" class="nav-item" data-tooltip="Result"><i
             class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i><span class="nav-item-label">Result</span></a>
-        <a href="/log" class="nav-item" data-tooltip="Log"><i
-            class="nav-item-icon fa-solid fa-clipboard-check"></i><span class="nav-item-label">Log</span></a>
+        <a href="/log" class="nav-item" data-tooltip="History"><i
+            class="nav-item-icon fa-solid fa-clipboard-check"></i><span class="nav-item-label">History</span></a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics"><i
             class="nav-item-icon fa-solid fa-chart-line"></i><span class="nav-item-label">Analytics</span></a>
         <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket"><i
