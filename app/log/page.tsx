@@ -64,12 +64,13 @@ const html = `
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>History</h1>
-            <p>Review recorded scans and their current decision status.</p>
+            <h1>Audit Verification</h1>
+            <p>Review and manage scan history</p>
           </div>
         </div>
 
         <div class="topbar-right">
+          <button id="exportHistory" class="secondary-btn history-export" type="button"><i class="fa-solid fa-download" aria-hidden="true"></i> Export History</button>
           <div data-theme-slot="app"></div>
 
           <div class="date-pill">
@@ -90,37 +91,55 @@ const html = `
       </header>
 
       <div class="page-body">
-        <section class="ops-hero log-hero history-kpis">
+        <section class="ops-hero log-hero history-kpis" aria-label="Scan verification summary">
           <div class="ops-status-stack">
             <div class="ops-status-card cleared">
               <span>Confirmed</span>
-              <strong>0</strong>
-              <small>Confirmed scans</small>
+              <strong id="historyConfirmed">0</strong>
+              <small>Scans confirmed</small>
             </div>
             <div class="ops-status-card review">
               <span>Needs review</span>
-              <strong>0</strong>
+              <strong id="historyReviewCount">0</strong>
               <small>Requires attention</small>
             </div>
             <div class="ops-status-card quarantine">
               <span>Rejected</span>
-              <strong>0</strong>
+              <strong id="historyRejected">0</strong>
               <small>Rejected scans</small>
             </div>
+            <div class="ops-status-card processed"><span>Processed today</span><strong id="historyProcessedToday">0</strong><small>Scans uploaded</small></div>
           </div>
         </section>
 
-        <section class="ledger-shell">
+        <section class="history-action-banner" aria-labelledby="historyActionTitle">
+          <div class="history-banner-icon"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></div>
+          <div><h2 id="historyActionTitle">All scans are up to date</h2><p id="historyActionText">No unresolved classifications require attention.</p></div>
+          <div class="history-banner-actions"><button id="showReviewQueue" type="button" class="primary-btn">Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button><button id="showAllHistory" type="button" class="secondary-btn">View All History</button></div>
+        </section>
+
+        <section class="history-insights" aria-label="Quick Insights">
+          <h2>Quick Insights</h2>
+          <div class="history-insight-grid">
+            <article><i class="fa-solid fa-bullseye" aria-hidden="true"></i><div><span>Most frequent category</span><strong id="historyFrequentCategory">No scan data</strong><small id="historyFrequentCategoryMeta">-</small></div></article>
+            <article><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><div><span>Average confidence</span><strong id="historyAverageConfidence">No data</strong><small>Across all scans</small></div></article>
+            <article><i class="fa-solid fa-layer-group" aria-hidden="true"></i><div><span>Highest review category</span><strong id="historyReviewCategory">No review items</strong><small id="historyReviewCategoryMeta">-</small></div></article>
+            <article><i class="fa-regular fa-clock" aria-hidden="true"></i><div><span>Last upload</span><strong id="historyLastUpload">No recent uploads</strong><small id="historyLastUploadMeta">-</small></div></article>
+          </div>
+        </section>
+
+        <section class="ledger-shell history-ledger-layout">
           <section class="panel ledger-panel bbox-card">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Scan history</p>
-                <h2>Recorded scans</h2>
+                <h2>Scan History</h2>
+                <p class="history-subtitle">All uploaded scans and AI verification results</p>
               </div>
               <div class="history-filters" aria-label="History filters">
-                <input id="historySearch" type="search" placeholder="Search result" aria-label="Search result" />
+                <label class="sr-only" for="historySearch">Search scan history</label><input id="historySearch" type="search" placeholder="Search scans" />
                 <input id="historyDate" type="date" aria-label="Filter by date" />
-                <select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed</option><option>Rejected</option><option>Review Needed</option></select>
+                <select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed Recyclable</option><option>Confirmed Contaminant</option><option>Review Needed</option><option>Rejected</option></select>
               </div>
             </div>
 
@@ -128,130 +147,23 @@ const html = `
               <table class="ledger-table">
                 <thead>
                   <tr>
-                    <th>Timestamp</th>
-                    <th>Image</th>
-                    <th>Material</th>
+                    <th><button class="history-sort" type="button" data-sort="timestamp" aria-sort="descending">Timestamp <i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button></th>
+                    <th>Preview</th>
+                    <th>Category</th>
+                    <th>Class</th>
                     <th>Weight</th>
-                    <th>AI Confidence</th>
-                    <th>Status / Action</th>
+                    <th><button class="history-sort" type="button" data-sort="confidence" aria-sort="none">AI Confidence <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="ledgerTableBody">
-                  <tr class="skeleton-row">
-                    <td><div class="skeleton-cell" style="width: 70px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 150px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 80px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 60px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 50px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 90px;"></div></td>
-                  </tr>
-                  <tr class="skeleton-row">
-                    <td><div class="skeleton-cell" style="width: 65px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 130px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 85px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 55px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 45px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 85px;"></div></td>
-                  </tr>
-                  <tr class="skeleton-row">
-                    <td><div class="skeleton-cell" style="width: 75px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 145px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 75px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 65px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 48px;"></div></td>
-                    <td><div class="skeleton-cell" style="width: 95px;"></div></td>
-                  </tr>
+                  <tr class="skeleton-row"><td colspan="8"><div class="skeleton-cell" style="width: 100%;"></div></td></tr>
                 </tbody>
               </table>
             </div>
+            <div class="history-pagination" aria-label="Scan history pagination"><p id="historyRange" aria-live="polite">Showing 0 to 0 of 0 results</p><div id="historyPageButtons"></div></div>
           </section>
-        </section>
-
-        <section class="detail-dock" id="ledgerDrillDetails">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Drill-through</p>
-              <h2>Upload source and material diagnostics</h2>
-            </div>
-            <p class="detail-hint">Click an upload source or material type in the ledger to inspect confidence and
-              contamination context.</p>
-          </div>
-
-          <article class="panel detail-panel active belt-detail-output bbox-card" id="detail-belt">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Upload source</p>
-                <h2>Source: <span data-belt-id>Upload queue</span></h2>
-                <p class="detail-copy" data-belt-insight>Uploaded images are processed by the AI classifier, then passed
-                  into the review queue when confidence or contamination risk requires a human decision.</p>
-              </div>
-            </div>
-
-            <div class="detail-grid three">
-              <div class="metric-tile static"><span>Processing load</span><strong data-belt-load>On-demand</strong><small
-                  data-belt-capacity>Upload queue</small></div>
-              <div class="metric-tile static"><span>AI model</span><strong data-belt-speed>YOLOv8 active</strong><small
-                  data-belt-max-speed>Classification core</small></div>
-              <div class="metric-tile static"><span>Review action</span><strong
-                  data-belt-action>Ready</strong><small>Human validation enabled</small></div>
-            </div>
-
-            <div class="detail-grid two">
-              <div class="detail-card">
-                <h3>Upload diagnostics</h3>
-                <dl class="detail-list">
-                  <div>
-                    <dt>Input channel</dt>
-                    <dd data-belt-scanner>Web upload</dd>
-                  </div>
-                  <div>
-                    <dt>Compute state</dt>
-                    <dd data-belt-motor>Online</dd>
-                  </div>
-                  <div>
-                    <dt>File policy</dt>
-                    <dd data-belt-air>100 MB batch limit</dd>
-                  </div>
-                </dl>
-              </div>
-              <div class="detail-card">
-                <h3>Review reliability and material mix</h3>
-                <div class="bar-list compact" data-belt-uptime></div>
-                <div class="bar-list compact" data-belt-composition></div>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel detail-panel material-detail-output bbox-card" id="detail-material">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Material deep dive</p>
-                <h2><span data-material-title>Material</span> Details</h2>
-                <p data-material-subtitle class="detail-copy">Review the volume metrics, contamination risk, and trend
-                  signals for the selected material.</p>
-              </div>
-            </div>
-
-            <div class="detail-grid three">
-              <div class="metric-tile static"><span data-material-kpi-one>Total flagged</span><strong
-                  data-material-tonnage>0</strong><small>Current saved scans</small></div>
-              <div class="metric-tile static"><span data-material-kpi-two>Market value</span><strong
-                  data-material-value>$0</strong><small data-material-rate>Estimated</small></div>
-              <div class="metric-tile static"><span data-material-kpi-three>Risk rating</span><strong
-                  data-material-purity>Medium</strong><small data-material-status>Awaiting review</small></div>
-            </div>
-
-            <div class="detail-grid two">
-              <div class="detail-card">
-                <h3 data-material-trend-title>30-day trend</h3>
-                <div class="spark-bars" data-material-trend></div>
-              </div>
-              <div class="detail-card">
-                <h3 data-material-zone-title>Distribution by upload type</h3>
-                <div class="bar-list compact" data-material-zones></div>
-              </div>
-            </div>
-          </article>
         </section>
       </div>
     </main>
@@ -262,20 +174,22 @@ const html = `
       <button type="button" class="modal-close" id="closeReviewModal" aria-label="Close review modal">×</button>
 
       <h2 id="reviewTitle">AI Classification Review</h2>
-      <p id="reviewDescription">Confirm whether this classification is correct or manually override the waste category.
-      </p>
+      <div class="modal-body">
+        <p id="reviewDescription">Confirm whether this classification is correct or manually override the waste category.
+        </p>
 
-      <div class="review-snapshot">
-        <div class="snapshot-feed">
-          <span class="snapshot-live"></span>
-          <strong>LOW CONFIDENCE - HUMAN AUDIT REQUIRED</strong>
+        <div class="review-snapshot">
+          <div class="snapshot-feed">
+            <span class="snapshot-live"></span>
+            <strong>LOW CONFIDENCE - HUMAN AUDIT REQUIRED</strong>
+          </div>
+          <div class="snapshot-items"></div>
         </div>
-        <div class="snapshot-items"></div>
       </div>
 
       <div class="modal-actions">
         <button type="button" class="primary-btn" id="clearSegment">Verify result</button>
-        <button type="button" class="danger-btn" id="quarantineSegment">Reject as contaminated</button>
+        <button type="button" class="danger-btn" id="quarantineSegment">Reject result</button>
       </div>
     </div>
   </div>

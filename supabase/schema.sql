@@ -41,7 +41,11 @@ add column if not exists total_images integer,
 add column if not exists source_type text default 'image';
 
 alter table mock_scan_results
-add column if not exists preview_image_url text;
+add column if not exists image_url text,
+add column if not exists preview_image_url text,
+add column if not exists drive_file_id text,
+add column if not exists drive_file_name text,
+add column if not exists drive_web_url text;
 
 create table if not exists scan_review_decisions (
   id uuid primary key default gen_random_uuid(),
@@ -49,9 +53,14 @@ create table if not exists scan_review_decisions (
   detected_material_id uuid not null references mock_detected_materials(id) on delete cascade,
   chosen_category text not null,
   disposition text not null check (disposition in ('recyclable', 'contaminant')),
+  outcome text not null default 'confirmed' check (outcome in ('confirmed', 'rejected')),
   reviewer_email text,
   created_at timestamp with time zone default now()
 );
+
+alter table scan_review_decisions
+add column if not exists outcome text not null default 'confirmed'
+check (outcome in ('confirmed', 'rejected'));
 
 create index if not exists scan_review_decisions_scan_material_created_idx
   on scan_review_decisions (scan_result_id, detected_material_id, created_at desc);
@@ -70,6 +79,25 @@ create table if not exists detected_materials (
   bbox_height numeric,
   created_at timestamp with time zone default now()
 );
+
+-- Correct historical auto-review flags without touching reviewed, rejected, quarantined, or empty scans.
+update mock_scan_results as scan
+set
+  human_review_required = exists (
+    select 1 from mock_detected_materials material
+    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+  ),
+  overall_status = case when exists (
+    select 1 from mock_detected_materials material
+    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+  ) then 'review_required' else 'accepted' end,
+  recommended_action = case when exists (
+    select 1 from mock_detected_materials material
+    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+  ) then 'Human review required before sorting.' else 'Confirmed sorting routes applied.' end
+where lower(coalesce(scan.overall_status, '')) not in ('rejected', 'quarantined')
+  and exists (select 1 from mock_detected_materials material where material.scan_result_id = scan.id)
+  and not exists (select 1 from scan_review_decisions review where review.scan_result_id = scan.id);
 
 -- Google Drive stores uploaded files for the planned flow.
 -- Supabase stores file references, scan status, YOLOv8 result summaries, and detected material rows.

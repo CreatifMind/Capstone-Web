@@ -99,7 +99,7 @@ const html = `
           <article class="settings-card panel bbox-card">
             <p class="eyebrow">Review logic</p>
             <h2>Human-in-the-loop</h2>
-            <label class="settings-toggle"><span>Require review for contaminants</span><input type="checkbox" checked /></label>
+            <label class="settings-toggle"><span>Require review for low-confidence results</span><input type="checkbox" checked /></label>
             <label class="settings-toggle"><span>Auto-log clean recyclable scans</span><input type="checkbox" /></label>
             <label class="settings-toggle"><span>Escalate battery hazards</span><input type="checkbox" checked /></label>
           </article>

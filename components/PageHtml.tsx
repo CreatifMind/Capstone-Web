@@ -47,6 +47,7 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
     }
 
     return () => {
+      window.dispatchEvent(new CustomEvent("purityloop:page-cleanup"));
       if (firstFrame) window.cancelAnimationFrame(firstFrame);
       if (secondFrame) window.cancelAnimationFrame(secondFrame);
     };

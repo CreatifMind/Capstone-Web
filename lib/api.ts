@@ -45,6 +45,11 @@ function normalizeDetectedMaterials(value: unknown): DetectedMaterial[] {
     confidence: toFiniteNumber(material.confidence),
     recyclable_status: material.recyclable_status || "Unknown",
     contaminant_status: material.contaminant_status || "Unknown",
+    material_class: material.material_class,
+    decision_status: material.decision_status,
+    review_required: material.review_required,
+    display_status: material.display_status,
+    disposal_route: material.disposal_route,
     bbox_x: toFiniteNumber(material.bbox_x),
     bbox_y: toFiniteNumber(material.bbox_y),
     bbox_width: toFiniteNumber(material.bbox_width),
@@ -61,6 +66,8 @@ function normalizeScanResult(value: unknown): ScanResult | null {
     id: candidate.id,
     image_url: candidate.image_url || "",
     preview_image_url: candidate.preview_image_url || "",
+    drive_file_id: candidate.drive_file_id || "",
+    drive_web_url: candidate.drive_web_url || "",
     source_name: candidate.source_name || "",
     overall_status: candidate.overall_status || "Unknown",
     contamination_risk: candidate.contamination_risk || "Unknown",
@@ -149,6 +156,8 @@ export async function saveScanResult(result: Partial<ScanResult>) {
       .insert({
         image_url: payload.image_url,
         preview_image_url: payload.preview_image_url,
+        drive_file_id: payload.drive_file_id,
+        drive_web_url: payload.drive_web_url,
         overall_status: payload.overall_status,
         contamination_risk: payload.contamination_risk,
         recommended_action: payload.recommended_action,
@@ -240,7 +249,7 @@ export async function getAnalyticsData() {
       contaminantStatus === "contaminated" ||
       recyclableStatus === "contaminated";
   }).length;
-  const reviewRequired = logs.filter(log => log.human_review_required || normalizeStatus(log.overall_status) === "review_required").length;
+  const reviewRequired = materials.filter(material => confidencePercent(material.confidence) < 85).length;
   const materialConfidences = materials.map(material => confidencePercent(material.confidence)).filter(value => value > 0);
   const scanConfidences = logs.map(item => confidencePercent(item.overall_confidence)).filter(value => value > 0);
   const averageConfidence = materialConfidences.length
@@ -256,7 +265,9 @@ export async function getAnalyticsData() {
     nonRecyclableCount: Math.max(materials.length - recyclable, 0),
     reviewRequired,
     contaminationCount: contaminated,
-    recyclableRecoveryRate: materials.length ? (recyclable / materials.length) * 100 : 0,
+    recyclableRecoveryRate: materials.filter(material => confidencePercent(material.confidence) >= 85).length
+      ? (materials.filter(material => confidencePercent(material.confidence) >= 85 && normalizeStatus(material.recyclable_status) === "recyclable").length / materials.filter(material => confidencePercent(material.confidence) >= 85).length) * 100
+      : 0,
     contaminationRate: materials.length ? (contaminated / materials.length) * 100 : 0,
     averageConfidence
   };
