@@ -432,18 +432,6 @@ class ReviewDecisionInput(BaseModel):
     reviewer_email: str | None = None
 
 
-def review_status(scan: dict, materials: list[dict], decisions: list[dict]) -> dict:
-    latest = {}
-    for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
-        latest[str(decision.get("detected_material_id", ""))] = decision
-    if any(str(item.get("outcome") or "confirmed") == "rejected" for item in latest.values()):
-        return {"overall_status": "rejected", "human_review_required": False, "recommended_action": "Rejected after operator review."}
-    qualifying = [item for item in materials if float(item.get("confidence") or 0) < CONFIRMATION_THRESHOLD]
-    if qualifying and all(str(item.get("id")) in latest for item in qualifying):
-        return {"overall_status": "confirmed", "human_review_required": False, "recommended_action": "Confirmed after operator review."}
-    return {"overall_status": "review_required", "human_review_required": True, "recommended_action": "Human review required before sorting."}
-
-
 @app.get("/api/health")
 def health():
     return {"ok": True}
@@ -485,15 +473,23 @@ def create_review(decision: ReviewDecisionInput):
             "outcome": outcome,
             "reviewer_email": decision.reviewer_email,
         }).execute()
-        materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
-        decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", decision.scan_result_id).execute().data or []
-        next_status = review_status(scan_response.data[0], materials, decisions)
-        supabase.table(SCAN_RESULTS_TABLE).update(next_status).eq("id", decision.scan_result_id).execute()
+        scan_update = {
+            "overall_status": "verified" if action == "verify" else "rejected",
+            "human_review_required": False,
+            "recommended_action": "Verified after operator review." if action == "verify" else "Rejected after operator review.",
+            "review_status": "verified" if action == "verify" else "rejected",
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if action == "verify":
+            scan_update["verified_category"] = category
+        updated_scan_response = supabase.table(SCAN_RESULTS_TABLE).update(scan_update).eq("id", decision.scan_result_id).execute()
+        if not updated_scan_response.data:
+            raise HTTPException(status_code=500, detail="Review was saved, but the scan result status could not be updated.")
         return {
             "decision": inserted.data[0] if inserted.data else None,
             "material": updated_material,
-            "review_status": "verified" if action == "verify" else "rejected",
-            **next_status,
+            "scan_result": updated_scan_response.data[0],
+            **updated_scan_response.data[0],
         }
     except HTTPException:
         raise

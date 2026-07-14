@@ -45,7 +45,10 @@ add column if not exists image_url text,
 add column if not exists preview_image_url text,
 add column if not exists drive_file_id text,
 add column if not exists drive_file_name text,
-add column if not exists drive_web_url text;
+add column if not exists drive_web_url text,
+add column if not exists review_status text,
+add column if not exists verified_category text,
+add column if not exists reviewed_at timestamp with time zone;
 
 alter table mock_detected_materials
 add column if not exists original_category text;

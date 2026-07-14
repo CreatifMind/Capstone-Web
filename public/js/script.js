@@ -119,22 +119,24 @@ function plCategoryKey(value) {
   return "unknown";
 }
 
-function plEvaluateMaterial(material) {
+function plEvaluateMaterial(material, scan = {}) {
   const decision = material?.review_decision;
   const category = plCategoryKey(decision?.chosen_category || material?.category || material?.material_name);
   const materialClass = ["recyclable", "contaminant"].includes(decision?.disposition) ? decision.disposition : (["recyclable", "contaminant"].includes(material?.material_class) ? material.material_class : (PL_CATEGORY_CLASS_MAP[category] || "unknown"));
   const confidence = plConfidencePercent(material?.confidence);
   const reviewOutcome = plNormalizeStatus(decision?.outcome || decision?.review_outcome || "confirmed");
-  const rejected = Boolean(decision) && reviewOutcome === "rejected";
-  const reviewRequired = !decision && (confidence < PL_CONFIRMATION_THRESHOLD || materialClass === "unknown");
+  const scanReviewStatus = plNormalizeStatus(scan?.review_status || scan?.overall_status);
+  const verified = scanReviewStatus === "verified";
+  const rejected = scanReviewStatus === "rejected" || (Boolean(decision) && reviewOutcome === "rejected");
+  const reviewRequired = !verified && !rejected && !decision && (confidence < PL_CONFIRMATION_THRESHOLD || materialClass === "unknown");
   return {
     category,
     materialClass,
     confidence,
     reviewRequired,
     reviewOutcome,
-    decisionStatus: rejected ? "rejected" : reviewRequired ? "review_needed" : "confirmed",
-    displayStatus: rejected ? "Rejected" : reviewRequired ? "Review Needed" : materialClass === "recyclable" ? "Confirmed Recyclable" : materialClass === "contaminant" ? "Confirmed Contaminant" : "Review Needed",
+    decisionStatus: rejected ? "rejected" : verified ? "verified" : reviewRequired ? "review_needed" : "confirmed",
+    displayStatus: rejected ? "Rejected" : verified ? "Verified" : reviewRequired ? "Review Needed" : materialClass === "recyclable" ? "Confirmed Recyclable" : materialClass === "contaminant" ? "Confirmed Contaminant" : "Review Needed",
     disposalRoute: reviewRequired || materialClass === "unknown" ? "Manual Audit Queue" : PL_CATEGORY_ROUTES[category]
   };
 }
@@ -216,6 +218,9 @@ function plNormalizeScan(scan) {
     recommended_action: scan.recommended_action || "Human review recommended before sorting.",
     human_review_required: Boolean(scan.human_review_required),
     overall_confidence: Number(scan.overall_confidence || 0),
+    review_status: scan.review_status || null,
+    verified_category: scan.verified_category || null,
+    reviewed_at: scan.reviewed_at || null,
     created_at: scan.created_at || new Date().toISOString(),
     detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
   };
@@ -234,7 +239,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
     Authorization: `Bearer ${config.supabaseAnonKey}`
   };
   try {
-    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_type,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
+    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_type,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence,review_status,verified_category,reviewed_at";
     const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
     if (!scansResponse.ok) {
       const error = await scansResponse.json().catch(() => ({}));
@@ -369,7 +374,7 @@ function plFormatScanTime(scan) {
 }
 
 function plScanToLedger(scan, material = {}, index = 0) {
-  const decision = plEvaluateMaterial(material);
+  const decision = plEvaluateMaterial(material, scan);
   return {
     id: `${scan.id}:${material.id || index}`,
     scanId: scan.id,
@@ -427,6 +432,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   if (!response.ok) throw new Error(response.status === 404 ? "The scan or detected material no longer exists in Supabase." : (payload.detail || "Unable to save review."));
   const updatedScan = plNormalizeScan({
     ...persistedScan,
+    ...payload.scan_result,
     overall_status: payload.overall_status || persistedScan.overall_status,
     human_review_required: typeof payload.human_review_required === "boolean" ? payload.human_review_required : persistedScan.human_review_required,
     recommended_action: payload.recommended_action || persistedScan.recommended_action,
@@ -438,7 +444,9 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
     } : item)
   });
   if (updatedScan) plSaveScanResult(updatedScan);
-  await plRefreshScanResultsFromSupabase();
+  if (!await plRefreshScanResultsFromSupabase()) {
+    throw new Error("Review saved, but the updated scan history could not be refreshed.");
+  }
   return { ...payload, scan: updatedScan };
 }
 
@@ -2530,7 +2538,7 @@ function initReviewModal() {
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     state.page = Math.min(state.page, totalPages);
     const visible = rows.slice((state.page - 1) * pageSize, state.page * pageSize);
-    tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
+    tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
     const start = rows.length ? (state.page - 1) * pageSize + 1 : 0;
     if (range) range.textContent = `Showing ${start} to ${Math.min(state.page * pageSize, rows.length)} of ${rows.length} results`;
     if (pageButtons) pageButtons.innerHTML = Array.from({ length: totalPages }, (_, index) => `<button type="button" class="${state.page === index + 1 ? "active" : ""}" data-page="${index + 1}" aria-label="Page ${index + 1}" ${state.page === index + 1 ? 'aria-current="page"' : ""}>${index + 1}</button>`).join("");
