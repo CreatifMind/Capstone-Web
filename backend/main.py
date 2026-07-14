@@ -500,6 +500,34 @@ def create_review(decision: ReviewDecisionInput):
         raise HTTPException(status_code=500, detail="Unable to save review. Check the backend Supabase configuration.") from exc
 
 
+@app.get("/api/scans")
+def get_scan_history():
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    try:
+        scans = supabase.table(SCAN_RESULTS_TABLE).select("*").order("created_at", desc=True).execute().data or []
+        materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").execute().data or []
+        decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").execute().data or []
+        latest_decisions = {}
+        for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+            latest_decisions[str(decision.get("detected_material_id", ""))] = decision
+        materials_by_scan = {}
+        for material in materials:
+            materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
+                **material,
+                "review_decision": latest_decisions.get(str(material.get("id", ""))),
+            })
+        return {
+            "scans": [
+                {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
+                for scan in scans
+            ]
+        }
+    except Exception as exc:
+        print(f"[scans] Supabase history fetch failed: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="Unable to load scan history.") from exc
+
+
 @app.get("/api/scans/{scan_result_id}")
 def get_scan_result(scan_result_id: str):
     """Return the persisted material IDs needed to review a previously loaded scan."""

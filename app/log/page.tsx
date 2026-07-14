@@ -139,7 +139,7 @@ const html = `
               <div class="history-filters" aria-label="History filters">
                 <label class="sr-only" for="historySearch">Search scan history</label><input id="historySearch" type="search" placeholder="Search scans" />
                 <input id="historyDate" type="date" aria-label="Filter by date" />
-                <select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed Recyclable</option><option>Confirmed Contaminant</option><option>Review Needed</option><option>Rejected</option></select>
+                <select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed Recyclable</option><option>Confirmed Contaminant</option><option>Review Needed</option><option>Verified</option><option>Rejected</option></select>
               </div>
             </div>
 

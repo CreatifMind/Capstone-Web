@@ -49,11 +49,6 @@ function plConfig() {
   return window.__PURITYLOOP_CONFIG__ || {};
 }
 
-function plUseSupabase() {
-  const config = plConfig();
-  return Boolean(config.useSupabase && config.supabaseUrl && config.supabaseAnonKey);
-}
-
 function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
 }
@@ -228,56 +223,34 @@ function plNormalizeScan(scan) {
 
 async function plRefreshScanResultsFromSupabase(options = {}) {
   const isCurrent = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
-  if (!plUseSupabase()) {
-    if (plConfig().useSupabase) console.error("PurityLoop: Supabase config missing.");
+  const apiBase = plApiBaseUrl();
+  if (!apiBase) {
+    console.error("PurityLoop: backend API base URL is missing for scan history refresh.");
     return false;
   }
-  const config = plConfig();
-  const baseUrl = String(config.supabaseUrl).replace(/\/$/, "");
-  const headers = {
-    apikey: config.supabaseAnonKey,
-    Authorization: `Bearer ${config.supabaseAnonKey}`
-  };
   try {
-    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_type,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence,review_status,verified_category,reviewed_at";
-    const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
-    if (!scansResponse.ok) {
-      const error = await scansResponse.json().catch(() => ({}));
-      console.error({ message: error.message || "PurityLoop: mock_scan_results fetch failed.", details: error.details, hint: error.hint, code: error.code || scansResponse.status });
+    const response = await fetch(`${apiBase}/api/scans`);
+    const body = await response.text();
+    if (!response.ok) {
+      console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
       return false;
     }
-
-    const materialsResponse = await fetch(`${baseUrl}/rest/v1/mock_detected_materials?select=*`, { headers });
-    if (!materialsResponse.ok) {
-      console.error("PurityLoop: mock_detected_materials fetch failed.", materialsResponse.status, await materialsResponse.text());
+    const payload = plSafeJsonParse(body, null);
+    const scansPayload = Array.isArray(payload) ? payload : payload?.scans;
+    if (!Array.isArray(scansPayload)) {
+      console.error("PurityLoop: scan history refresh returned an unexpected payload.", { status: response.status, body });
       return false;
     }
-
-    const reviewsResponse = await fetch(`${baseUrl}/rest/v1/scan_review_decisions?select=*`, { headers });
-    const scansPayload = plSafeArray(await scansResponse.json()).map(scan => ({ ...scan, source_name: scan.source_type }));
-    const materialsPayload = await materialsResponse.json();
-    const reviewsPayload = reviewsResponse.ok ? await reviewsResponse.json() : [];
-    const latestReviews = plSafeArray(reviewsPayload).reduce((acc, review) => {
-      const key = String(review.detected_material_id || "");
-      if (!key || !acc[key] || String(acc[key].created_at || "") < String(review.created_at || "")) acc[key] = review;
-      return acc;
-    }, {});
-    const groupedMaterials = plSafeArray(materialsPayload).reduce((acc, material) => {
-      const scanResultId = String(material.scan_result_id || "");
-      if (!scanResultId) return acc;
-      acc[scanResultId] = acc[scanResultId] || [];
-      acc[scanResultId].push({ ...material, review_decision: latestReviews[String(material.id || "")] || null });
-      return acc;
-    }, {});
-    const scans = plSafeArray(scansPayload)
-      .map(scan => ({ ...scan, detected_materials: groupedMaterials[String(scan.id || "")] || [] }))
+    const scans = scansPayload
+      .map(scan => ({ ...scan, source_name: scan.source_name || scan.source_type }))
       .map(plNormalizeScan)
       .filter(Boolean);
-    if (!isCurrent()) return false;
+    if (!isCurrent()) return true;
     plSetScanResults(scans);
+    window.dispatchEvent(new Event("purityloop:scan-history-refreshed"));
     return true;
   } catch (error) {
-    console.error("PurityLoop: Supabase scan refresh failed.", error);
+    console.error("PurityLoop: scan history refresh request failed.", error);
     return false;
   }
 }
@@ -433,6 +406,8 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   const updatedScan = plNormalizeScan({
     ...persistedScan,
     ...payload.scan_result,
+    review_status: payload.scan_result?.review_status || (action === "verify" ? "verified" : "rejected"),
+    verified_category: payload.scan_result?.verified_category || (action === "verify" ? chosenCategory : persistedScan.verified_category),
     overall_status: payload.overall_status || persistedScan.overall_status,
     human_review_required: typeof payload.human_review_required === "boolean" ? payload.human_review_required : persistedScan.human_review_required,
     recommended_action: payload.recommended_action || persistedScan.recommended_action,
@@ -444,9 +419,6 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
     } : item)
   });
   if (updatedScan) plSaveScanResult(updatedScan);
-  if (!await plRefreshScanResultsFromSupabase()) {
-    throw new Error("Review saved, but the updated scan history could not be refreshed.");
-  }
   return { ...payload, scan: updatedScan };
 }
 
@@ -2555,9 +2527,11 @@ function initReviewModal() {
   document.getElementById("closeReviewModal")?.addEventListener("click", closeModal);
   modal.addEventListener("click", event => { if (!isSaving && event.target === modal) closeModal(); });
   document.addEventListener("keydown", onModalKeydown);
+  window.addEventListener("purityloop:scan-history-refreshed", render);
   window.addEventListener("purityloop:page-cleanup", () => {
     unlockPageScroll();
     document.removeEventListener("keydown", onModalKeydown);
+    window.removeEventListener("purityloop:scan-history-refreshed", render);
   }, { once: true });
   async function saveReview(outcome, message) {
     if (!activeLog || isSaving) return;
@@ -2570,6 +2544,9 @@ function initReviewModal() {
       closeModal(true);
       render();
       showToast(message, "success");
+      void plRefreshScanResultsFromSupabase().then(refreshed => {
+        if (!refreshed) showToast("Review saved. History refresh failed—retry or reload the page.", "warning");
+      });
     } catch (error) {
       showToast(error.message, "error");
     } finally {
