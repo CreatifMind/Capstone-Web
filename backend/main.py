@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
+from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -425,8 +426,8 @@ def summarize(materials: list[dict]) -> dict:
 
 
 class ReviewDecisionInput(BaseModel):
-    scan_result_id: str
-    detected_material_id: str
+    scan_result_id: UUID
+    detected_material_id: UUID
     action: str
     manual_category: str | None = None
     reviewer_email: str | None = None
@@ -441,12 +442,25 @@ def health():
 def create_review(decision: ReviewDecisionInput):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    review_payload = {
+        "scan_result_id": str(decision.scan_result_id),
+        "detected_material_id": str(decision.detected_material_id),
+        "action": decision.action,
+        "manual_category": decision.manual_category,
+        "reviewer_email": decision.reviewer_email,
+    }
+    print(f"[review] incoming payload: {review_payload}")
     action = str(decision.action or "").strip().lower()
     if action not in {"verify", "reject"}:
         raise HTTPException(status_code=400, detail="Review action must be 'verify' or 'reject'.")
     try:
-        scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", decision.scan_result_id).execute()
-        material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
+        scan_result_id = str(decision.scan_result_id)
+        detected_material_id = str(decision.detected_material_id)
+        print(f"[review] action={action} scan_result_id={scan_result_id} selected_category={decision.manual_category}")
+        print(f"[review] selecting {SCAN_RESULTS_TABLE} where id={scan_result_id}")
+        scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id).execute()
+        print(f"[review] selecting {DETECTED_MATERIALS_TABLE} where id={detected_material_id}, scan_result_id={scan_result_id}")
+        material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", detected_material_id).eq("scan_result_id", scan_result_id).execute()
         if not scan_response.data or not material_response.data:
             raise HTTPException(status_code=404, detail="Scan result or detected material was not found.")
 
@@ -455,24 +469,28 @@ def create_review(decision: ReviewDecisionInput):
         disposition = CATEGORY_CLASS_MAP.get(category)
         if category == "unknown" or disposition not in {"recyclable", "contaminant"}:
             raise HTTPException(status_code=400, detail="Manual category is not supported.")
+        print(f"[review] resolved category={category} disposition={disposition}")
 
         updated_material = material
         if action == "verify" and category != material.get("category"):
             material_update = {"category": category}
             if not material.get("original_category"):
                 material_update["original_category"] = material.get("category")
-            update_response = supabase.table(DETECTED_MATERIALS_TABLE).update(material_update).eq("id", decision.detected_material_id).eq("scan_result_id", decision.scan_result_id).execute()
+            print(f"[review] updating {DETECTED_MATERIALS_TABLE}: {material_update}")
+            update_response = supabase.table(DETECTED_MATERIALS_TABLE).update(material_update).eq("id", detected_material_id).eq("scan_result_id", scan_result_id).execute()
             updated_material = update_response.data[0] if update_response.data else {**material, **material_update}
 
         outcome = "confirmed" if action == "verify" else "rejected"
-        inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert({
-            "scan_result_id": decision.scan_result_id,
-            "detected_material_id": decision.detected_material_id,
+        decision_insert = {
+            "scan_result_id": scan_result_id,
+            "detected_material_id": detected_material_id,
             "chosen_category": category,
             "disposition": disposition,
             "outcome": outcome,
             "reviewer_email": decision.reviewer_email,
-        }).execute()
+        }
+        print(f"[review] inserting {REVIEW_DECISIONS_TABLE}: {decision_insert}")
+        inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert(decision_insert).execute()
         scan_update = {
             "overall_status": "verified" if action == "verify" else "rejected",
             "human_review_required": False,
@@ -482,7 +500,8 @@ def create_review(decision: ReviewDecisionInput):
         }
         if action == "verify":
             scan_update["verified_category"] = category
-        updated_scan_response = supabase.table(SCAN_RESULTS_TABLE).update(scan_update).eq("id", decision.scan_result_id).execute()
+        print(f"[review] updating {SCAN_RESULTS_TABLE}: {scan_update}")
+        updated_scan_response = supabase.table(SCAN_RESULTS_TABLE).update(scan_update).eq("id", scan_result_id).execute()
         if not updated_scan_response.data:
             raise HTTPException(status_code=500, detail="Review was saved, but the scan result status could not be updated.")
         return {
@@ -494,9 +513,13 @@ def create_review(decision: ReviewDecisionInput):
     except HTTPException:
         raise
     except Exception as exc:
+        traceback.print_exc()
         print(f"[review] Supabase update failed: {safe_error_message(exc)}")
-        if getattr(exc, "code", "") == "PGRST205":
-            raise HTTPException(status_code=500, detail="Supabase review schema is missing. Apply the review migration, then retry.") from exc
+        detail = safe_error_message(exc)
+        if getattr(exc, "code", "") in {"PGRST205", "42703"}:
+            detail = f"Supabase review schema is missing or outdated: {detail}"
+        if os.getenv("ENVIRONMENT", "development").lower() in {"development", "dev", "local"}:
+            raise HTTPException(status_code=500, detail=detail) from exc
         raise HTTPException(status_code=500, detail="Unable to save review. Check the backend Supabase configuration.") from exc
 
 
