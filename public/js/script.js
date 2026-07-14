@@ -1499,7 +1499,9 @@ function initUploadPage() {
   }
 
   function renderUploadStats() {
-    const ready = queue.filter(item => item.status === "ready").length;
+    // Completed files remain valid in the batch; count them in the displayed
+    // ready total without making them eligible for another detection run.
+    const ready = queue.filter(item => item.status === "ready" || item.status === "completed").length;
     const review = queue.filter(item => item.status === "review_needed").length;
     const failed = queue.filter(item => item.status === "failed").length;
     const total = queue.length + rejectedItems.length;

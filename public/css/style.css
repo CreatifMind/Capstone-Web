@@ -12556,6 +12556,24 @@ body[data-page="upload"] .upload-queue-card .batch-summary {
   border-top: 1px solid color-mix(in srgb, var(--status-success) 34%, var(--border));
 }
 body[data-page="upload"] .batch-summary-card { align-self: start; }
+body[data-page="upload"] .upload-messages {
+    display: grid;
+    width: 100%;
+    justify-items: center;
+    text-align: center;
+}
+
+body[data-page="upload"] .upload-messages p {
+    width: 100%;
+    text-align: center;
+}
+body[data-page="upload"] .batch-summary {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+body[data-page="upload"] .batch-summary-copy { justify-items: center; text-align: center; }
 @media (max-width: 1180px) {
   body[data-page="upload"] .upload-workspace {
     grid-template-columns: 1fr;
