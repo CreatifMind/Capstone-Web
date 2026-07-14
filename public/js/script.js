@@ -3612,31 +3612,48 @@ function animateProgressBars() {
   });
 }
 
+function plRevealPageFallback() {
+  document.body.classList.remove("page-loading", "page-leaving");
+  document.body.classList.add("page-loaded");
+}
+
+async function plRunAppInit(name, init) {
+  try {
+    return await init();
+  } catch (error) {
+    console.error(`PurityLoop: ${name} failed.`, error);
+    plRevealPageFallback();
+    return null;
+  }
+}
+
 /* Page Navigation Match & Trigger */
 async function initPurityLoopApp() {
-  // Navigation terminology updates across all files
-  const sideLinks = document.querySelectorAll(".side-nav a");
-  sideLinks.forEach(link => {
-    const text = link.textContent.trim();
-    if (text === "Live AI Stream") {
-      link.textContent = "Classification Result";
-    } else if (text === "Review Logs") {
-      link.textContent = "Verification Logs";
-    } else if (text === "Analytics & Reports") {
-      link.textContent = "Operations Dashboard";
-    }
+  await plRunAppInit("navigation label init", () => {
+    const sideLinks = document.querySelectorAll(".side-nav a");
+    sideLinks.forEach(link => {
+      const text = link.textContent.trim();
+      if (text === "Live AI Stream") {
+        link.textContent = "Classification Result";
+      } else if (text === "Review Logs") {
+        link.textContent = "Verification Logs";
+      } else if (text === "Analytics & Reports") {
+        link.textContent = "Operations Dashboard";
+      }
+    });
   });
 
-  initPasswordToggle();
+  await plRunAppInit("password toggle init", initPasswordToggle);
   // initMobileNav(); // Handled by theme.js
-  animateProgressBars();
-  await plRefreshScanResultsFromSupabase();
-  initUploadPage();
-  initResultPage();
-  initSubmitTicketPage();
-  initReviewModal();
-  initAnalyticsCharts();
-  initDrillThrough();
+  await plRunAppInit("progress bar init", animateProgressBars);
+  await plRunAppInit("Supabase scan refresh", plRefreshScanResultsFromSupabase);
+  await plRunAppInit("upload page init", initUploadPage);
+  await plRunAppInit("result page init", initResultPage);
+  await plRunAppInit("submit ticket init", initSubmitTicketPage);
+  await plRunAppInit("review modal init", initReviewModal);
+  await plRunAppInit("analytics charts init", initAnalyticsCharts);
+  await plRunAppInit("drill-through init", initDrillThrough);
+  plRevealPageFallback();
 }
 
 window.initPurityLoopApp = initPurityLoopApp;

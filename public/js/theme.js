@@ -630,6 +630,35 @@ function initMotionEffects() {
   document.body.classList.add('page-loaded');
 }
 
+function revealLandingFallback() {
+  document.body.classList.remove('page-loading', 'page-leaving');
+  document.body.classList.add('page-loaded');
+  document.documentElement.classList.remove('no-transition');
+  [
+    '.hero-tag',
+    '.hero-headline',
+    '.hero-sub',
+    '.hero-btns',
+    '.hero-social-proof',
+    '.hero-dashboard-card'
+  ].forEach(selector => {
+    document.querySelectorAll(selector).forEach(el => {
+      el.style.removeProperty('opacity');
+      el.style.removeProperty('transform');
+      el.style.removeProperty('visibility');
+    });
+  });
+}
+
+function runThemeInit(name, init, onError) {
+  try {
+    init();
+  } catch (error) {
+    console.error(`PurityLoop: ${name} failed.`, error);
+    if (typeof onError === 'function') onError();
+  }
+}
+
 function initMetricCountUp() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (document.body.classList.contains('analytics-pro-page')) return;
@@ -665,23 +694,24 @@ function initMetricCountUp() {
 
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
-  initSidebar();
-  initLiveClock();
-  initActiveNav();
-  initTopbarAccountActions();
-  initLandingNav();
-  initAOS();
-  initGSAP();
-  initCountUp();
-  initTyped();
-  initHeroBars();
-  initLandingCharts();
-  initPasswordToggle();
-  initLoginForm();
-  initMotionEffects();
-  initMetricCountUp();
-  animateProgressBars();
-  refreshChartTheme();
+  runThemeInit('sidebar init', initSidebar);
+  runThemeInit('live clock init', initLiveClock);
+  runThemeInit('active nav init', initActiveNav);
+  runThemeInit('topbar account init', initTopbarAccountActions);
+  runThemeInit('landing nav init', initLandingNav);
+  runThemeInit('AOS init', initAOS);
+  runThemeInit('GSAP init', initGSAP, revealLandingFallback);
+  runThemeInit('CountUp init', initCountUp);
+  runThemeInit('Typed init', initTyped);
+  runThemeInit('hero bars init', initHeroBars);
+  runThemeInit('landing charts init', initLandingCharts);
+  runThemeInit('password toggle init', initPasswordToggle);
+  runThemeInit('login form init', initLoginForm);
+  runThemeInit('motion init', initMotionEffects);
+  runThemeInit('metric countup init', initMetricCountUp);
+  runThemeInit('progress bar init', animateProgressBars);
+  runThemeInit('chart theme refresh', refreshChartTheme);
+  revealLandingFallback();
 }
 
 window.initPurityLoopTheme = initPurityLoopTheme;
