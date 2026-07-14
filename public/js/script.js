@@ -1059,6 +1059,7 @@ function initUploadPage() {
   const processingStatusEl = document.getElementById("batchProcessingStatus");
   const batchSummaryEl = document.getElementById("batchSummary");
   let queue = [];
+  let rejectedItems = [];
   let isProcessing = false;
   let batchId = "";
 
@@ -1120,7 +1121,7 @@ function initUploadPage() {
   cameraLauncher.id = "launchCameraBtn";
   cameraLauncher.innerHTML = '<i class="fa-solid fa-camera"></i> Open Camera Capture';
   cameraLauncher.style.marginTop = "10px";
-  uploadBox.appendChild(cameraLauncher);
+  (document.getElementById("uploadUtilityActions") || uploadBox).appendChild(cameraLauncher);
 
   cameraLauncher.addEventListener("click", () => {
     webcamModal.classList.add("active");
@@ -1214,23 +1215,23 @@ function initUploadPage() {
     for (const file of list) {
       const key = `${file.name}|${file.size}|${file.lastModified}`;
       if (!/^image\/(jpeg|png|webp)$/.test(String(file.type || "").toLowerCase())) {
-        rejected.push(`${file.name} - Unsupported file type.`);
+        rejectFile(rejected, file.name, "Unsupported file type.", "direct");
         continue;
       }
       if (Number(file.size || 0) > MAX_IMAGE_SIZE) {
-        rejected.push(`${file.name} - File exceeds 10 MB.`);
+        rejectFile(rejected, file.name, "File exceeds 10 MB.", "direct");
         continue;
       }
       if (keys.has(key)) {
-        rejected.push(`${file.name} - Duplicate file.`);
+        rejectFile(rejected, file.name, "Duplicate file.", "direct");
         continue;
       }
       try {
-        const item = await createQueueItem(file, key);
+        const item = await createQueueItem(file, key, "direct");
         queue.push(item);
         keys.add(key);
       } catch {
-        rejected.push(`${file.name} - Image could not be read.`);
+        rejectFile(rejected, file.name, "Image could not be read.", "direct");
       }
     }
 
@@ -1281,42 +1282,46 @@ function initUploadPage() {
       const extractedSize = supported.reduce((total, entry) => total + entry.originalSize, 0);
       const oversized = supported.filter(entry => entry.originalSize > MAX_IMAGE_SIZE);
       if (oversized.length || extractedSize > MAX_ZIP_EXTRACTED_SIZE) {
+        const rejected = [];
+        oversized.forEach(entry => rejectFile(rejected, entry.name, "File exceeds 10 MB.", "zip"));
         setMessages(
           oversized.length ? "This ZIP contains an image above the 10 MB extracted image limit." : "This ZIP exceeds the 500 MB total extracted size limit.",
-          oversized.map(entry => `${entry.name} - File exceeds 10 MB.`)
+          rejected
         );
+        renderQueue();
         return;
       }
 
       const extracted = await unzipArchive(bytes, new Set(supported.map(entry => entry.name)));
-      const rejected = relevantEntries
+      const rejected = [];
+      relevantEntries
         .filter(entry => !isSupportedImageName(entry.name))
-        .map(entry => `${entry.name} - Unsupported file type.`);
+        .forEach(entry => rejectFile(rejected, entry.name, "Unsupported file type.", "zip"));
       const keys = new Set(queue.map(item => item.key));
       const stagedItems = [];
 
       for (const entry of supported) {
         const data = extracted[entry.name];
         if (!data || data.length !== entry.originalSize) {
-          rejected.push(`${entry.name} - Image could not be extracted.`);
+          rejectFile(rejected, entry.name, "Image could not be extracted.", "zip");
           continue;
         }
         const mimeType = imageMimeTypeFromBytes(data);
         if (!mimeType) {
-          rejected.push(`${entry.name} - Image MIME type is invalid.`);
+          rejectFile(rejected, entry.name, "Image MIME type is invalid.", "zip");
           continue;
         }
         const key = `${archive.name}|${entry.name}|${entry.originalSize}|${archive.lastModified}`;
         if (keys.has(key)) {
-          rejected.push(`${entry.name} - Duplicate file.`);
+          rejectFile(rejected, entry.name, "Duplicate file.", "zip");
           continue;
         }
         try {
           const imageFile = new File([data], entry.name, { type: mimeType, lastModified: archive.lastModified });
-          stagedItems.push(await createQueueItem(imageFile, key));
+          stagedItems.push(await createQueueItem(imageFile, key, "zip"));
           keys.add(key);
         } catch {
-          rejected.push(`${entry.name} - Image could not be read.`);
+          rejectFile(rejected, entry.name, "Image could not be read.", "zip");
         }
       }
 
@@ -1406,7 +1411,12 @@ function initUploadPage() {
     });
   }
 
-  async function createQueueItem(file, key) {
+  function rejectFile(rejected, name, reason, source) {
+    rejected.push(`${name} - ${reason}`);
+    rejectedItems.push({ name, reason, source });
+  }
+
+  async function createQueueItem(file, key, source) {
     const previewUrl = URL.createObjectURL(file);
     const image = new Image();
     try {
@@ -1421,6 +1431,7 @@ function initUploadPage() {
         file,
         previewUrl,
         dataUrl: createResultPreview(image),
+        source,
         status: "ready",
         errorMessage: "",
         scanId: ""
@@ -1444,8 +1455,10 @@ function initUploadPage() {
 
   function renderQueue() {
     const hasItems = queue.length > 0;
+    const hasSelection = hasItems || rejectedItems.length > 0;
+    renderUploadStats();
     plSelectedUploadFiles = queue.map(item => item.file);
-    if (fileName) fileName.textContent = hasItems ? `${queue.length} image${queue.length === 1 ? "" : "s"} selected` : "No images selected";
+    if (fileName) fileName.textContent = hasSelection ? `${queue.length + rejectedItems.length} file${queue.length + rejectedItems.length === 1 ? "" : "s"} selected` : "No images selected";
     if (scanImageBtn) {
       const readyCount = queue.filter(item => item.status === "ready").length;
       scanImageBtn.disabled = isProcessing || !readyCount;
@@ -1455,12 +1468,12 @@ function initUploadPage() {
     }
     if (fileUpload) fileUpload.disabled = isProcessing;
     if (zipUpload) zipUpload.disabled = isProcessing;
-    if (clearUploadBtn) clearUploadBtn.disabled = isProcessing || !hasItems;
+    if (clearUploadBtn) clearUploadBtn.disabled = isProcessing || !hasSelection;
+    if (cameraLauncher) cameraLauncher.disabled = isProcessing;
     if (!queueEl) return;
     queueEl.innerHTML = "";
     if (!hasItems) {
-      queueEl.innerHTML = '<p class="upload-queue-empty">No images selected.</p>';
-      return;
+      queueEl.innerHTML = '<p class="upload-queue-empty">No valid images selected.</p>';
     }
     queue.forEach(item => {
       const row = document.createElement("div");
@@ -1489,6 +1502,43 @@ function initUploadPage() {
       row.append(image, details, status, remove);
       queueEl.appendChild(row);
     });
+    if (rejectedItems.length) {
+      const rejectedDetails = document.createElement("details");
+      rejectedDetails.className = "rejected-upload-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `${rejectedItems.length} unsupported or skipped file${rejectedItems.length === 1 ? "" : "s"}`;
+      const list = document.createElement("ul");
+      rejectedItems.forEach(item => {
+        const line = document.createElement("li");
+        line.textContent = `${item.name}: ${item.reason}`;
+        list.appendChild(line);
+      });
+      rejectedDetails.append(summary, list);
+      queueEl.appendChild(rejectedDetails);
+    }
+  }
+
+  function renderUploadStats() {
+    const ready = queue.filter(item => item.status === "ready").length;
+    const review = queue.filter(item => item.status === "review_needed").length;
+    const failed = queue.filter(item => item.status === "failed").length;
+    const total = queue.length + rejectedItems.length;
+    const zipDetected = queue.some(item => item.source === "zip") || rejectedItems.some(item => item.source === "zip");
+    const setText = (id, value) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    };
+
+    setText("uploadQueueCount", `(${total})`);
+    setText("uploadSelectedCount", total);
+    setText("uploadReadyCount", ready);
+    setText("uploadReviewCount", review);
+    setText("uploadFailedCount", failed);
+    setText("batchTotalSelected", `${total} ${total === 1 ? "image" : "images"}`);
+    setText("batchValidImages", `${queue.length} ${queue.length === 1 ? "image" : "images"}`);
+    setText("batchNeedReview", `${review} ${review === 1 ? "image" : "images"}`);
+    setText("batchSkippedImages", `${rejectedItems.length} ${rejectedItems.length === 1 ? "file" : "files"}`);
+    setText("batchZipDetected", zipDetected ? "Yes" : "No");
   }
 
   function queueStatusLabel(status) {
@@ -1524,6 +1574,7 @@ function initUploadPage() {
     if (isProcessing) return;
     queue.forEach(item => URL.revokeObjectURL(item.previewUrl));
     queue = [];
+    rejectedItems = [];
     batchId = "";
     if (uploadBox) delete uploadBox.dataset.batchId;
     plSelectedUploadFiles = [];
@@ -1584,12 +1635,14 @@ function initUploadPage() {
     const firstScan = queue.find(item => item.scanId)?.scanId;
     batchSummaryEl.hidden = false;
     batchSummaryEl.innerHTML = "";
-    const summary = document.createElement("p");
-    summary.textContent = failed ? "Some images could not be processed." : review ? "Processing complete. Some detections require manager review." : "All images were processed successfully.";
-    batchSummaryEl.appendChild(summary);
-    const count = document.createElement("p");
+    const copy = document.createElement("div");
+    copy.className = "batch-summary-copy";
+    const summary = document.createElement("strong");
+    summary.textContent = failed ? "Processing finished with failed images." : review ? "Processing complete. Review needed." : "Processing complete.";
+    const count = document.createElement("span");
     count.textContent = `${completed} completed, ${review} require review, ${failed} failed`;
-    batchSummaryEl.appendChild(count);
+    copy.append(summary, count);
+    batchSummaryEl.appendChild(copy);
     if (firstScan) {
       const view = document.createElement("button");
       view.type = "button";

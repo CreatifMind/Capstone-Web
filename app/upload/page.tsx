@@ -95,114 +95,70 @@ const html = `
         </div>
       </header>
 
-      <div class="page-body">
-        <section class="upload-command-grid">
-          <div class="panel upload-panel bbox-card">
-            <div class="upload-box"
-              style="border: 2px dashed var(--border); padding: 60px 40px; border-radius: 12px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
-              <div class="upload-icon">
-                <i class="fa-solid fa-arrow-up-from-bracket"></i>
+      <div class="page-body upload-page-body">
+        <section class="upload-workspace">
+          <section class="panel upload-card" aria-labelledby="uploadCardTitle">
+              <h2 id="uploadCardTitle" class="upload-card-title">Upload Waste Images</h2>
+              <div class="upload-box" aria-describedby="uploadPolicy">
+                <div class="upload-icon" aria-hidden="true"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                <h3>Drag &amp; drop images here</h3>
+                <p>or choose files to upload</p>
+                <div class="upload-source-actions">
+                  <label for="fileUpload" class="upload-label"><i class="fa-solid fa-image"></i> Choose Images</label>
+                  <label for="zipUpload" class="secondary-btn upload-zip-label"><i class="fa-solid fa-file-zipper"></i> Upload ZIP</label>
+                </div>
+                <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple />
+                <input type="file" id="zipUpload" accept=".zip,application/zip" />
+                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each. Direct upload: 10 images. ZIP: 50 images, 100 MB archive.</p>
+                <div id="uploadUtilityActions" class="upload-utility-actions"></div>
+                <p id="fileName" class="file-name">No images selected</p>
+                <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
+                <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
+                  <div class="upload-progress-row"><span id="uploadProgressLabel">Uploading image</span><strong id="uploadProgressPercent">0%</strong></div>
+                  <div class="upload-progress-track"><span id="uploadProgressBar"></span></div>
+                </div>
               </div>
-              <h2>Upload Waste Images</h2>
-              <p>Select one or multiple clear waste images for detection.</p>
-              <label for="fileUpload" class="upload-label"
-                style="background: var(--primary); color: white; padding: 12px 32px; border-radius: 8px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition); font-size: 0.9375rem; margin-bottom: 12px;">
-                <i class="fa-solid fa-file-image"></i> Choose Images
-              </label>
-              <label for="zipUpload" class="secondary-btn upload-zip-label">
-                <i class="fa-solid fa-file-zipper"></i> Upload ZIP
-              </label>
-              <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple style="display: none;" />
-              <input type="file" id="zipUpload" accept=".zip,application/zip" style="display: none;" />
-              <p id="fileName" class="file-name" style="font-size: 0.875rem; color: var(--muted); margin-bottom: 16px;">
-                No images selected</p>
+          </section>
 
-              <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
-              <div id="uploadQueue" class="upload-queue" aria-label="Selected image queue">
-                <p class="upload-queue-empty">No images selected.</p>
+          <section class="panel upload-queue-card" aria-labelledby="uploadQueueTitle">
+              <div class="upload-queue-header">
+                <h2 id="uploadQueueTitle">Upload Queue <span id="uploadQueueCount">(0)</span></h2>
+                <div class="upload-queue-counts" aria-label="Upload queue counts">
+                  <span><i class="fa-solid fa-images"></i><strong id="uploadSelectedCount">0</strong> Selected</span>
+                  <span><i class="fa-solid fa-circle-check"></i><strong id="uploadReadyCount">0</strong> Ready</span>
+                  <span><i class="fa-solid fa-triangle-exclamation"></i><strong id="uploadReviewCount">0</strong> Review</span>
+                  <span><i class="fa-solid fa-circle-xmark"></i><strong id="uploadFailedCount">0</strong> Failed</span>
+                </div>
               </div>
+              <div id="uploadQueue" class="upload-queue" aria-label="Selected image queue"><p class="upload-queue-empty">No images selected.</p></div>
+              <div id="batchProcessingStatus" class="batch-processing-status" aria-live="polite"></div>
               <div class="upload-batch-actions">
-                <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled>
-                  <i class="fa-solid fa-magnifying-glass-chart"></i> Detect Images
-                </button>
+                <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled><i class="fa-solid fa-play"></i> Detect Images</button>
                 <button type="button" id="clearUploadBtn" class="text-btn" disabled>Clear Selection</button>
               </div>
-              <div id="batchProcessingStatus" class="batch-processing-status" aria-live="polite"></div>
-              <div id="batchSummary" class="batch-summary" hidden></div>
-              <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
-                <div class="upload-progress-row">
-                  <span id="uploadProgressLabel">Uploading image</span>
-                  <strong id="uploadProgressPercent">0%</strong>
-                </div>
-                <div class="upload-progress-track">
-                  <span id="uploadProgressBar"></span>
-                </div>
-              </div>
-            </div>
-          </div>
+              <div id="batchSummary" class="batch-summary" hidden aria-live="polite"></div>
+          </section>
 
-          <div class="panel upload-info-panel bbox-card">
-            <div>
-              <div class="section-heading compact" style="margin-bottom: 24px;">
-                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text); text-align: left;">Upload and Quality
-                  Tips</h2>
-              </div>
-              <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px;">
-                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
-                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
-                      class="fa-solid fa-lightbulb"></i></span>
-                  <div>
-                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Lighting &
-                      Contrast</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Use clear,
-                      evenly lit images with the waste item visible.</p>
-                  </div>
-                </li>
-                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
-                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
-                      class="fa-solid fa-expand"></i></span>
-                  <div>
-                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Full
-                      Visibility</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid excessive
-                      overlap so the model can identify material boundaries.</p>
-                  </div>
-                </li>
-                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
-                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
-                      class="fa-solid fa-circle-minus"></i></span>
-                  <div>
-                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Minimize
-                      Blur</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Avoid blurred
-                      captures and low-resolution screenshots.</p>
-                  </div>
-                </li>
-                <li style="display: flex; gap: 14px; font-size: 0.9375rem; align-items: start;">
-                  <span style="color: var(--primary); font-size: 1.125rem; line-height: 1.25;"><i
-                      class="fa-solid fa-clipboard-list"></i></span>
-                  <div>
-                    <strong style="display: block; color: var(--text); font-weight: 600; margin-bottom: 4px;">Supported
-                      Formats</strong>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0;">Images: JPG, PNG,
-                      WEBP. Maximum recommended size: 10 MB.</p>
-                    <p style="color: var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 4px 0 0;">Upload up to 10 images directly. For larger batches, upload a ZIP file containing up to 50 images.</p>
-                  </div>
-                </li>
+          <section class="panel upload-tips-card" aria-labelledby="qualityTipsTitle">
+              <h2 id="qualityTipsTitle"><i class="fa-regular fa-lightbulb" aria-hidden="true"></i> Upload &amp; Quality Tips</h2>
+              <ul class="upload-tips-list">
+                <li><i class="fa-solid fa-lightbulb" aria-hidden="true"></i><div><strong>Lighting &amp; Contrast</strong><p>Use clear, evenly lit images with the waste item visible.</p></div></li>
+                <li><i class="fa-solid fa-expand" aria-hidden="true"></i><div><strong>Full Visibility</strong><p>Avoid excessive overlap so the model can identify material boundaries.</p></div></li>
+                <li><i class="fa-solid fa-circle-minus" aria-hidden="true"></i><div><strong>Minimize Blur</strong><p>Avoid blurred captures and low-resolution screenshots.</p></div></li>
+                <li><i class="fa-solid fa-briefcase" aria-hidden="true"></i><div><strong>Supported Formats</strong><p>JPG, PNG, WEBP. Up to 10 MB per image. ZIP uploads support up to 50 images.</p></div></li>
               </ul>
-            </div>
-
-            <div class="instruction-box"
-              style="background: var(--light); border: 1px solid var(--border); padding: 18px; border-radius: 8px; margin-top: 28px;">
-              <h4
-                style="font-weight: 700; font-size: 0.875rem; color: var(--text); display: flex; align-items: center; gap: 8px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;">
-                <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i> SCAN START
-              </h4>
-              <p style="font-size: 0.8125rem; color: var(--muted); line-height: 1.5; margin: 0;">
-                Each image is processed one at a time. Successful scans appear in Results after the batch finishes.
-              </p>
-            </div>
-          </div>
+          </section>
+          <section class="panel batch-summary-card" aria-labelledby="batchSummaryTitle">
+              <h2 id="batchSummaryTitle"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Batch Summary</h2>
+              <dl class="batch-summary-list">
+                <div><dt>Total Selected</dt><dd id="batchTotalSelected">0 images</dd></div>
+                <div><dt>Valid Images</dt><dd id="batchValidImages">0 images</dd></div>
+                <div><dt>Need Review</dt><dd id="batchNeedReview">0 images</dd></div>
+                <div><dt>Unsupported / Skipped</dt><dd id="batchSkippedImages">0 files</dd></div>
+                <div><dt>ZIP Detected</dt><dd id="batchZipDetected">No</dd></div>
+                <div><dt>Max Direct Upload</dt><dd>10 images</dd></div>
+              </dl>
+          </section>
         </section>
       </div>
     </main>
