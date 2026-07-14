@@ -88,7 +88,7 @@ function initSidebar() {
     });
   });
 
-  window.addEventListener('resize', () => {
+  const onResize = () => {
     if (!isMobileNav()) {
       sidebar.classList.remove('mobile-open');
       document.body.classList.remove('app-sidebar-open');
@@ -97,13 +97,19 @@ function initSidebar() {
       document.documentElement.classList.toggle('sidebar-state-collapsed', sidebar.classList.contains('collapsed'));
       updateToggleIcon();
     }
-  });
+  };
 
-  window.addEventListener('keydown', e => {
+  const onKeydown = e => {
     if (e.key === 'Escape' && sidebar.classList.contains('mobile-open')) {
       closeMobileSidebar();
     }
-  });
+  };
+  window.addEventListener('resize', onResize);
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('purityloop:page-cleanup', () => {
+    window.removeEventListener('resize', onResize);
+    window.removeEventListener('keydown', onKeydown);
+  }, { once: true });
 
   function updateToggleIcon() {
     if (!toggle) return;
@@ -119,13 +125,17 @@ function initSidebar() {
 /* ── 2. LIVE CLOCK ── */
 function initLiveClock() {
   const el = document.getElementById('liveClock');
-  if (!el) return;
+  if (!el || el.dataset.clockReady === 'true') return;
+  el.dataset.clockReady = 'true';
   function tick() {
     const now = new Date();
     el.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   }
   tick();
-  setInterval(tick, 1000);
+  const timer = window.setInterval(tick, 1000);
+  window.addEventListener('purityloop:page-cleanup', () => {
+    window.clearInterval(timer);
+  }, { once: true });
 }
 
 /* ── 3. ACTIVE NAV ITEM ── */
@@ -184,7 +194,8 @@ window.showToast = function (message, type = 'success') {
 /* ── 6. LANDING PAGE NAVBAR SCROLL ── */
 function initLandingNav() {
   const nav = document.getElementById('landingNav');
-  if (!nav) return;
+  if (!nav || nav.dataset.landingNavReady === 'true') return;
+  nav.dataset.landingNavReady = 'true';
   const burger = document.getElementById('navBurger');
   const menu = document.getElementById('mobileMenu');
   const closeButton = document.getElementById('mobileMenuClose');
@@ -198,9 +209,10 @@ function initLandingNav() {
     if (icon) icon.className = isOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-bars';
   };
 
-  window.addEventListener('scroll', () => {
+  const onScroll = () => {
     nav.classList.toggle('scrolled', window.scrollY > 40);
-  }, { passive: true });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
 
   // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -234,17 +246,28 @@ function initLandingNav() {
     menu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => setMenuState(false));
     });
-    window.addEventListener('keydown', e => {
+    const onKeydown = e => {
       if (e.key === 'Escape' && menu.classList.contains('open')) {
         setMenuState(false);
       }
-    });
-    window.addEventListener('resize', () => {
+    };
+    const onResize = () => {
       if (!window.matchMedia('(max-width: 768px)').matches) {
         setMenuState(false);
       }
-    });
+    };
+    window.addEventListener('keydown', onKeydown);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('purityloop:page-cleanup', () => {
+      window.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('resize', onResize);
+    }, { once: true });
   }
+
+  window.addEventListener('purityloop:page-cleanup', () => {
+    observer.disconnect();
+    window.removeEventListener('scroll', onScroll);
+  }, { once: true });
 }
 
 /* ── 7. AOS INIT ── */
@@ -256,37 +279,28 @@ function initAOS() {
 
 /* ── 8. GSAP HERO PARALLAX ── */
 function initGSAP() {
-  if (typeof gsap === 'undefined') return;
+  const hero = document.querySelector('.hero-section');
+  if (typeof gsap === 'undefined' || !hero) return;
   if (typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
   }
 
-  // Hero headline entrance
-  const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-  tl.from('.hero-tag', { opacity: 0, y: 20, duration: 0.6 })
-    .from('.hero-headline', { opacity: 0, y: 30, duration: 0.7 }, '-=0.3')
-    .from('.hero-sub', { opacity: 0, y: 20, duration: 0.6 }, '-=0.4')
-    .from('.hero-btns', { opacity: 0, y: 16, duration: 0.5 }, '-=0.3')
-    .from('.hero-social-proof', { opacity: 0, y: 12, duration: 0.4 }, '-=0.2')
-    .from('.hero-dashboard-card', { opacity: 0, x: 40, duration: 0.8 }, '-=0.6');
+  const context = gsap.context(() => {
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+    tl.from('.hero-tag', { opacity: 0, y: 20, duration: 0.6 })
+      .from('.hero-headline', { opacity: 0, y: 30, duration: 0.7 }, '-=0.3')
+      .from('.hero-sub', { opacity: 0, y: 20, duration: 0.6 }, '-=0.4')
+      .from('.hero-btns', { opacity: 0, y: 16, duration: 0.5 }, '-=0.3')
+      .from('.hero-social-proof', { opacity: 0, y: 12, duration: 0.4 }, '-=0.2')
+      .from('.hero-dashboard-card', { opacity: 0, x: 40, duration: 0.8 }, '-=0.6');
 
-  // Blob parallax
-  if (typeof ScrollTrigger !== 'undefined') {
-    gsap.to('.hero-blob-1', {
-      y: -80, ease: 'none',
-      scrollTrigger: { trigger: '.hero-section', start: 'top top', end: 'bottom top', scrub: 1 }
-    });
-    gsap.to('.hero-blob-2', {
-      y: -50, ease: 'none',
-      scrollTrigger: { trigger: '.hero-section', start: 'top top', end: 'bottom top', scrub: 1.5 }
-    });
-
-    // Dashboard card scroll
-    gsap.to('.hero-dashboard-card', {
-      y: 30, ease: 'none',
-      scrollTrigger: { trigger: '.hero-section', start: 'top top', end: 'bottom top', scrub: 1 }
-    });
-  }
+    if (typeof ScrollTrigger !== 'undefined') {
+      [['.hero-blob-1', -80, 1], ['.hero-blob-2', -50, 1.5], ['.hero-dashboard-card', 30, 1]].forEach(([target, y, scrub]) => {
+        gsap.to(target, { y, ease: 'none', scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub } });
+      });
+    }
+  }, hero);
+  window.addEventListener('purityloop:page-cleanup', () => context.revert(), { once: true });
 }
 
 /* ── 8. COUNTUP ANIMATION ── */
@@ -320,14 +334,16 @@ function initCountUp() {
     const el = document.getElementById(item.id);
     if (el) observer.observe(el);
   });
+  window.addEventListener('purityloop:page-cleanup', () => observer.disconnect(), { once: true });
 }
 
 /* ── 9. TYPED.JS HERO SUBHEADLINE ── */
 function initTyped() {
   if (typeof Typed === 'undefined') return;
   const el = document.getElementById('typedText');
-  if (!el) return;
-  new Typed(el, {
+  if (!el || el.dataset.typedReady === 'true') return;
+  el.dataset.typedReady = 'true';
+  const typed = new Typed(el, {
     strings: [
       'Classify uploaded waste images in seconds.',
       'Recover recyclable value with AI confidence scoring.',
@@ -341,21 +357,23 @@ function initTyped() {
     showCursor: true,
     cursorChar: '|',
   });
+  window.addEventListener('purityloop:page-cleanup', () => typed.destroy(), { once: true });
 }
 
 /* ── 10. ANIMATED HERO CHART BARS ── */
 function initHeroBars() {
   const bars = document.querySelectorAll('.hdc-bar[data-h]');
-  bars.forEach((bar, i) => {
-    setTimeout(() => {
+  const timers = [...bars].map((bar, i) => window.setTimeout(() => {
       bar.style.height = bar.dataset.h;
-    }, 300 + i * 80);
-  });
+    }, 300 + i * 80));
+  window.addEventListener('purityloop:page-cleanup', () => timers.forEach(timer => window.clearTimeout(timer)), { once: true });
 }
 
 /* ── 11. LANDING ANALYTICS CHARTS ── */
 function initLandingCharts() {
   if (typeof Chart === 'undefined') return;
+  const chartIds = ['landingForecastChart', 'landingInventoryChart', 'landingRiskChart', 'landingProcChart'];
+  chartIds.forEach(id => Chart.getChart(id)?.destroy());
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   Chart.defaults.font.family = 'Inter, sans-serif';
   Chart.defaults.color = isLight ? 'rgba(22,38,31,0.68)' : 'rgba(244,255,249,0.62)';
@@ -481,6 +499,9 @@ function initLandingCharts() {
       }
     });
   }
+  window.addEventListener('purityloop:page-cleanup', () => {
+    chartIds.forEach(id => Chart.getChart(id)?.destroy());
+  }, { once: true });
 }
 
 /* ── 11A. THEME-AWARE CHART PRESENTATION ── */
@@ -663,6 +684,7 @@ function initMetricCountUp() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (document.body.classList.contains('analytics-pro-page')) return;
   const metrics = document.querySelectorAll('.kpi-card > strong, .ops-hero-card strong, [data-countup]');
+  const frames = [];
   metrics.forEach(metric => {
     const original = metric.textContent.trim();
     const numberMatch = original.match(/[\d,.]+/);
@@ -684,12 +706,13 @@ function initMetricCountUp() {
         ? value.toFixed(decimals)
         : Math.round(value).toLocaleString('en-US');
       metric.textContent = `${prefix}${formatted}${suffix}`;
-      if (progress < 1) requestAnimationFrame(render);
+      if (progress < 1) frames.push(requestAnimationFrame(render));
       else metric.textContent = original;
     };
 
-    requestAnimationFrame(render);
+    frames.push(requestAnimationFrame(render));
   });
+  window.addEventListener('purityloop:page-cleanup', () => frames.forEach(frame => cancelAnimationFrame(frame)), { once: true });
 }
 
 /* ── INIT ALL ── */

@@ -233,10 +233,11 @@ async function plRefreshScanResultsFromSupabase() {
     Authorization: `Bearer ${config.supabaseAnonKey}`
   };
   try {
-    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_name,source_size,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
+    const scanColumns = "id,image_url,preview_image_url,drive_file_id,drive_file_name,drive_web_url,source_type,created_at,overall_status,upload_status,contamination_risk,recommended_action,human_review_required,overall_confidence";
     const scansResponse = await fetch(`${baseUrl}/rest/v1/mock_scan_results?select=${scanColumns}&order=created_at.desc`, { headers });
     if (!scansResponse.ok) {
-      console.error("PurityLoop: mock_scan_results fetch failed.", scansResponse.status, await scansResponse.text());
+      const error = await scansResponse.json().catch(() => ({}));
+      console.error({ message: error.message || "PurityLoop: mock_scan_results fetch failed.", details: error.details, hint: error.hint, code: error.code || scansResponse.status });
       return false;
     }
 
@@ -247,7 +248,7 @@ async function plRefreshScanResultsFromSupabase() {
     }
 
     const reviewsResponse = await fetch(`${baseUrl}/rest/v1/scan_review_decisions?select=*`, { headers });
-    const scansPayload = await scansResponse.json();
+    const scansPayload = plSafeArray(await scansResponse.json()).map(scan => ({ ...scan, source_name: scan.source_type }));
     const materialsPayload = await materialsResponse.json();
     const reviewsPayload = reviewsResponse.ok ? await reviewsResponse.json() : [];
     const latestReviews = plSafeArray(reviewsPayload).reduce((acc, review) => {
@@ -487,11 +488,20 @@ function plGetAnalyticsSummary(options = {}) {
     return acc;
   }, {})).map(([, row]) => row).sort((a, b) => b.estimatedResaleValueRm - a.estimatedResaleValueRm || b.count - a.count);
   const totalEstimatedResaleValueRm = resaleRows.reduce((sum, row) => sum + row.estimatedResaleValueRm, 0);
+  const materialMixRows = resaleRows
+    .filter(row => row.estimatedWeightKg > 0)
+    .slice()
+    .sort((a, b) => b.estimatedWeightKg - a.estimatedWeightKg || b.count - a.count);
+  const totalEstimatedWeightKg = materialMixRows.reduce((sum, row) => sum + row.estimatedWeightKg, 0);
   const confirmedRows = materialRows.filter(({ decision }) => decision.decisionStatus === "confirmed" && decision.materialClass !== "unknown");
   const confirmedMaterials = confirmedRows.map(row => row.material);
   const recyclableCount = confirmedRows.filter(({ decision }) => decision.materialClass === "recyclable").length;
   const contaminationCount = materialRows.filter(({ decision }) => decision.decisionStatus === "confirmed" && decision.materialClass === "contaminant").length;
   const reviewCount = materialRows.filter(({ decision }) => decision.reviewRequired).length;
+  const allLowConfidenceCount = materialRows.filter(({ material }) => {
+    const confidence = plConfidencePercent(material?.confidence);
+    return Number.isFinite(confidence) && confidence < PL_CONFIRMATION_THRESHOLD;
+  }).length;
   const materialConfidences = materialRows
     .filter(({ material, decision }) => decision.materialClass !== "unknown" && Number.isFinite(Number(material?.confidence)))
     .map(({ decision }) => decision.confidence)
@@ -532,8 +542,22 @@ function plGetAnalyticsSummary(options = {}) {
     acc[source] = (acc[source] || 0) + 1;
     return acc;
   }, {});
+  const scanDates = scans
+    .map(scan => new Date(scan.created_at || 0))
+    .filter(date => Number.isFinite(date.getTime()));
+  // Default summaries include all saved scans, but their chart must only span saved dates.
+  const trendRangeStart = hasRange
+    ? rangeStart
+    : scanDates.length
+      ? plAnalyticsDayStart(Math.min(...scanDates.map(date => date.getTime())))
+      : plAnalyticsDayStart(now);
+  const trendRangeEnd = hasRange
+    ? rangeEnd
+    : scanDates.length
+      ? plAnalyticsDayStart(Math.max(...scanDates.map(date => date.getTime())))
+      : plAnalyticsDayStart(now);
   const trendByDay = new Map();
-  for (let cursor = plAnalyticsDayStart(rangeStart); cursor <= rangeEnd; cursor.setDate(cursor.getDate() + 1)) {
+  for (let cursor = plAnalyticsDayStart(trendRangeStart); cursor <= trendRangeEnd; cursor.setDate(cursor.getDate() + 1)) {
     trendByDay.set(cursor.toLocaleDateString([], { month: "short", day: "numeric" }), 0);
   }
   scans.forEach(scan => {
@@ -542,9 +566,8 @@ function plGetAnalyticsSummary(options = {}) {
   });
   const highRiskCount = confirmedRows.filter(({ decision }) => decision.category === "battery" && decision.materialClass === "contaminant").length;
   const recoveryOpportunityCount = confirmedRows.filter(({ material, decision }) => decision.materialClass === "recyclable" && getEstimatedResaleValueRm(material) > 0).length;
-  const recentEvents = materialRows
+  const materialEvents = materialRows
     .sort((a, b) => new Date(b.scan.created_at || 0) - new Date(a.scan.created_at || 0))
-    .slice(0, 5)
     .map(({ scan, material, decision }) => ({
       timestamp: scan.created_at,
       source: scan.source_name || scan.source_type || "Web Upload",
@@ -552,6 +575,23 @@ function plGetAnalyticsSummary(options = {}) {
       status: decision.displayStatus,
       details: `${plNormalizeCategory(decision.category)} · ${decision.confidence.toFixed(1)}% confidence`
     }));
+  const uploadEvents = scans
+    .filter(scan => !plSafeArray(scan.detected_materials).length)
+    .map(scan => ({
+      timestamp: scan.created_at,
+      source: scan.source_name || scan.source_type || "Web Upload",
+      event: "Scan Upload",
+      status: plNormalizeStatus(scan.processing_status) === "completed" ? "Completed" : "Uploaded",
+      details: "No detected materials were returned"
+    }));
+  const recentEvents = [...materialEvents, ...uploadEvents]
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+    .slice(0, 5);
+  const lastUpload = allScans.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+  const lastUploadBatchId = lastUpload?.batch_id || lastUpload?.batchId || lastUpload?.upload_batch_id || null;
+  const lastUploadBatchCount = lastUploadBatchId
+    ? allScans.filter(scan => (scan?.batch_id || scan?.batchId || scan?.upload_batch_id) === lastUploadBatchId).length
+    : lastUpload ? 1 : 0;
   return {
     scans,
     materials,
@@ -564,6 +604,8 @@ function plGetAnalyticsSummary(options = {}) {
     categoryValues: categoryRows.map(row => row[1]),
     categoryRows,
     resaleRows,
+    materialMixRows,
+    totalEstimatedWeightKg,
     totalEstimatedResaleValueRm,
     recyclableRows,
     contaminatedRows,
@@ -572,6 +614,7 @@ function plGetAnalyticsSummary(options = {}) {
     contaminationCount,
     reviewCount,
     lowConfidenceCount: reviewCount,
+    allLowConfidenceCount,
     hazardCount: highRiskCount,
     clearedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "accepted").length,
     quarantinedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length,
@@ -581,17 +624,14 @@ function plGetAnalyticsSummary(options = {}) {
     contaminantTop,
     highestValue,
     averageReviewTurnaroundMs,
-    lastUpload: allScans.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null,
+    lastUpload,
+    lastUploadBatchCount,
     sourceCounts,
     trendRows: Array.from(trendByDay, ([label, value]) => ({ label, value })),
     highRiskCount,
     recoveryOpportunityCount,
     recentEvents
   };
-}
-
-function plCategoryPalette(palette) {
-  return [palette.green, palette.teal, palette.blue, palette.amber, palette.purple, palette.red, palette.slate, "#9FE870", "#FF8A65"];
 }
 
 /* AI CLASSIFICATION METADATA MAP (9 Categories, No ESG/Carbon) */
@@ -1671,17 +1711,16 @@ function initResultPage() {
     renderEmptyResult();
   }
 
-  // Redraw canvas on window resize to stay responsive
-  window.addEventListener('resize', () => {
+  // Redraw canvas on window resize to stay responsive.
+  const onResultResize = () => {
     if (activeImageObj) drawCanvasFrame();
-  });
-  if (canvas.dataset.themeRedrawReady !== "true") {
-    canvas.dataset.themeRedrawReady = "true";
-    window.addEventListener("purityloop:theme-change", () => {
-      if (activeImageObj) drawCanvasFrame();
-      else drawEmptyScanCanvas("No scan data");
-    });
-  }
+  };
+  const onResultThemeChange = () => {
+    if (activeImageObj) drawCanvasFrame();
+    else drawEmptyScanCanvas("No scan data");
+  };
+  window.addEventListener('resize', onResultResize);
+  window.addEventListener("purityloop:theme-change", onResultThemeChange);
 
   // Live Auto-Scan simulation
   const autoScanCheckbox = document.getElementById("autoScanCheckbox");
@@ -1698,6 +1737,11 @@ function initResultPage() {
       autoScanInterval = null;
     }
   }
+  window.addEventListener("purityloop:page-cleanup", () => {
+    stopAutoScanSimulation();
+    window.removeEventListener('resize', onResultResize);
+    window.removeEventListener("purityloop:theme-change", onResultThemeChange);
+  }, { once: true });
 
   if (autoScanCheckbox) {
     autoScanCheckbox.addEventListener("change", () => {
@@ -2465,7 +2509,6 @@ function plOverviewChart(canvasId, config) {
 function renderAnalyticsOverview(days = 7, state = "ready") {
   const overview = document.querySelector(".analytics-overview");
   if (!overview) return;
-  const summary = plGetAnalyticsSummary({ days });
   const stateEl = document.getElementById("analyticsOverviewState");
   const showState = (message, isError = false) => {
     if (!stateEl) return;
@@ -2481,7 +2524,16 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
     stateEl.hidden = !message;
     stateEl.classList.toggle("is-error", isError);
   };
+  overview.classList.toggle("is-loading", state === "loading");
+  overview.classList.toggle("is-error", state === "error");
   showState(state === "loading" ? "Refreshing analytics..." : state === "error" ? "Analytics data could not be loaded." : "", state === "error");
+
+  if (state === "error") {
+    ["needs-review", "confirmed-today", "recoverable-value", "average-confidence"].forEach(name => plOverviewSet(name, "—"));
+    return;
+  }
+
+  const summary = plGetAnalyticsSummary({ days });
 
   plOverviewSet("needs-review", String(summary.reviewCount));
   plOverviewSet("needs-review-note", summary.reviewCount ? "Scans require attention" : "All scans are up to date");
@@ -2507,27 +2559,41 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   plOverviewSet("highest-value-meta", summary.highestValue ? plFormatRm(summary.highestValue.estimatedResaleValueRm) : "No pricing data");
   const lastUpload = summary.lastUpload;
   plOverviewSet("last-upload", lastUpload ? plFormatScanTime(lastUpload) : "No uploads yet");
-  plOverviewSet("last-upload-meta", lastUpload ? `${summary.sourceCounts[lastUpload.source_name || lastUpload.source_type || "Web Upload"] || 1} scan${(summary.sourceCounts[lastUpload.source_name || lastUpload.source_type || "Web Upload"] || 1) === 1 ? "" : "s"} from this source` : "Upload images to begin");
+  plOverviewSet("last-upload-meta", lastUpload ? `${summary.lastUploadBatchCount} scan${summary.lastUploadBatchCount === 1 ? "" : "s"} in this upload batch` : "Upload images to begin");
 
   const visible = (name, shown) => overview.querySelectorAll(`[data-overview="${name}"]`).forEach(element => { element.hidden = !shown; });
   visible("mix-empty", !summary.materials.length);
   visible("value-empty", !summary.resaleRows.some(row => row.estimatedResaleValueRm > 0));
   visible("trend-empty", !summary.scans.length);
   plOverviewSet("mix-subtitle", summary.materials.length ? "By estimated weight" : "By weight");
-  plOverviewSet("mix-summary", summary.materials.length ? `${plFormatKg(summary.resaleRows.reduce((total, row) => total + row.estimatedWeightKg, 0))} across ${summary.materials.length} detected item${summary.materials.length === 1 ? "" : "s"}.` : "");
+  plOverviewSet("mix-summary", summary.materials.length ? `${plFormatKg(summary.totalEstimatedWeightKg)} across ${summary.materials.length} detected item${summary.materials.length === 1 ? "" : "s"}.` : "");
   plOverviewSet("value-summary", summary.highestValue ? `${summary.highestValue.label} leads estimated recoverable value.` : "");
   plOverviewSet("trend-summary", summary.scans.length ? `${summary.scans.length} scan${summary.scans.length === 1 ? "" : "s"} in selected period.` : "");
+  const mixCenter = overview.querySelector("[data-overview='mix-center']");
+  if (mixCenter) mixCenter.hidden = !summary.materialMixRows.length;
+  plOverviewSet("mix-total", summary.totalEstimatedWeightKg ? plFormatKg(summary.totalEstimatedWeightKg) : String(summary.materials.length));
+  plOverviewSet("mix-total-label", summary.totalEstimatedWeightKg ? "Total weight" : "Total items");
+  const chartSummary = (canvasId, label) => {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", label);
+  };
+  chartSummary("overviewMaterialMix", summary.materialMixRows.length ? `Material mix by estimated weight: ${summary.materialMixRows.map(row => `${row.label} ${plFormatKg(row.estimatedWeightKg)}`).join(", ")}.` : "Material mix: no material data in the selected period.");
 
   const colors = ["#54c979", "#35bfb4", "#4285e8", "#dca73a", "#90caa8", "#d85769", "#5e9f9d", "#7a8893", "#f08b58"];
   const chartText = "#52635a";
   const chartGrid = "#e8efea";
   const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } };
-  if (summary.materials.length) {
-    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.categoryLabels, datasets: [{ data: summary.categoryValues, backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] }, options: { ...chartBase, cutout: "62%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 9, color: chartText, font: { size: 11 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${context.raw}` } } } } });
+  if (summary.materialMixRows.length) {
+    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.materialMixRows.map(row => row.label), datasets: [{ data: summary.materialMixRows.map(row => row.estimatedWeightKg), backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${plFormatKg(context.raw)}` } } } } });
   } else if (plOverviewCharts.overviewMaterialMix) { plOverviewCharts.overviewMaterialMix.destroy(); delete plOverviewCharts.overviewMaterialMix; }
   const valueRows = summary.resaleRows.filter(row => row.estimatedResaleValueRm > 0);
+  chartSummary("overviewValueByCategory", valueRows.length ? `Estimated recoverable value by category: ${valueRows.map(row => `${row.label} ${plFormatRm(row.estimatedResaleValueRm)}`).join(", ")}.` : "Recoverable value: no priced materials in the selected period.");
+  chartSummary("overviewDailyTrend", summary.scans.length ? `Daily scan trend for the selected period: ${summary.trendRows.map(row => `${row.label} ${row.value}`).join(", ")}.` : "Daily scan trend: no scan activity in the selected period.");
   if (valueRows.length) {
-    plOverviewChart("overviewValueByCategory", { type: "bar", data: { labels: valueRows.map(row => row.label), datasets: [{ data: valueRows.map(row => row.estimatedResaleValueRm), backgroundColor: "#54c979", borderRadius: 6, maxBarThickness: 36 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 } } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: value => `RM ${value}` } } }, plugins: { ...chartBase.plugins, tooltip: { callbacks: { label: context => plFormatRm(context.raw) } } } } });
+    const valueLabelsPlugin = { id: "overviewValueLabels", afterDatasetsDraw(chart) { const { ctx } = chart; const meta = chart.getDatasetMeta(0); ctx.save(); ctx.fillStyle = "#26382d"; ctx.font = "700 10px IBM Plex Sans, Arial"; ctx.textAlign = "center"; meta.data.forEach((bar, index) => ctx.fillText(Number(valueRows[index].estimatedResaleValueRm).toFixed(2), bar.x, Math.max(13, bar.y - 7))); ctx.restore(); } };
+    plOverviewChart("overviewValueByCategory", { type: "bar", plugins: [valueLabelsPlugin], data: { labels: valueRows.map(row => row.label), datasets: [{ data: valueRows.map(row => row.estimatedResaleValueRm), backgroundColor: colors.slice(0, valueRows.length), borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, layout: { padding: { top: 18 } }, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, maxRotation: 0, minRotation: 0 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: value => `RM ${value}` } } }, plugins: { ...chartBase.plugins, tooltip: { callbacks: { label: context => plFormatRm(context.raw) } } } } });
   } else if (plOverviewCharts.overviewValueByCategory) { plOverviewCharts.overviewValueByCategory.destroy(); delete plOverviewCharts.overviewValueByCategory; }
   if (summary.scans.length) {
     plOverviewChart("overviewDailyTrend", { type: "line", data: { labels: summary.trendRows.map(row => row.label), datasets: [{ data: summary.trendRows.map(row => row.value), borderColor: "#1d7048", backgroundColor: "rgba(84, 201, 121, 0.12)", fill: true, tension: 0.3, pointBackgroundColor: "#fff", pointBorderColor: "#1d7048", pointBorderWidth: 2, pointRadius: 3 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, autoSkip: true, maxTicksLimit: 7 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, precision: 0 } } } } });
@@ -2536,6 +2602,7 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   const actions = [
     hasReviews && { icon: "fa-triangle-exclamation", title: "Pending Reviews", text: "Unresolved low-confidence items", value: summary.reviewCount, tone: "warning" },
     summary.highRiskCount > 0 && { icon: "fa-battery-half", title: "High-Risk Items", text: "Confirmed battery items", value: summary.highRiskCount, tone: "danger" },
+    summary.allLowConfidenceCount > 0 && summary.allLowConfidenceCount !== summary.reviewCount && { icon: "fa-circle-exclamation", title: "Low-Confidence Scans", text: "Includes resolved low-confidence detections", value: summary.allLowConfidenceCount, tone: "warning" },
     summary.recoveryOpportunityCount > 0 && { icon: "fa-tag", title: "Recovery Opportunities", text: "Confirmed items with recoverable value", value: summary.recoveryOpportunityCount, tone: "success" }
   ].filter(Boolean);
   const actionList = document.getElementById("analyticsManagerActions");
@@ -2570,453 +2637,15 @@ function initAnalyticsOverview() {
 }
 
 function initAnalyticsCharts() {
+  const range = document.getElementById("analyticsRange");
+  if (!range || range.dataset.analyticsReady === "true") return;
+  range.dataset.analyticsReady = "true";
   initAnalyticsOverview();
-  updateAnalyticsDetailPanels(plGetAnalyticsSummary());
-}
-
-function initLegacyAnalyticsCharts() {
-  const palette = {
-    green: "#00F08A",
-    blue: "#4F91FF",
-    amber: "#D8A448",
-    purple: "#7DDFA7",
-    slate: "#78938D",
-    red: "#D85E70",
-    orange: "#00D6D6",
-    teal: "#00D6D6",
-    darkGreen: "#08211D"
-  };
-  const categoryPalette = plCategoryPalette(palette);
-
-  const compositionCanvas = document.getElementById("compositionChart");
-  if (!compositionCanvas) return; // Not on analytics page
-
-  // Live clock ticking in topbar
-  const clockEl = document.getElementById("liveClock");
-  function updateClock() {
-    if (!clockEl) return;
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
-    clockEl.textContent = timeStr;
-  }
-  updateClock();
-  setInterval(updateClock, 1000);
-
-  const summary = plGetAnalyticsSummary();
-
-  const kpiCards = document.querySelectorAll(".kpi-grid-four > .kpi-card");
-  const kpiLabel = card => card.querySelector(":scope > span:not(.kpi-badge):not(.kpi-trend)");
-  const setKpiProgress = (card, label, width) => {
-    const fill = card?.querySelector(".kpi-progress-fill");
-    const meta = card?.querySelector(".kpi-progress-meta strong");
-    if (meta) meta.textContent = label;
-    if (fill) {
-      fill.style.setProperty("--target-width", width);
-      fill.style.width = width;
-    }
-  };
-  if (kpiCards[0]) {
-    kpiLabel(kpiCards[0]) && (kpiLabel(kpiCards[0]).textContent = "Detected Materials");
-    kpiCards[0].querySelector("strong").innerHTML = `${summary.savedScansCount}`;
-    kpiCards[0].querySelector("p").textContent = summary.savedScansCount ? "From saved scans" : "No scan data yet";
-    setKpiProgress(kpiCards[0], String(summary.savedScansCount), summary.savedScansCount ? "100%" : "0%");
-  }
-  if (kpiCards[1]) {
-    kpiLabel(kpiCards[1]) && (kpiLabel(kpiCards[1]).textContent = "Revenue Data");
-    kpiCards[1].querySelector("strong").textContent = summary.materials.length ? plFormatRm(summary.totalEstimatedResaleValueRm) : "No data";
-    kpiCards[1].querySelector("p").textContent = summary.materials.length ? "Estimated from saved scan materials" : "No material data yet";
-    setKpiProgress(kpiCards[1], summary.materials.length ? "100%" : "0%", summary.materials.length ? "100%" : "0%");
-  }
-  if (kpiCards[2]) {
-    kpiLabel(kpiCards[2]) && (kpiLabel(kpiCards[2]).textContent = "Average Confidence");
-    kpiCards[2].querySelector("strong").textContent = `${summary.avgConfidence.toFixed(1)}%`;
-    kpiCards[2].querySelector("p").textContent = summary.materials.length ? "From detected material confidence" : summary.scans.length ? "From saved scan confidence" : "No scan data yet";
-    setKpiProgress(kpiCards[2], `${summary.avgConfidence.toFixed(1)}%`, summary.avgConfidence ? `${Math.min(100, summary.avgConfidence)}%` : "0%");
-  }
-  if (kpiCards[3]) {
-    kpiLabel(kpiCards[3]) && (kpiLabel(kpiCards[3]).textContent = "Contaminated Items");
-    kpiCards[3].querySelector("strong").textContent = String(summary.reviewCount);
-    kpiCards[3].querySelector("p").textContent = summary.reviewCount ? "From saved review load" : "No contamination data yet";
-    setKpiProgress(kpiCards[3], String(summary.reviewCount), summary.reviewCount ? "100%" : "0%");
-  }
-
-  document.querySelectorAll(".kpi-grid-four .kpi-trend").forEach(item => { item.textContent = summary.scans.length ? "saved data" : "no data"; });
-
-  // Update recent activity ledger preview list from localStorage
-  const recentList = document.getElementById("dashLedgerList");
-  if (recentList) {
-    const ledger = getAuditLedger().slice(0, 3);
-    recentList.innerHTML = "";
-
-    if (!ledger.length) {
-      recentList.innerHTML = `<div class="feed-empty">No scan history yet.</div>`;
-    }
-
-    ledger.forEach(log => {
-      const itemDiv = document.createElement("div");
-      itemDiv.className = "drill-trigger";
-      itemDiv.tabIndex = 0;
-
-      let statusClass = "cleared";
-      if (log.status === "Review Needed") statusClass = "review";
-      if (log.status === "Quarantined" || log.status === "Quarantine") statusClass = "quarantine";
-
-      itemDiv.innerHTML = `
-        <span class="status-pill ${statusClass}">${log.status}</span>
-        <strong>Scan Verification</strong>
-        <p>${log.time}  -  ${getLogSourceLabel(log)}  -  ${log.category} (${log.confidence})</p>
-      `;
-
-      itemDiv.addEventListener("click", () => {
-        renderMaterialDetail(log.category);
-      });
-
-      recentList.appendChild(itemDiv);
-    });
-  }
-
-  const alertValues = document.querySelectorAll(".alert-row-value");
-  if (alertValues[0]) alertValues[0].textContent = String(summary.reviewCount);
-  if (alertValues[1]) alertValues[1].textContent = `${summary.avgConfidence.toFixed(1)}%`;
-  if (alertValues[2]) alertValues[2].textContent = String(summary.contaminationCount);
-  const alertRows = document.querySelectorAll(".alert-row");
-  if (alertRows[0]) {
-    alertRows[0].querySelector("strong").textContent = `${summary.reviewCount} Pending Reviews`;
-    alertRows[0].querySelector("p").textContent = summary.savedScansCount ? `${summary.savedScansCount} saved scan(s).` : "No scan data yet.";
-  }
-  if (alertRows[1]) {
-    alertRows[1].querySelector("p").textContent = summary.avgConfidence ? "Calculated from saved confidence values." : "No saved scans yet.";
-  }
-  if (alertRows[2]) {
-    alertRows[2].querySelector("p").textContent = summary.contaminationCount ? "From detected material contamination status." : "No contamination data yet.";
-  }
-  const workloadMeter = document.querySelector(".workload-meter strong");
-  if (workloadMeter) workloadMeter.textContent = String(summary.reviewCount);
-  const workloadRows = document.querySelectorAll(".workload-row");
-  const workloadMetrics = [
-    ["Saved scans", summary.savedScansCount],
-    ["Low confidence scans", summary.lowConfidenceCount],
-    ["Hazard checks", summary.hazardCount],
-    ["Operator corrections", 0]
-  ];
-  workloadRows.forEach((row, index) => {
-    const metric = workloadMetrics[index];
-    if (!metric) return;
-    const value = metric[1];
-    row.querySelector("span").textContent = metric[0];
-    row.querySelector("strong").textContent = String(value);
-    const bar = row.querySelector("i");
-    if (bar) bar.style.width = `${summary.savedScansCount ? Math.min(100, Math.max(8, (value / Math.max(summary.savedScansCount, summary.detectedMaterialsCount, 1)) * 100)) : 0}%`;
-  });
-  const compositionSubtitle = compositionCanvas.closest(".chart-panel")?.querySelector(".chart-subtitle");
-  if (compositionSubtitle) compositionSubtitle.textContent = summary.materials.length ? `${summary.detectedMaterialsCount} detected material record(s) from saved scans.` : "No material data yet. Upload scans to populate this chart.";
-  const yieldSubtitle = document.getElementById("yieldChart")?.closest(".chart-panel")?.querySelector(".chart-subtitle");
-  if (yieldSubtitle) yieldSubtitle.textContent = summary.materials.length ? "Saved material counts grouped by category." : "No scan data yet. Saved material counts appear here after uploads.";
-  const resaleSubtitle = document.getElementById("resaleChart")?.closest(".chart-panel")?.querySelector(".chart-subtitle");
-  if (resaleSubtitle) resaleSubtitle.textContent = summary.materials.length ? "Estimated resale value grouped by category." : "No resale data yet. Upload scans to populate this chart.";
-  updateAnalyticsDetailPanels(summary);
-
-  if (!summary.scans.length) {
-    drawEmptyAnalyticsCharts();
-    window.addEventListener("resize", drawEmptyAnalyticsCharts);
-    return;
-  }
-
-  // Draw chart views
-  if (!window.Chart) {
-    drawFallbackAnalyticsCharts(palette);
-    window.addEventListener("resize", function () {
-      drawFallbackAnalyticsCharts(palette);
-    });
-    return;
-  }
-
-  // Register datalabels plugin
-  if (window.ChartDataLabels) {
-    Chart.register(ChartDataLabels);
-  }
-
-  const isLight = document.documentElement.dataset.theme === "light";
-  const tickColor = isLight ? "#6c7b74" : "rgba(244,255,249,0.62)";
-  const gridColor = isLight ? "#dce7e1" : "rgba(178,255,224,0.16)";
-  const labelColor = isLight ? "#14221b" : "rgba(244,255,249,0.88)";
-  const legendColor = isLight ? "#6c7b74" : "rgba(244,255,249,0.68)";
-  const donutBorderColor = isLight ? "#ffffff" : "rgba(4,15,13,0.92)";
-
-  const chartDefaults = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        labels: {
-          boxWidth: 12,
-          color: legendColor
-        }
-      }
-    }
-  };
-
-  // 1. COMPOSITION CHART (Updated to the new 9 categories)
-  new Chart(compositionCanvas, {
-    type: "doughnut",
-    data: {
-      labels: summary.categoryLabels,
-      datasets: [{
-        data: summary.categoryValues,
-        backgroundColor: [
-          palette.green,
-          palette.teal,
-          palette.blue,
-          palette.purple,
-          palette.amber,
-          "#63CFA2",
-          palette.slate,
-          "#2FA6A6",
-          palette.red
-        ],
-        borderColor: donutBorderColor,
-        borderWidth: 2
-      }]
-    },
-    options: {
-      ...chartDefaults,
-      cutout: "68%",
-      plugins: {
-        ...chartDefaults.plugins,
-        legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 }, color: legendColor } },
-        datalabels: {
-          color: "#ffffff",
-          font: { weight: "bold", size: 10 },
-          formatter: (value) => value > 0 ? value : "",
-          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 5,
-          textShadowColor: "rgba(0,0,0,0.4)",
-          textShadowBlur: 3
-        }
-      }
-    }
-  });
-
-  // 2. RESALE CHART
-  const resaleCanvas = document.getElementById("resaleChart");
-  if (resaleCanvas) {
-    if (!summary.resaleRows.length) {
-      drawEmptyChart(resaleCanvas, "No resale data");
-    } else {
-      new Chart(resaleCanvas, {
-      type: "bar",
-      data: {
-        labels: summary.resaleRows.map(row => row.label),
-        datasets: [{ label: "Estimated resale value", data: summary.resaleRows.map(row => Number(row.estimatedResaleValueRm.toFixed(2))), backgroundColor: categoryPalette, borderRadius: 6 }]
-      },
-      options: {
-        ...chartDefaults,
-        plugins: {
-          datalabels: { display: false },
-          legend: { labels: { color: legendColor } }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks: { color: tickColor, callback: value => `RM ${value}` }, grid: { color: gridColor } },
-          x: { ticks: { color: tickColor }, grid: { display: false } }
-        }
-      }
-      });
-    }
-  }
-
-  // 3. YIELD CHART
-  const yieldCanvas = document.getElementById("yieldChart");
-  if (yieldCanvas) {
-    new Chart(yieldCanvas, {
-      type: "bar",
-      data: {
-        labels: summary.categoryLabels,
-        datasets: [{ label: "Detected items", data: summary.categoryValues, backgroundColor: categoryPalette, borderRadius: 6 }]
-      },
-      options: {
-        ...chartDefaults,
-        plugins: {
-          datalabels: { display: false }
-        },
-        scales: {
-          y: { beginAtZero: true, ticks: { color: tickColor }, grid: { color: gridColor } },
-          x: { ticks: { color: tickColor }, grid: { display: false } }
-        }
-      }
-    });
-  }
-}
-
-/* Fallback chart drawings inside plain canvas context */
-function drawEmptyChart(canvas, label = "No data") {
-  if (!canvas) return;
-  const { ctx, width, height } = prepareCanvas(canvas);
-  const isLight = document.documentElement.dataset.theme === "light";
-  ctx.fillStyle = isLight ? "#edf4ef" : "#0c1812";
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = isLight ? "#506259" : "#a9bbb0";
-  ctx.font = "600 15px 'IBM Plex Sans', Arial";
-  ctx.textAlign = "center";
-  ctx.fillText(label, width / 2, height / 2);
-}
-
-function drawEmptyAnalyticsCharts() {
-  drawEmptyChart(document.getElementById("compositionChart"), "No analytics data");
-  drawEmptyChart(document.getElementById("resaleChart"), "No resale data");
-  drawEmptyChart(document.getElementById("yieldChart"), "No scan data");
-}
-
-function prepareCanvas(canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.max(240, Math.floor(rect.width * ratio));
-  canvas.height = Math.max(180, Math.floor(rect.height * ratio));
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-  return { ctx, width: rect.width, height: rect.height };
-}
-
-function drawFallbackAnalyticsCharts(palette) {
-  const summary = plGetAnalyticsSummary();
-  if (!summary.scans.length) {
-    drawEmptyAnalyticsCharts();
-    return;
-  }
-
-  const composition = document.getElementById("compositionChart");
-  if (composition) {
-    const { ctx, width, height } = prepareCanvas(composition);
-    const values = summary.categoryValues;
-    const colors = [palette.amber, palette.blue, palette.purple, palette.slate, palette.orange, palette.green, "#7f8c8d", palette.teal, palette.red];
-    const total = values.reduce((sum, value) => sum + value, 0) || 1;
-    const radius = Math.min(width, height) * 0.28;
-    const centerX = width * 0.5;
-    const centerY = height * 0.43;
-    let start = -Math.PI / 2;
-
-    values.forEach((value, index) => {
-      const angle = (value / total) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.moveTo(centerX, centerY);
-      ctx.arc(centerX, centerY, radius, start, start + angle);
-      ctx.closePath();
-      ctx.fillStyle = colors[index];
-      ctx.fill();
-      start += angle;
-    });
-
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius * 0.62, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = "source-over";
-
-    ctx.fillStyle = "#14221b";
-    ctx.font = "bold 15px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("Material Mix", centerX, centerY + 6);
-  }
-
-  const resale = document.getElementById("resaleChart");
-  if (resale) {
-    if (summary.resaleRows.length) {
-      const { ctx, width, height } = prepareCanvas(resale);
-      drawFallbackBars(
-        ctx,
-        width,
-        height,
-        summary.resaleRows.map(row => row.label),
-        summary.resaleRows.map(row => Number(row.estimatedResaleValueRm.toFixed(2))),
-        plCategoryPalette(palette),
-        "RM ",
-        ""
-      );
-    } else {
-      drawEmptyChart(resale, "No resale data");
-    }
-  }
-
-  const yieldCanvas = document.getElementById("yieldChart");
-  if (yieldCanvas) {
-    const { ctx, width, height } = prepareCanvas(yieldCanvas);
-    drawFallbackBars(ctx, width, height, summary.categoryLabels, summary.categoryValues, plCategoryPalette(palette), "", "");
-  }
-}
-
-function drawFallbackBars(ctx, width, height, labels, values, colors, prefix, suffix) {
-  const max = Math.max(1, ...values) * 1.15;
-  const left = 48;
-  const right = 18;
-  const top = 20;
-  const bottom = 46;
-  const chartWidth = width - left - right;
-  const chartHeight = height - top - bottom;
-  const barGap = 14;
-  const barWidth = Math.max(20, (chartWidth - barGap * (labels.length - 1)) / labels.length);
-
-  ctx.strokeStyle = "#d9e6df";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(left, top + chartHeight);
-  ctx.lineTo(left + chartWidth, top + chartHeight);
-  ctx.stroke();
-
-  ctx.font = "11px Arial";
-  ctx.textAlign = "center";
-  labels.forEach((label, index) => {
-    const barHeight = (values[index] / max) * chartHeight;
-    const x = left + index * (barWidth + barGap);
-    const y = top + chartHeight - barHeight;
-    ctx.fillStyle = colors[index % colors.length];
-    ctx.fillRect(x, y, barWidth, barHeight);
-    ctx.fillStyle = "#66756f";
-    ctx.fillText(label, x + barWidth / 2, height - 20);
-    ctx.fillStyle = "#14221b";
-    ctx.font = "bold 11px Arial";
-    const displayValue = prefix === "RM " ? Number(values[index]).toFixed(2) : values[index];
-    ctx.fillText(prefix + displayValue + suffix, x + barWidth / 2, y - 6);
-    ctx.font = "11px Arial";
-  });
-}
-
-function drawFallbackLines(ctx, width, height, months, series) {
-  const allValues = series.flatMap(item => item.data);
-  const max = Math.max(...allValues) * 1.15;
-  const left = 44;
-  const right = 18;
-  const top = 18;
-  const bottom = 52;
-  const chartWidth = width - left - right;
-  const chartHeight = height - top - bottom;
-
-  ctx.strokeStyle = "#d9e6df";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = top + (chartHeight / 4) * i;
-    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + chartWidth, y); ctx.stroke();
-  }
-
-  ctx.font = "11px Arial";
-  ctx.fillStyle = "#66756f";
-  ctx.textAlign = "center";
-  months.forEach((label, index) => {
-    const x = left + (chartWidth / (months.length - 1)) * index;
-    ctx.fillText(label, x, top + chartHeight + 24);
-  });
-
-  series.forEach(item => {
-    ctx.strokeStyle = item.color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    item.data.forEach((value, index) => {
-      const x = left + (chartWidth / (item.data.length - 1)) * index;
-      const y = top + chartHeight - (value / max) * chartHeight;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-  });
+  updateAnalyticsDetailPanels(plGetAnalyticsSummary({ days: Number(range.value) || 7 }));
+  window.addEventListener("purityloop:page-cleanup", () => {
+    Object.values(plOverviewCharts).forEach(chart => chart.destroy());
+    Object.keys(plOverviewCharts).forEach(key => delete plOverviewCharts[key]);
+  }, { once: true });
 }
 
 /******************************************

@@ -3,8 +3,13 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = fs.readFileSync("public/js/script.js", "utf8");
+const analyticsPage = fs.readFileSync("app/analytics/page.tsx", "utf8");
 assert.match(source, /const readyCount = queue\.filter\(item => item\.status === "ready"\)\.length;/);
 assert.match(source, /Detect \$\{readyCount\} Image\$\{readyCount === 1 \? "" : "s"\}/);
+assert.match(analyticsPage, /data-drill-target="detail-composition"/);
+assert.match(analyticsPage, /data-drill-target="detail-resale"/);
+assert.match(analyticsPage, /data-drill-target="detail-yield"/);
+assert.match(analyticsPage, /id="analyticsDrillDetails"/);
 const context = {
   console,
   URLSearchParams,
@@ -50,16 +55,30 @@ const overviewScans = [
   { id: "organic", created_at: "2026-07-14T05:00:00.000Z", source_name: "organic.jpg", detected_materials: [{ id: "organic-item", category: "Food Organic", confidence: 0.88 }] },
   { id: "boundary", created_at: "2026-07-14T06:00:00.000Z", source_name: "boundary.jpg", detected_materials: [{ id: "boundary-item", category: "Metal", confidence: 0.85 }] },
   { id: "boundary-low", created_at: "2026-07-14T07:00:00.000Z", source_name: "boundary-low.jpg", detected_materials: [{ id: "boundary-low-item", category: "Paper", confidence: 0.8499 }] },
-  { id: "missing-optional", created_at: "2026-07-14T08:00:00.000Z", detected_materials: [] },
+  { id: "reviewed-low", created_at: "2026-07-14T08:00:00.000Z", source_name: "reviewed.jpg", detected_materials: [{ id: "reviewed-low-item", category: "Paper", confidence: 0.60, review_decision: { chosen_category: "Paper", disposition: "recyclable", outcome: "confirmed", created_at: "2026-07-14T10:00:00.000Z" } }] },
+  { id: "missing-optional", created_at: "2026-07-14T11:00:00.000Z", detected_materials: [] },
 ];
 const overview = plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-14T12:00:00.000Z" });
 assert.equal(overview.reviewCount, 2, "only values below 85% need review");
-assert.equal(overview.confirmedTodayCount, 5, "confirmed contaminants count as confirmed, not review");
+assert.equal(overview.allLowConfidenceCount, 3, "resolved low-confidence detections remain visible to the overview");
+assert.equal(overview.confirmedTodayCount, 6, "confirmed contaminants and completed reviews count as confirmed, not review");
 assert.equal(overview.highRiskCount, 1, "confirmed battery is high risk");
-assert.equal(overview.recoveryOpportunityCount, 2, "only confirmed recyclables with value are recovery opportunities");
-assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 8, "trend includes scans without optional preview/source fields");
+assert.equal(overview.recoveryOpportunityCount, 3, "only confirmed recyclables with value are recovery opportunities");
+assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 9, "trend includes scans without optional preview/source fields");
 assert.equal(overview.lastUpload.id, "missing-optional");
+assert.equal(overview.lastUploadBatchCount, 1, "single uploads have a safe batch fallback");
+assert.equal(overview.averageReviewTurnaroundMs, 7200000, "review turnaround uses review completion timestamps");
+assert.ok(overview.materialMixRows.length > 0 && overview.totalEstimatedWeightKg > 0, "material mix is derived from real category weights");
+const batchSummary = plGetAnalyticsSummary({ scans: [
+  { id: "batch-1", created_at: "2026-07-14T01:00:00.000Z", batch_id: "upload-a", detected_materials: [] },
+  { id: "batch-2", created_at: "2026-07-14T02:00:00.000Z", batch_id: "upload-a", detected_materials: [] },
+], days: 7, now: "2026-07-14T12:00:00.000Z" });
+assert.equal(batchSummary.lastUploadBatchCount, 2, "batch-aware upload detail counts matching upload ids");
 const zeroValue = plGetAnalyticsSummary({ scans: [{ id: "zero", created_at: "2026-07-14T01:00:00.000Z", detected_materials: [{ category: "General Trash", confidence: 0.95 }] }], days: 7, now: "2026-07-14T12:00:00.000Z" });
 assert.equal(zeroValue.totalEstimatedResaleValueRm, 0, "RM0.00 remains a valid numeric value");
 assert.equal(plGetAnalyticsSummary({ scans: [], days: 7, now: "2026-07-14T12:00:00.000Z" }).scans.length, 0, "empty overview stays empty");
+assert.equal(plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-30T12:00:00.000Z" }).scans.length, 0, "selected ranges can be empty without falling back to all scans");
+const unfilteredOverview = plGetAnalyticsSummary({ scans: overviewScans, now: "2026-07-14T12:00:00.000Z" });
+assert.equal(unfilteredOverview.scans.length, overviewScans.length, "unfiltered summaries retain all saved scans");
+assert.ok(unfilteredOverview.trendRows.length <= 2, "unfiltered trend only spans saved scan dates");
 console.log("frontend classification tests passed");
