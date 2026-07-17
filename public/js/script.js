@@ -1308,7 +1308,7 @@ function initUploadPage() {
       try {
         response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
       } catch (error) {
-        if (attempt < 5) {
+        if (attempt < 20) {
           if (processingStatusEl) processingStatusEl.textContent = "Connecting to MP4 processing job...";
           await new Promise(resolve => setTimeout(resolve, 3000));
           continue;
