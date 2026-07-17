@@ -1311,12 +1311,7 @@ function initUploadPage() {
         plSetUploadProgress(100, "MP4 processing complete");
         setMessages(`${filename} processed. ${Number(job.processed_count || 0)} frame scans saved.`);
         if (job.scan_ids?.[0]) {
-          const view = document.createElement("button");
-          view.type = "button";
-          view.className = "primary-btn";
-          view.textContent = "View Results";
-          view.addEventListener("click", () => { window.location.href = `/result?scanId=${encodeURIComponent(job.scan_ids[0])}`; });
-          messagesEl?.appendChild(view);
+          window.location.href = `/result?scanId=${encodeURIComponent(job.scan_ids[0])}`;
         }
         return job;
       }
