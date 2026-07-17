@@ -3,10 +3,6 @@
 /* RELIABLE prototype limits */
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB per image
 const MAX_BATCH_IMAGES = 10;
-const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100 MB per ZIP file
-const MAX_ZIP_IMAGES = 50;
-const MAX_ZIP_ENTRIES = 200;
-const MAX_ZIP_EXTRACTED_SIZE = 500 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const DEFAULT_SCAN_ASSET = "/assets/items/upload-result-reference.png";
 
@@ -1354,8 +1350,8 @@ function initUploadPage() {
 
   async function processZipUpload(archive) {
     if (isProcessing) return;
-    if (!archive || !/\.zip$/i.test(archive.name) || Number(archive.size || 0) > MAX_ZIP_SIZE) {
-      setMessages("ZIP upload failed. Choose a ZIP file no larger than 100 MB.");
+    if (!archive || !/\.zip$/i.test(archive.name)) {
+      setMessages("ZIP upload failed. Choose a ZIP file.");
       if (zipUpload) zipUpload.value = "";
       return;
     }
@@ -1364,21 +1360,13 @@ function initUploadPage() {
       const bytes = new Uint8Array(await archive.arrayBuffer());
       const entries = inspectZipEntries(bytes);
       const relevantEntries = entries.filter(entry => !entry.isDirectory && !isIgnoredZipEntry(entry.name));
-      if (relevantEntries.length > MAX_ZIP_ENTRIES) {
-        setMessages(`This ZIP contains ${relevantEntries.length} archive entries. The maximum ZIP archive is ${MAX_ZIP_ENTRIES} entries.`);
-        return;
-      }
 
       const supported = relevantEntries.filter(entry => isSupportedImageName(entry.name));
-      const extractedSize = supported.reduce((total, entry) => total + entry.originalSize, 0);
       const oversized = supported.filter(entry => entry.originalSize > MAX_IMAGE_SIZE);
-      if (oversized.length || extractedSize > MAX_ZIP_EXTRACTED_SIZE) {
+      if (oversized.length) {
         const rejected = [];
         oversized.forEach(entry => rejectFile(rejected, entry.name, "File exceeds 10 MB.", "zip"));
-        setMessages(
-          oversized.length ? "This ZIP contains an image above the 10 MB extracted image limit." : "This ZIP exceeds the 500 MB total extracted size limit.",
-          rejected
-        );
+        setMessages("This ZIP contains an image above the 10 MB extracted image limit.", rejected);
         renderQueue();
         return;
       }
@@ -1416,16 +1404,6 @@ function initUploadPage() {
         }
       }
 
-      if (stagedItems.length > MAX_ZIP_IMAGES) {
-        stagedItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
-        setMessages(`This ZIP contains ${stagedItems.length} supported images. The maximum ZIP batch is 50 images. Reduce the archive and try again.`, rejected);
-        return;
-      }
-      if (queue.length + stagedItems.length > MAX_ZIP_IMAGES) {
-        stagedItems.forEach(item => URL.revokeObjectURL(item.previewUrl));
-        setMessages(`This ZIP contains ${stagedItems.length} supported images, but the current queue can contain up to ${MAX_ZIP_IMAGES} images. Remove queued images and try again.`, rejected);
-        return;
-      }
       queue.push(...stagedItems);
 
       if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

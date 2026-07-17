@@ -111,7 +111,7 @@ const html = `
                 <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple />
                 <input type="file" id="videoUpload" accept="video/mp4,.mp4" />
                 <input type="file" id="zipUpload" accept=".zip,application/zip" />
-                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each, or MP4 video. Direct upload: 10 images. ZIP: 50 images, 100 MB archive.</p>
+                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each, or MP4 video. Direct upload: 10 images. ZIP: no archive or image-count limit.</p>
                 <div id="uploadUtilityActions" class="upload-utility-actions"></div>
                 <p id="fileName" class="file-name">No images selected</p>
                 <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
