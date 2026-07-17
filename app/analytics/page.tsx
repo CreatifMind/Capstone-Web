@@ -105,15 +105,15 @@ const html = `
         <section class="analytics-overview" aria-label="Analytics overview">
           <div id="analyticsOverviewState" class="analytics-overview-state" role="status" aria-live="polite" hidden></div>
           <section class="analytics-kpi-grid" aria-label="Analytics key performance indicators">
-            <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span>Needs Review</span><strong data-overview="needs-review">-</strong><p data-overview="needs-review-note">Loading analytics...</p><small data-overview="needs-review-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">-</strong><p>High-confidence items</p><small data-overview="confirmed-today-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i></span><span>Recoverable Value</span><strong data-overview="recoverable-value">-</strong><p>Estimated recoverable value</p><small data-overview="recoverable-value-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span>Average Confidence</span><strong data-overview="average-confidence">-</strong><p>Across all scans</p><small data-overview="average-confidence-compare" hidden></small></article>
+            <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span>Needs Review</span><strong data-overview="needs-review">0</strong><p data-overview="needs-review-note">Upload a sample batch to populate review metrics</p><small data-overview="needs-review-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">0</strong><p>High-confidence items</p><small data-overview="confirmed-today-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i></span><span>Recoverable Value</span><strong data-overview="recoverable-value">RM 0</strong><p>Estimated recoverable value</p><small data-overview="recoverable-value-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span>Average Confidence</span><strong data-overview="average-confidence">No scans yet</strong><p>Across all scans</p><small data-overview="average-confidence-compare" hidden></small></article>
           </section>
 
           <section class="analytics-attention-banner" data-overview="attention-banner">
             <span class="analytics-banner-icon"><i class="fa-solid fa-circle-exclamation"></i></span>
-            <div><h2 data-overview="attention-title">Loading analytics...</h2><p data-overview="attention-copy"></p></div>
+            <div><h2 data-overview="attention-title">No scans yet for this period</h2><p data-overview="attention-copy">Upload a sample batch to populate purity, contamination, confidence, and recovery metrics.</p></div>
             <div class="analytics-banner-actions"><a data-overview="review-link" class="primary-btn" href="/log">Open Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="secondary-btn" href="/log">View History</a></div>
           </section>
 
@@ -135,7 +135,7 @@ const html = `
             <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/log">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
           </section>
 
-          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><h2 id="analyticsRecentLogHeading">Recent Verification Log</h2><a href="/log">View all history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
+          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><h2 id="analyticsRecentLogHeading">Recent Verification Log</h2><a href="/log">View all history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5"><div class="analytics-empty-state"><strong>No recent scans yet</strong><span>Upload a sample batch to start building the verification log.</span></div></td></tr></tbody></table></div></section>
         </section>
 
         <!-- DETAIL DOCK -->
