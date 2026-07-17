@@ -279,84 +279,12 @@ function initAOS() {
 
 /* ── 8. GSAP HERO PARALLAX ── */
 function initGSAP() {
-  if (typeof gsap === 'undefined') return;
+  const hero = document.querySelector('.hero-section');
+  if (typeof gsap === 'undefined' || !hero) return;
   if (typeof ScrollTrigger !== 'undefined') {
     gsap.registerPlugin(ScrollTrigger);
   }
 
-  if (document.body.classList.contains('ops-home-page')) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const opsContext = gsap.context(() => {
-      gsap.from('.ops-hero-copy > *', {
-        opacity: 0,
-        y: 18,
-        duration: 0.62,
-        stagger: 0.08,
-        ease: 'power3.out'
-      });
-      gsap.from('.ops-command-panel', {
-        opacity: 0,
-        x: 34,
-        duration: 0.78,
-        ease: 'power3.out',
-        delay: 0.12
-      });
-      gsap.from('.ops-command-metric', {
-        opacity: 0,
-        y: 16,
-        duration: 0.48,
-        stagger: 0.07,
-        ease: 'power2.out',
-        delay: 0.32
-      });
-
-      if (typeof ScrollTrigger !== 'undefined') {
-        gsap.from('.ops-priority-card', {
-          scrollTrigger: { trigger: '.ops-priority-grid', start: 'top 82%', once: true },
-          opacity: 0,
-          y: 22,
-          duration: 0.55,
-          stagger: 0.1,
-          ease: 'power2.out'
-        });
-        gsap.from('.ops-flow-line', {
-          scrollTrigger: { trigger: '.ops-workflow', start: 'top 78%', once: true },
-          scaleX: 0,
-          duration: 0.85,
-          ease: 'power2.out'
-        });
-        gsap.from('.ops-flow-grid article', {
-          scrollTrigger: { trigger: '.ops-flow-grid', start: 'top 82%', once: true },
-          opacity: 0,
-          y: 18,
-          duration: 0.5,
-          stagger: 0.1,
-          ease: 'power2.out'
-        });
-        gsap.from('.ops-analytics-preview article', {
-          scrollTrigger: { trigger: '.ops-analytics-preview', start: 'top 80%', once: true },
-          opacity: 0,
-          y: 16,
-          duration: 0.48,
-          stagger: 0.06,
-          ease: 'power2.out'
-        });
-      }
-
-      gsap.to('.ops-priority-card.urgent', {
-        boxShadow: '0 18px 42px rgba(200, 31, 42, 0.16)',
-        duration: 1.6,
-        repeat: -1,
-        yoyo: true,
-        ease: 'sine.inOut'
-      });
-    });
-    window.addEventListener('purityloop:page-cleanup', () => opsContext.revert(), { once: true });
-    return;
-  }
-
-  const hero = document.querySelector('.hero-section');
-  if (!hero) return;
   const context = gsap.context(() => {
     const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
     tl.from('.hero-tag', { opacity: 0, y: 20, duration: 0.6 })

@@ -2708,21 +2708,20 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   }
 
   const summary = plGetAnalyticsSummary({ days });
-  const hasScans = summary.scans.length > 0;
 
-  plOverviewSet("needs-review", hasScans ? String(summary.reviewCount) : "0");
-  plOverviewSet("needs-review-note", hasScans ? (summary.reviewCount ? "Scans require attention" : "All scans are up to date") : "Upload a sample batch to populate review metrics");
-  plOverviewSet("confirmed-today", hasScans ? String(summary.confirmedTodayCount) : "0");
-  plOverviewSet("recoverable-value", hasScans ? plFormatRm(summary.totalEstimatedResaleValueRm) : "RM 0");
-  plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No scans yet");
+  plOverviewSet("needs-review", String(summary.reviewCount));
+  plOverviewSet("needs-review-note", summary.reviewCount ? "Scans require attention" : "All scans are up to date");
+  plOverviewSet("confirmed-today", String(summary.confirmedTodayCount));
+  plOverviewSet("recoverable-value", plFormatRm(summary.totalEstimatedResaleValueRm));
+  plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No data");
 
   const banner = overview.querySelector("[data-overview='attention-banner']");
   const hasReviews = summary.reviewCount > 0;
   banner?.classList.toggle("is-clear", !hasReviews);
-  plOverviewSet("attention-title", hasScans ? (hasReviews ? `${summary.reviewCount} item${summary.reviewCount === 1 ? "" : "s"} need attention today` : "All scans are up to date") : "No scans yet for this period");
-  plOverviewSet("attention-copy", hasScans ? (hasReviews ? "Review low-confidence items to keep reporting accurate and reduce contamination." : "No unresolved classifications require attention.") : "Upload a sample batch to populate purity, contamination, confidence, and recovery metrics.");
+  plOverviewSet("attention-title", hasReviews ? `${summary.reviewCount} item${summary.reviewCount === 1 ? "" : "s"} need attention today` : "All scans are up to date");
+  plOverviewSet("attention-copy", hasReviews ? "Review low-confidence items to keep reporting accurate and reduce contamination." : "No unresolved classifications require attention.");
   const reviewLink = overview.querySelector("[data-overview='review-link']");
-  if (reviewLink) reviewLink.textContent = hasScans ? (hasReviews ? "Open Review Queue" : "View History") : "Run Sample Batch";
+  if (reviewLink) reviewLink.textContent = hasReviews ? "Open Review Queue" : "View History";
 
   const insightMeta = (top, total, label) => top ? `${Math.round((top[1] / Math.max(total, 1)) * 100)}% of ${label}` : "No data";
   plOverviewSet("top-contaminant", summary.contaminantTop?.[0] || "No confirmed contaminants");
@@ -2775,16 +2774,16 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
   } else if (plOverviewCharts.overviewDailyTrend) { plOverviewCharts.overviewDailyTrend.destroy(); delete plOverviewCharts.overviewDailyTrend; }
 
   const actions = [
-    hasReviews && { icon: "fa-triangle-exclamation", title: `Review ${summary.reviewCount} uncertain item${summary.reviewCount === 1 ? "" : "s"}`, text: "Verify low-confidence classifications before reporting", value: summary.reviewCount, tone: "warning" },
-    summary.highRiskCount > 0 && { icon: "fa-battery-half", title: "Inspect battery hazard", text: "Isolate high-risk items from recyclable streams", value: summary.highRiskCount, tone: "danger" },
+    hasReviews && { icon: "fa-triangle-exclamation", title: "Pending Reviews", text: "Unresolved low-confidence items", value: summary.reviewCount, tone: "warning" },
+    summary.highRiskCount > 0 && { icon: "fa-battery-half", title: "High-Risk Items", text: "Confirmed battery items", value: summary.highRiskCount, tone: "danger" },
     summary.allLowConfidenceCount > 0 && summary.allLowConfidenceCount !== summary.reviewCount && { icon: "fa-circle-exclamation", title: "Low-Confidence Scans", text: "Includes resolved low-confidence detections", value: summary.allLowConfidenceCount, tone: "warning" },
-    summary.recoveryOpportunityCount > 0 && { icon: "fa-chart-line", title: "Investigate purity decline in mixed plastics", text: "Review material-level recovery opportunities", value: summary.recoveryOpportunityCount, tone: "success" }
+    summary.recoveryOpportunityCount > 0 && { icon: "fa-tag", title: "Recovery Opportunities", text: "Confirmed items with recoverable value", value: summary.recoveryOpportunityCount, tone: "success" }
   ].filter(Boolean);
   const actionList = document.getElementById("analyticsManagerActions");
-  if (actionList) actionList.innerHTML = actions.length ? actions.map(action => `<div class="analytics-action-row ${action.tone}"><i class="fa-solid ${action.icon}" aria-hidden="true"></i><div><strong>${action.title}</strong><span>${action.text}</span></div><b>${action.value}</b></div>`).join("") : `<div class="analytics-empty-state"><strong>No scans yet for this period</strong><span>Upload a sample batch to populate purity, contamination, confidence, and recovery metrics.</span><div><a class="primary-btn" href="/upload">Run Sample Batch</a><a class="secondary-btn" href="/upload">Upload Images</a></div></div>`;
+  if (actionList) actionList.innerHTML = actions.length ? actions.map(action => `<div class="analytics-action-row ${action.tone}"><i class="fa-solid ${action.icon}" aria-hidden="true"></i><div><strong>${action.title}</strong><span>${action.text}</span></div><b>${action.value}</b></div>`).join("") : `<p class="analytics-empty-action">No manager actions are waiting.</p>`;
 
   const recentLog = document.getElementById("analyticsRecentLog");
-  if (recentLog) recentLog.innerHTML = summary.recentEvents.length ? summary.recentEvents.map(event => `<tr><td>${plEscapeHtml(plFormatScanTime({ created_at: event.timestamp }))}</td><td>${plEscapeHtml(event.event)}</td><td>${plEscapeHtml(event.source)}</td><td><span class="analytics-status ${event.status === "Review Needed" ? "review" : event.status === "Rejected" ? "rejected" : "confirmed"}">${plEscapeHtml(event.status)}</span></td><td>${plEscapeHtml(event.details)}</td></tr>`).join("") : `<tr><td colspan="5" class="analytics-log-empty"><div class="analytics-empty-state"><strong>No scans yet for this period</strong><span>Upload a sample batch to populate purity, contamination, confidence, and recovery metrics.</span><div><a class="primary-btn" href="/upload">Run Sample Batch</a><a class="secondary-btn" href="/upload">Upload Images</a></div></div></td></tr>`;
+  if (recentLog) recentLog.innerHTML = summary.recentEvents.length ? summary.recentEvents.map(event => `<tr><td>${plEscapeHtml(plFormatScanTime({ created_at: event.timestamp }))}</td><td>${plEscapeHtml(event.event)}</td><td>${plEscapeHtml(event.source)}</td><td><span class="analytics-status ${event.status === "Review Needed" ? "review" : event.status === "Rejected" ? "rejected" : "confirmed"}">${plEscapeHtml(event.status)}</span></td><td>${plEscapeHtml(event.details)}</td></tr>`).join("") : `<tr><td colspan="5" class="analytics-log-empty">No scans are available for selected period. <a href="/upload">Upload Images</a></td></tr>`;
 }
 
 function initAnalyticsOverview() {
