@@ -1304,7 +1304,17 @@ function initUploadPage() {
 
   async function pollVideoJob(apiBase, jobId, filename) {
     for (let attempt = 0; attempt < 240; attempt += 1) {
-      const response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
+      let response;
+      try {
+        response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
+      } catch (error) {
+        if (attempt < 5) {
+          if (processingStatusEl) processingStatusEl.textContent = "Connecting to MP4 processing job...";
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+        throw error;
+      }
       const job = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(job.detail || "Unable to read MP4 job status.");
       if (job.status === "complete") {
