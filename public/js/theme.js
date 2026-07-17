@@ -601,13 +601,13 @@ function initPasswordToggle() {
   });
 }
 
-/* ── 12A. LOGIN DEMO FLOW ── */
+/* ── 12A. SUPABASE AUTH FLOW ── */
 function initLoginForm() {
   const form = document.getElementById('loginForm');
   if (!form || form.dataset.loginReady === 'true') return;
   form.dataset.loginReady = 'true';
 
-  form.addEventListener('submit', event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault();
     const email = document.getElementById('email');
     const password = document.getElementById('password');
@@ -615,7 +615,7 @@ function initLoginForm() {
     const passwordValue = password?.value?.trim();
 
     if (!emailValue || !passwordValue) {
-      window.showToast?.('Enter an email and password to access demo mode.', 'warning');
+      window.showToast?.('Enter your operator email and password.', 'warning');
       return;
     }
 
@@ -625,10 +625,33 @@ function initLoginForm() {
         signedInAt: new Date().toISOString()
       }));
     } catch (error) {
-      // Demo login should still route even if sessionStorage is unavailable.
+      // Session metadata is optional; Supabase owns the real session.
     }
 
     window.location.assign('/upload');
+  });
+}
+
+function initCreateAccountForm() {
+  const form = document.getElementById('createAccountForm');
+  if (!form || form.dataset.authReady === 'true') return;
+  form.dataset.authReady = 'true';
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    window.showToast?.('Operator accounts are invite-only. Ask your facility administrator to provision access.', 'warning');
+  });
+}
+
+function initAuthLogout() {
+  if (document.documentElement.dataset.authLogoutReady === 'true') return;
+  document.documentElement.dataset.authLogoutReady = 'true';
+  document.addEventListener('click', async event => {
+    const target = event.target instanceof Element ? event.target.closest('a[href="/login"].logout-btn, a[href="/login"].topbar-logout-btn') : null;
+    if (!target) return;
+    event.preventDefault();
+    try { await window.__PURITYLOOP_AUTH__?.signOut?.(); } catch (error) { console.warn('PurityLoop: sign out failed.', error); }
+    try { sessionStorage.removeItem('purityloop_demo_user'); } catch {}
+    window.location.assign('/login');
   });
 }
 
@@ -730,6 +753,8 @@ function initPurityLoopTheme() {
   runThemeInit('landing charts init', initLandingCharts);
   runThemeInit('password toggle init', initPasswordToggle);
   runThemeInit('login form init', initLoginForm);
+  runThemeInit('create account form init', initCreateAccountForm);
+  runThemeInit('auth logout init', initAuthLogout);
   runThemeInit('motion init', initMotionEffects);
   runThemeInit('metric countup init', initMetricCountUp);
   runThemeInit('progress bar init', animateProgressBars);

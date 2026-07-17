@@ -53,7 +53,7 @@ const html = `
           <i class="fa-solid fa-arrow-left"></i> Back to Login
         </a>
         <h2>Create account</h2>
-        <p>Set up operator access for the PurityLoop AI platform</p>
+        <p>Operator access is provisioned by your facility administrator</p>
       </div>
 
       <form id="createAccountForm" action="/upload" method="get" novalidate>
@@ -86,7 +86,7 @@ const html = `
 
         <button type="submit" class="btn btn-full btn-lg">
           <i class="fa-solid fa-user-plus"></i>
-          Create Account
+          Request Administrator Invite
         </button>
       </form>
 

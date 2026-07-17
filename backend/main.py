@@ -3,14 +3,17 @@ import re
 import json
 import tempfile
 import traceback
+import threading
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -36,6 +39,9 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://purityloop-ai.vercel.app",
 ]
+_configured_origins = [item.strip() for item in os.getenv("ALLOWED_ORIGINS", "").split(",") if item.strip()]
+if _configured_origins:
+    ALLOWED_ORIGINS = _configured_origins
 
 app = FastAPI(title="PurityLoop AI Backend")
 app.add_middleware(
@@ -51,9 +57,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_UR
 SCAN_RESULTS_TABLE = "mock_scan_results"
 DETECTED_MATERIALS_TABLE = "mock_detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
+JOBS_TABLE = "processing_jobs"
+PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 CONFIRMATION_THRESHOLD = 0.85
+# ponytail: local demo is one backend process; use shared storage for multi-instance deployment.
+UPLOAD_SESSIONS: dict[str, str] = {}
 CATEGORY_CLASS_MAP = {
     "general_trash": "contaminant",
     "food_organics": "contaminant",
@@ -76,6 +86,29 @@ CATEGORY_ROUTES = {
     "paper": "Paper Sorting Bin",
     "cardboard": "Cardboard Sorting Bin",
 }
+
+
+@dataclass(frozen=True)
+class Principal:
+    kind: str
+    id: str
+    scopes: frozenset[str]
+
+
+def require_principal() -> Principal:
+    return Principal("public", "public", frozenset({"scan:read", "scan:write", "job:read", "review:write"}))
+
+
+def require_scope(scope: str):
+    def dependency(principal: Principal = Depends(require_principal)) -> Principal:
+        if scope not in principal.scopes:
+            raise HTTPException(status_code=403, detail=f"Missing API scope: {scope}")
+        return principal
+    return dependency
+
+
+def scoped_query(query, principal: Principal):
+    return query
 
 
 def get_model():
@@ -309,6 +342,7 @@ def legacy_scan_row(scan_row: dict, original_filename: str | None) -> dict:
         "recommended_action",
         "human_review_required",
         "overall_confidence",
+        "user_id",
     }
     row = {key: value for key, value in scan_row.items() if key in keep_keys}
     row["image_url"] = row.get("image_url")
@@ -425,6 +459,128 @@ def summarize(materials: list[dict]) -> dict:
     }
 
 
+def _image_content_type(filename: str | None, content_type: str | None) -> tuple[str, str]:
+    suffix = (Path(filename or "upload.jpg").suffix or ".jpg").lower()
+    content_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    normalized = content_types.get(suffix)
+    if not normalized or (content_type and not content_type.startswith("image/")):
+        raise HTTPException(status_code=400, detail="Upload one JPG, PNG, or WebP image file.")
+    return suffix, normalized
+
+
+def run_scan(
+    file_bytes: bytes,
+    filename: str | None,
+    source_type: str,
+    *,
+    source_ref: str | None = None,
+    batch_id: str | None = None,
+    principal: Principal | None = None,
+    content_type: str | None = None,
+    existing_drive_metadata: dict | None = None,
+    frame_time_seconds: float | None = None,
+) -> dict:
+    """Run one image through the existing YOLO path and persist one canonical scan."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    suffix, normalized_type = _image_content_type(filename, content_type)
+    tmp_path = None
+    drive_metadata = {
+        "storage_provider": "google_drive_and_supabase_storage",
+        "upload_status": "pending",
+        "drive_upload_status": "pending",
+        "preview_upload_status": "pending",
+        "drive_file_id": None,
+        "drive_file_name": filename or "uploaded-image",
+        "drive_web_url": None,
+        "image_url": None,
+        "preview_image_url": None,
+    }
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+        result = get_model()(tmp_path, verbose=False)[0]
+        materials = to_detected_materials(result)
+        summary = summarize(materials)
+
+        if existing_drive_metadata:
+            drive_metadata.update(existing_drive_metadata)
+            drive_metadata["drive_upload_status"] = "uploaded" if drive_metadata.get("drive_file_id") else "failed"
+        else:
+            try:
+                drive_metadata.update(upload_original_to_drive_oauth(file_bytes, filename, normalized_type))
+                drive_metadata["drive_upload_status"] = "uploaded"
+            except Exception as exc:
+                drive_metadata["drive_upload_status"] = "failed"
+                print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+        try:
+            preview_upload = upload_original_to_supabase_storage(file_bytes, filename, normalized_type)
+            drive_metadata["preview_image_url"] = preview_upload["public_url"]
+            drive_metadata["preview_upload_status"] = "uploaded"
+        except Exception as exc:
+            drive_metadata["preview_upload_status"] = "failed"
+            print(f"[Supabase Storage] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+        drive_metadata["upload_status"] = "uploaded" if drive_metadata["preview_upload_status"] == "uploaded" else "preview_upload_failed"
+        scan_row = {
+            **drive_metadata,
+            "source_type": source_type,
+            "source_name": filename or "uploaded-image",
+            "source_ref": source_ref,
+            "batch_id": batch_id,
+            "model_version": os.getenv("MODEL_VERSION", "yolov8-purityloop"),
+            "processing_status": "complete",
+            **summary,
+        }
+        if principal and principal.kind == "user":
+            scan_row["user_id"] = principal.id
+
+        try:
+            scan_data = supabase.table(SCAN_RESULTS_TABLE).insert(scan_row).execute().data or []
+        except Exception as exc:
+            if getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
+                raise
+            scan_data = supabase.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, filename)).execute().data or []
+        if not scan_data:
+            raise HTTPException(status_code=500, detail="Unable to save scan result.")
+
+        scan_result_id = scan_data[0]["id"]
+        stored_material_keys = {
+            "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
+            "bbox_x", "bbox_y", "bbox_width", "bbox_height",
+        }
+        linked_materials = [
+            {key: value for key, value in item.items() if key in stored_material_keys} | {"scan_result_id": scan_result_id}
+            for item in materials
+        ]
+        if frame_time_seconds is not None:
+            linked_materials = [{**item, "frame_time_seconds": frame_time_seconds} for item in linked_materials]
+        if linked_materials:
+            try:
+                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or []
+            except Exception as exc:
+                if frame_time_seconds is None or getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
+                    raise
+                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(
+                    [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in linked_materials]
+                ).execute().data or []
+        else:
+            stored_materials = []
+        if len(stored_materials) != len(linked_materials):
+            raise HTTPException(status_code=500, detail="Unable to retrieve saved detected materials.")
+        return {
+            "scan_result_id": scan_result_id,
+            **summary,
+            **drive_metadata,
+            "detected_materials": stored_materials,
+        }
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
 class ReviewDecisionInput(BaseModel):
     scan_result_id: UUID
     detected_material_id: UUID
@@ -433,13 +589,295 @@ class ReviewDecisionInput(BaseModel):
     reviewer_email: str | None = None
 
 
+class UploadStartInput(BaseModel):
+    filename: str
+    size_bytes: int
+    mime: str
+
+
+class IngestInput(BaseModel):
+    source: str
+    ref: str
+    options: dict = {}
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
 
 
+def _drive_service():
+    from googleapiclient.discovery import build
+    return build("drive", "v3", credentials=oauth_drive_credentials(), cache_discovery=False)
+
+
+def _drive_file_info(file_id: str) -> dict:
+    return _drive_service().files().get(
+        fileId=file_id,
+        fields="id,name,mimeType,size,webViewLink,parents,trashed",
+        supportsAllDrives=True,
+    ).execute()
+
+
+def _download_drive_file(file_id: str) -> bytes:
+    from googleapiclient.http import MediaIoBaseDownload
+    output = BytesIO()
+    request = _drive_service().files().get_media(fileId=file_id, supportsAllDrives=True)
+    downloader = MediaIoBaseDownload(output, request, chunksize=8 * 1024 * 1024)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return output.getvalue()
+
+
+def _process_drive_file(file_id: str, job: dict, principal: Principal | None) -> list[str]:
+    info = _drive_file_info(file_id)
+    if info.get("trashed"):
+        return []
+    existing = {
+        "storage_provider": "google_drive_and_supabase_storage",
+        "drive_file_id": info.get("id"),
+        "drive_file_name": info.get("name"),
+        "drive_web_url": info.get("webViewLink"),
+        "image_url": info.get("webViewLink"),
+    }
+    payload = _download_drive_file(file_id)
+    mime = str(info.get("mimeType") or "")
+    name = info.get("name") or file_id
+    if mime == "video/mp4" or name.lower().endswith(".mp4"):
+        import cv2
+        stride = max(1, int((job.get("options") or {}).get("vid_stride", 30)))
+        tmp_path = None
+        scan_ids: list[str] = []
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp.write(payload)
+                tmp_path = tmp.name
+            capture = cv2.VideoCapture(tmp_path)
+            fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+            frame_index = 0
+            while True:
+                ok, frame = capture.read()
+                if not ok:
+                    break
+                if frame_index % stride == 0:
+                    encoded_ok, encoded = cv2.imencode(".jpg", frame)
+                    if encoded_ok:
+                        result = run_scan(
+                            encoded.tobytes(),
+                            f"{Path(name).stem}_frame_{frame_index:08d}.jpg",
+                            "video_frame",
+                            source_ref=file_id,
+                            batch_id=str(job["id"]),
+                            principal=principal,
+                            content_type="image/jpeg",
+                            existing_drive_metadata=existing,
+                            frame_time_seconds=(frame_index / fps if fps else None),
+                        )
+                        scan_ids.append(str(result["scan_result_id"]))
+                        _update_job(job["id"], processed_count=len(scan_ids), scan_ids=scan_ids)
+                frame_index += 1
+            capture.release()
+            return scan_ids
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
+    result = run_scan(
+        payload,
+        name,
+        "image",
+        source_ref=file_id,
+        batch_id=str(job["id"]),
+        principal=principal,
+        content_type=mime or guess_type(name)[0] or "image/jpeg",
+        existing_drive_metadata=existing,
+    )
+    return [str(result["scan_result_id"])]
+
+
+def _update_job(job_id: str, **fields) -> None:
+    if supabase:
+        supabase.table(JOBS_TABLE).update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
+
+
+def _process_job(job: dict) -> list[str]:
+    principal = Principal(
+        str(job.get("created_by_type") or "api_key"),
+        str(job.get("created_by") or "worker"),
+        frozenset({"scan:read", "scan:write", "job:read", "review:write"}),
+    )
+    source = job.get("source")
+    if source == "drive_file":
+        file_ids = [job["source_ref"]]
+    elif source == "drive_folder":
+        service = _drive_service()
+        response = service.files().list(
+            q=f"'{job['source_ref']}' in parents and trashed = false",
+            fields="files(id,mimeType,name)",
+            pageSize=1000,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        file_ids = [item["id"] for item in response.get("files", []) if item.get("mimeType", "").startswith(("image/", "video/"))]
+    else:
+        raise ValueError("Only Drive file and Drive folder ingestion is enabled; URL ingestion is disabled for SSRF safety.")
+
+    scan_ids: list[str] = []
+    for file_id in file_ids:
+        if supabase:
+            existing_response = supabase.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
+            existing = existing_response.data if existing_response else None
+            if existing:
+                continue
+        scan_ids.extend(_process_drive_file(file_id, job, principal))
+        if supabase:
+            supabase.table(PROCESSED_DRIVE_FILES_TABLE).insert({"drive_file_id": file_id, "scan_result_id": scan_ids[-1] if scan_ids else None}).execute()
+    return scan_ids
+
+
+def _worker_loop() -> None:
+    while True:
+        job_id = None
+        try:
+            if not supabase:
+                time.sleep(15)
+                continue
+            job_response = supabase.table(JOBS_TABLE).select("*").eq("status", "queued").order("created_at").limit(1).maybe_single().execute()
+            job = job_response.data if job_response else None
+            if not job:
+                time.sleep(5)
+                continue
+            job_id = str(job["id"])
+            _update_job(job_id, status="processing", started_at=datetime.now(timezone.utc).isoformat(), attempts=int(job.get("attempts") or 0) + 1)
+            scan_ids = _process_job(job)
+            _update_job(job_id, status="complete", scan_ids=scan_ids, processed_count=len(scan_ids), total_count=len(scan_ids), completed_at=datetime.now(timezone.utc).isoformat())
+        except Exception as exc:
+            print(f"[worker] job failed: {type(exc).__name__}: {safe_error_message(exc)}")
+            if job_id:
+                _update_job(job_id, status="failed", error=safe_error_message(exc))
+            time.sleep(5)
+
+
+@app.on_event("startup")
+def start_worker() -> None:
+    if supabase and os.getenv("DISABLE_WORKER", "false").lower() != "true":
+        try:
+            supabase.table(JOBS_TABLE).update({"status": "queued", "error": "Worker restarted before completion."}).eq("status", "processing").execute()
+        except Exception as exc:
+            print(f"[worker] restart recovery skipped: {type(exc).__name__}: {safe_error_message(exc)}")
+        threading.Thread(target=_worker_loop, name="purityloop-worker", daemon=True).start()
+
+
+@app.post("/api/uploads/start")
+def start_upload(payload: UploadStartInput, principal: Principal = Depends(require_scope("scan:write"))):
+    if payload.mime != "video/mp4" or payload.size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Only non-empty MP4 uploads are supported.")
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+        credentials = oauth_drive_credentials()
+        session = AuthorizedSession(credentials)
+        name = safe_drive_filename(payload.filename)
+        response = session.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+            headers={
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": payload.mime,
+                "X-Upload-Content-Length": str(payload.size_bytes),
+            },
+            json={"name": name, "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID]},
+            timeout=30,
+        )
+        response.raise_for_status()
+        upload_url = response.headers.get("Location")
+        if not upload_url:
+            raise RuntimeError("Google Drive did not return a resumable upload URL")
+        upload_id = str(uuid4())
+        UPLOAD_SESSIONS[upload_id] = upload_url
+        return {"upload_id": upload_id, "filename": name, "chunk_size": 8 * 1024 * 1024}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Unable to start Google Drive upload.") from exc
+
+
+@app.put("/api/uploads/{upload_id}")
+async def upload_chunk(upload_id: str, request: Request, principal: Principal = Depends(require_scope("scan:write"))):
+    upload_url = UPLOAD_SESSIONS.get(upload_id)
+    content_range = request.headers.get("content-range")
+    if not upload_url:
+        raise HTTPException(status_code=404, detail="MP4 upload session was not found.")
+    if not content_range:
+        raise HTTPException(status_code=400, detail="MP4 chunk is missing Content-Range.")
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+        chunk = await request.body()
+        response = AuthorizedSession(oauth_drive_credentials()).put(
+            upload_url,
+            headers={"Content-Range": content_range, "Content-Length": str(len(chunk))},
+            data=chunk,
+            timeout=120,
+        )
+        if response.status_code == 308:
+            return {"complete": False}
+        response.raise_for_status()
+        UPLOAD_SESSIONS.pop(upload_id, None)
+        return {"complete": True, "drive_file": response.json()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Unable to upload MP4 chunk to Google Drive.") from exc
+
+
+@app.post("/api/ingest")
+def ingest(payload: IngestInput, principal: Principal = Depends(require_scope("scan:write"))):
+    if payload.source not in {"drive_file", "drive_folder"} or not payload.ref.strip():
+        raise HTTPException(status_code=400, detail="Use source=drive_file or source=drive_folder with a Drive id.")
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    row = {
+        "source": payload.source,
+        "source_ref": payload.ref.strip(),
+        "options": payload.options or {},
+        "created_by": principal.id,
+        "created_by_type": principal.kind,
+    }
+    inserted = supabase.table(JOBS_TABLE).insert(row).execute().data or []
+    if not inserted:
+        raise HTTPException(status_code=500, detail="Unable to create processing job.")
+    return {"job_id": inserted[0]["id"], "status": inserted[0].get("status", "queued")}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str, principal: Principal = Depends(require_scope("job:read"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    query = supabase.table(JOBS_TABLE).select("*").eq("id", job_id)
+    if principal.kind == "user":
+        query = query.eq("created_by", principal.id).eq("created_by_type", "user")
+    response = query.maybe_single().execute()
+    row = response.data if response else None
+    if not row:
+        raise HTTPException(status_code=404, detail="Processing job was not found.")
+    return row
+
+
+@app.get("/api/analytics")
+def analytics(days: int = 7, principal: Principal = Depends(require_scope("scan:read"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    days = max(1, min(int(days), 90))
+    since = datetime.now(timezone.utc).timestamp() - days * 86400
+    since_iso = datetime.fromtimestamp(since, timezone.utc).isoformat()
+    rows = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("overall_status,contamination_risk,overall_confidence,human_review_required,created_at"), principal).gte("created_at", since_iso).execute().data or []
+    return {
+        "days": days,
+        "total_scans": len(rows),
+        "review_required": sum(1 for row in rows if row.get("human_review_required") or row.get("overall_status") == "review_required"),
+        "accepted": sum(1 for row in rows if row.get("overall_status") == "accepted"),
+        "average_confidence": round(sum(float(row.get("overall_confidence") or 0) for row in rows) / len(rows), 4) if rows else 0,
+    }
+
+
 @app.post("/api/reviews")
-def create_review(decision: ReviewDecisionInput):
+def create_review(decision: ReviewDecisionInput, principal: Principal = Depends(require_scope("review:write"))):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     review_payload = {
@@ -447,7 +885,7 @@ def create_review(decision: ReviewDecisionInput):
         "detected_material_id": str(decision.detected_material_id),
         "action": decision.action,
         "manual_category": decision.manual_category,
-        "reviewer_email": decision.reviewer_email,
+        "principal": principal.id,
     }
     print(f"[review] incoming payload: {review_payload}")
     action = str(decision.action or "").strip().lower()
@@ -458,7 +896,7 @@ def create_review(decision: ReviewDecisionInput):
         detected_material_id = str(decision.detected_material_id)
         print(f"[review] action={action} scan_result_id={scan_result_id} selected_category={decision.manual_category}")
         print(f"[review] selecting {SCAN_RESULTS_TABLE} where id={scan_result_id}")
-        scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id).execute()
+        scan_response = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute()
         print(f"[review] selecting {DETECTED_MATERIALS_TABLE} where id={detected_material_id}, scan_result_id={scan_result_id}")
         material_response = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("id", detected_material_id).eq("scan_result_id", scan_result_id).execute()
         if not scan_response.data or not material_response.data:
@@ -487,7 +925,7 @@ def create_review(decision: ReviewDecisionInput):
             "chosen_category": category,
             "disposition": disposition,
             "outcome": outcome,
-            "reviewer_email": decision.reviewer_email,
+            "reviewer_email": principal.id if principal.kind == "user" else f"api:{principal.id}",
         }
         print(f"[review] inserting {REVIEW_DECISIONS_TABLE}: {decision_insert}")
         inserted = supabase.table(REVIEW_DECISIONS_TABLE).insert(decision_insert).execute()
@@ -524,13 +962,20 @@ def create_review(decision: ReviewDecisionInput):
 
 
 @app.get("/api/scans")
-def get_scan_history():
+def get_scan_history(limit: int = 50, offset: int = 0, principal: Principal = Depends(require_scope("scan:read"))):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     try:
-        scans = supabase.table(SCAN_RESULTS_TABLE).select("*").order("created_at", desc=True).execute().data or []
-        materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").execute().data or []
-        decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").execute().data or []
+        limit = max(1, min(int(limit), 200))
+        offset = max(0, int(offset))
+        scans = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").order("created_at", desc=True).range(offset, offset + limit - 1), principal).execute().data or []
+        scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
+        if scan_ids:
+            materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
+            decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
+        else:
+            materials = []
+            decisions = []
         latest_decisions = {}
         for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
             latest_decisions[str(decision.get("detected_material_id", ""))] = decision
@@ -552,11 +997,11 @@ def get_scan_history():
 
 
 @app.get("/api/scans/{scan_result_id}")
-def get_scan_result(scan_result_id: str):
+def get_scan_result(scan_result_id: str, principal: Principal = Depends(require_scope("scan:read"))):
     """Return the persisted material IDs needed to review a previously loaded scan."""
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    scan_response = supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id).execute()
+    scan_response = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute()
     if not scan_response.data:
         raise HTTPException(status_code=404, detail="Scan result was not found.")
     materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
@@ -575,24 +1020,8 @@ def get_scan_result(scan_result_id: str):
     }
 
 
-@app.get("/api/debug/model")
-def debug_model():
-    import os
-
-    model_path = os.getenv("MODEL_PATH", "models/best.pt")
-
-    return {
-        "cwd": os.getcwd(),
-        "model_path": model_path,
-        "exists": os.path.exists(model_path),
-        "root_files": os.listdir("."),
-        "models_exists": os.path.exists("models"),
-        "models_files": os.listdir("models") if os.path.exists("models") else []
-    }
-
-
 @app.get("/api/google/auth")
-def google_auth():
+def google_auth(principal: Principal = Depends(require_scope("scan:write"))):
     try:
         flow = oauth_flow()
         authorization_url, state = flow.authorization_url(
@@ -629,115 +1058,6 @@ def google_callback(code: str | None = None, state: str | None = None, error: st
 
 
 @app.post("/api/predict")
-async def predict(file: UploadFile = File(...)):
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Upload one image file.")
-
-    content_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-    suffix = (Path(file.filename or "upload.jpg").suffix or ".jpg").lower()
-    content_type = content_types.get(suffix)
-    if not content_type:
-        raise HTTPException(status_code=400, detail="Upload one image file.")
-
-    tmp_path = None
-    try:
-        print(f"[predict] reading uploaded file: {file.filename or 'uploaded-image'} ({file.content_type})")
-        file_bytes = await file.read()
-        drive_metadata = {
-            "storage_provider": "google_drive_and_supabase_storage",
-            "upload_status": "pending",
-            "drive_file_id": None,
-            "drive_file_name": file.filename or "uploaded-image",
-            "drive_web_url": None,
-            "image_url": None,
-            "preview_image_url": None,
-        }
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
-
-        print(f"[predict] running YOLO prediction: {tmp_path}")
-        result = get_model()(tmp_path, verbose=False)[0]
-        print("[predict] converting YOLO results")
-        materials = to_detected_materials(result)
-        summary = summarize(materials)
-
-        try:
-            print("[Google Drive] Upload started")
-            uploaded_drive_file = upload_original_to_drive_oauth(file_bytes, file.filename, content_type)
-            drive_metadata = {**drive_metadata, **uploaded_drive_file}
-            print(f"[Google Drive] Upload successful: {drive_metadata['drive_file_id']}")
-        except Exception as exc:
-            print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
-
-        try:
-            print("[Supabase Storage] Upload started")
-            preview_upload = upload_original_to_supabase_storage(file_bytes, file.filename, content_type)
-            drive_metadata["preview_image_url"] = preview_upload["public_url"]
-            print(f"[Supabase Storage] Upload successful: {preview_upload['public_url']}")
-        except Exception as exc:
-            print(f"[Supabase Storage] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
-
-        drive_metadata["upload_status"] = "uploaded" if drive_metadata["preview_image_url"] else "preview_upload_failed"
-        scan_row = {
-            **drive_metadata,
-            "source_type": "image",
-            "processing_status": "complete",
-            **summary,
-        }
-
-        print(f"[predict] inserting {SCAN_RESULTS_TABLE}")
-        try:
-            scan_response = supabase.table(SCAN_RESULTS_TABLE).insert(scan_row).execute()
-            scan_data = scan_response.data
-            print("[Database] Scan record inserted")
-        except Exception as exc:
-            print(f"[predict] Supabase {SCAN_RESULTS_TABLE} insert failed: {safe_error_message(exc)}")
-            print("[predict] retrying scan insert without Drive metadata")
-            try:
-                scan_response = supabase.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, file.filename)).execute()
-                scan_data = scan_response.data
-                print("[Database] Scan record inserted")
-            except Exception as retry_exc:
-                print(f"[predict] Supabase {SCAN_RESULTS_TABLE} retry failed: {safe_error_message(retry_exc)}")
-                traceback.print_exc()
-                raise
-        if not scan_data:
-            print(f"[predict] Supabase {SCAN_RESULTS_TABLE} insert returned no data")
-            raise HTTPException(status_code=500, detail="Unable to save scan result.")
-
-        scan_result_id = scan_data[0]["id"]
-        stored_material_keys = {"material_name", "category", "confidence", "recyclable_status", "contaminant_status", "bbox_x", "bbox_y", "bbox_width", "bbox_height"}
-        linked_materials = [{key: value for key, value in item.items() if key in stored_material_keys} | {"scan_result_id": scan_result_id} for item in materials]
-        stored_materials = []
-        if linked_materials:
-            print(f"[predict] inserting {DETECTED_MATERIALS_TABLE}: {len(linked_materials)} row(s)")
-            try:
-                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or []
-            except Exception as exc:
-                print(f"[predict] Supabase {DETECTED_MATERIALS_TABLE} insert failed")
-                print(f"[predict] Supabase error: {exc}")
-                traceback.print_exc()
-                raise
-            if len(stored_materials) != len(linked_materials):
-                raise HTTPException(status_code=500, detail="Unable to retrieve saved detected materials.")
-
-        return {
-            "scan_result_id": scan_result_id,
-            **summary,
-            **drive_metadata,
-            # Return the inserted rows, including their database IDs. These IDs are
-            # required by /api/reviews and must travel with the browser's scan state.
-            "detected_materials": stored_materials,
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Prediction failed.") from exc
-    finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
+async def predict(file: UploadFile = File(...), principal: Principal = Depends(require_scope("scan:write"))):
+    file_bytes = await file.read()
+    return run_scan(file_bytes, file.filename, "image", principal=principal, content_type=file.content_type)

@@ -107,3 +107,56 @@ where lower(coalesce(scan.overall_status, '')) not in ('rejected', 'quarantined'
 
 -- Google Drive stores uploaded files for the planned flow.
 -- Supabase stores file references, scan status, YOLOv8 result summaries, and detected material rows.
+
+-- Production shared-API and video-ingestion tables. The service role owns these tables;
+-- browser reads go through FastAPI after Supabase Auth verification.
+alter table mock_scan_results
+  add column if not exists source_name text,
+  add column if not exists source_ref text,
+  add column if not exists batch_id text,
+  add column if not exists model_version text,
+  add column if not exists drive_upload_status text default 'pending',
+  add column if not exists preview_upload_status text default 'pending';
+
+alter table mock_detected_materials add column if not exists frame_time_seconds numeric;
+
+create table if not exists api_clients (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  key_prefix text not null unique,
+  key_hash text not null unique,
+  scopes text[] not null default array['scan:write', 'scan:read', 'job:read'],
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+
+create table if not exists processing_jobs (
+  id uuid primary key default gen_random_uuid(),
+  source text not null,
+  source_ref text not null,
+  options jsonb not null default '{}'::jsonb,
+  status text not null default 'queued',
+  processed_count integer not null default 0,
+  total_count integer,
+  scan_ids uuid[] not null default '{}',
+  attempts integer not null default 0,
+  error text,
+  created_by uuid,
+  created_by_type text not null default 'api_key',
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  completed_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists processed_drive_files (
+  drive_file_id text primary key,
+  scan_result_id uuid references mock_scan_results(id) on delete set null,
+  processed_at timestamptz not null default now()
+);
+
+create index if not exists processing_jobs_status_updated_at_idx on processing_jobs(status, updated_at);
+create index if not exists mock_scan_results_user_id_idx on mock_scan_results(user_id);
+create index if not exists mock_detected_materials_scan_result_id_idx on mock_detected_materials(scan_result_id);

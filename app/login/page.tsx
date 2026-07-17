@@ -158,7 +158,7 @@ const html = `
       </div>
 
       <div class="small-note" style="margin-top:24px;">
-        Enter any email and password to continue.
+        Demo mode accepts any email and password.
       </div>
     </div>
 

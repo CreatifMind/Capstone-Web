@@ -105,11 +105,13 @@ const html = `
                 <p>or choose files to upload</p>
                 <div class="upload-source-actions">
                   <label for="fileUpload" class="upload-label"><i class="fa-solid fa-image"></i> Choose Images</label>
+                  <label for="videoUpload" class="secondary-btn"><i class="fa-solid fa-film"></i> Upload MP4</label>
                   <label for="zipUpload" class="secondary-btn upload-zip-label"><i class="fa-solid fa-file-zipper"></i> Upload ZIP</label>
                 </div>
                 <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple />
+                <input type="file" id="videoUpload" accept="video/mp4,.mp4" />
                 <input type="file" id="zipUpload" accept=".zip,application/zip" />
-                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each. Direct upload: 10 images. ZIP: 50 images, 100 MB archive.</p>
+                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each, or MP4 video. Direct upload: 10 images. ZIP: 50 images, 100 MB archive.</p>
                 <div id="uploadUtilityActions" class="upload-utility-actions"></div>
                 <p id="fileName" class="file-name">No images selected</p>
                 <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
@@ -145,7 +147,7 @@ const html = `
                 <li><i class="fa-solid fa-lightbulb" aria-hidden="true"></i><div><strong>Lighting &amp; Contrast</strong><p>Use clear, evenly lit images with the waste item visible.</p></div></li>
                 <li><i class="fa-solid fa-expand" aria-hidden="true"></i><div><strong>Full Visibility</strong><p>Avoid excessive overlap so the model can identify material boundaries.</p></div></li>
                 <li><i class="fa-solid fa-circle-minus" aria-hidden="true"></i><div><strong>Minimize Blur</strong><p>Avoid blurred captures and low-resolution screenshots.</p></div></li>
-                <li><i class="fa-solid fa-briefcase" aria-hidden="true"></i><div><strong>Supported Formats</strong><p>JPG, PNG, WEBP. Up to 10 MB per image. ZIP uploads support up to 50 images.</p></div></li>
+                <li><i class="fa-solid fa-briefcase" aria-hidden="true"></i><div><strong>Supported Formats</strong><p>JPG, PNG, WEBP, or MP4. Videos upload directly to Google Drive for background processing.</p></div></li>
               </ul>
           </section>
           <section class="panel batch-summary-card" aria-labelledby="batchSummaryTitle">

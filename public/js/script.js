@@ -7,6 +7,7 @@ const MAX_ZIP_SIZE = 100 * 1024 * 1024; // 100 MB per ZIP file
 const MAX_ZIP_IMAGES = 50;
 const MAX_ZIP_ENTRIES = 200;
 const MAX_ZIP_EXTRACTED_SIZE = 500 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const DEFAULT_SCAN_ASSET = "/assets/items/upload-result-reference.png";
 
 function plSafeArray(value) {
@@ -51,6 +52,10 @@ function plConfig() {
 
 function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
+}
+
+async function plAuthHeaders(extra = {}) {
+  return { ...extra };
 }
 
 function plStoragePreviewUrl(sourceName) {
@@ -229,7 +234,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
     return false;
   }
   try {
-    const response = await fetch(`${apiBase}/api/scans`);
+    const response = await fetch(`${apiBase}/api/scans?limit=200`, { headers: await plAuthHeaders() });
     const body = await response.text();
     if (!response.ok) {
       console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
@@ -376,7 +381,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   if (!persistedMaterial?.id) {
     let response;
     try {
-      response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scan.id)}`);
+      response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scan.id)}`, { headers: await plAuthHeaders() });
     } catch {
       throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
     }
@@ -393,11 +398,10 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
     if (candidates.length !== 1) throw new Error("This scan cannot be matched to one persisted material for review.");
     persistedMaterial = candidates[0];
   }
-  const reviewer = plSafeJsonParse(sessionStorage.getItem("purityloop_demo_user"), {})?.email || null;
   const action = outcome === "rejected" ? "reject" : "verify";
   let response;
   try {
-    response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_result_id: persistedScan.id, detected_material_id: persistedMaterial.id, action, manual_category: chosenCategory, reviewer_email: reviewer }) });
+    response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ scan_result_id: persistedScan.id, detected_material_id: persistedMaterial.id, action, manual_category: chosenCategory }) });
   } catch {
     throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
   }
@@ -996,7 +1000,10 @@ async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) 
     };
     request.onerror = () => reject(new Error("Cannot reach backend API. Check NEXT_PUBLIC_API_BASE_URL, backend hosting, and CORS."));
     request.ontimeout = () => reject(new Error("Backend scan timed out. Check backend logs."));
-    request.send(formData);
+    plAuthHeaders().then(headers => {
+      Object.entries(headers).forEach(([key, value]) => request.setRequestHeader(key, value));
+      request.send(formData);
+    }).catch(reject);
   });
 
   const scan = plNormalizeScan({
@@ -1026,6 +1033,7 @@ async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) 
  *****************************************/
 function initUploadPage() {
   const fileUpload = document.getElementById("fileUpload");
+  const videoUpload = document.getElementById("videoUpload");
   const zipUpload = document.getElementById("zipUpload");
   if (!fileUpload) return; // Not on upload page
   if (fileUpload.dataset.uploadReady === "true") return;
@@ -1074,7 +1082,11 @@ function initUploadPage() {
       const dt = e.dataTransfer;
       const files = dt.files;
       if (files.length > 0) {
-        processSelectedFiles(files);
+        const dropped = plSafeFiles(files);
+        const videos = dropped.filter(file => /^video\/mp4$/i.test(String(file.type || "")) || /\.mp4$/i.test(file.name || ""));
+        if (videos[0]) processVideoUpload(videos[0]);
+        const images = dropped.filter(file => !videos.includes(file));
+        if (images.length) processSelectedFiles(images);
       }
     });
   }
@@ -1090,6 +1102,11 @@ function initUploadPage() {
       if (archive) processZipUpload(archive);
     });
   }
+  if (videoUpload) videoUpload.addEventListener("change", () => {
+    const video = videoUpload.files?.[0];
+    if (video) processVideoUpload(video);
+    videoUpload.value = "";
+  });
 
   if (clearUploadBtn) clearUploadBtn.addEventListener("click", clearQueue);
   if (scanImageBtn) scanImageBtn.addEventListener("click", () => runBatch(queue.filter(item => item.status === "ready")));
@@ -1220,6 +1237,94 @@ function initUploadPage() {
     if (uploadBox) uploadBox.dataset.batchId = batchId;
     setMessages(queue.length ? `${queue.length} image${queue.length === 1 ? "" : "s"} added.` : "None of the selected files could be added.", rejected);
     renderQueue();
+  }
+
+  async function processVideoUpload(video) {
+    if (isProcessing) return;
+    if (!/^video\/mp4$/i.test(String(video.type || "")) && !/\.mp4$/i.test(video.name || "")) {
+      setMessages("Choose an MP4 video file.");
+      return;
+    }
+    if (!Number(video.size || 0) || video.size > MAX_VIDEO_SIZE) {
+      setMessages("MP4 upload must be larger than zero and no larger than 2 GB.");
+      return;
+    }
+    const apiBase = plApiBaseUrl();
+    if (!apiBase) {
+      setMessages("Backend API URL is not configured.");
+      return;
+    }
+    try {
+      isProcessing = true;
+      renderQueue();
+      setMessages(`Starting resumable MP4 upload for ${video.name}...`);
+      const startResponse = await fetch(`${apiBase}/api/uploads/start`, {
+        method: "POST",
+        headers: await plAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ filename: video.name, size_bytes: video.size, mime: "video/mp4" })
+      });
+      const startPayload = await startResponse.json().catch(() => ({}));
+      if (!startResponse.ok || !startPayload.upload_id) throw new Error(startPayload.detail || "Unable to start MP4 upload.");
+
+      const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
+      let offset = 0;
+      let driveFile = null;
+      while (offset < video.size) {
+        const end = Math.min(video.size, offset + chunkSize);
+        const chunk = video.slice(offset, end);
+        const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, {
+          method: "PUT",
+          headers: { "Content-Range": `bytes ${offset}-${end - 1}/${video.size}` },
+          body: chunk
+        });
+        const chunkPayload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(chunkPayload.detail || `MP4 chunk upload failed (${response.status}).`);
+        if (chunkPayload.complete) driveFile = chunkPayload.drive_file || null;
+        offset = end;
+        plSetUploadProgress((offset / video.size) * 90, "Uploading MP4 to Google Drive");
+      }
+      const driveFileId = driveFile?.id;
+      if (!driveFileId) throw new Error("Google Drive did not return the uploaded file id.");
+      const ingestResponse = await fetch(`${apiBase}/api/ingest`, {
+        method: "POST",
+        headers: await plAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ source: "drive_file", ref: driveFileId, options: { vid_stride: 30 } })
+      });
+      const ingestPayload = await ingestResponse.json().catch(() => ({}));
+      if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(ingestPayload.detail || "Unable to queue MP4 processing.");
+      await pollVideoJob(apiBase, ingestPayload.job_id, video.name);
+    } catch (error) {
+      setMessages(error?.message || "MP4 upload failed.");
+      plHideUploadProgress();
+    } finally {
+      isProcessing = false;
+      renderQueue();
+    }
+  }
+
+  async function pollVideoJob(apiBase, jobId, filename) {
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      const response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
+      const job = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(job.detail || "Unable to read MP4 job status.");
+      if (job.status === "complete") {
+        plSetUploadProgress(100, "MP4 processing complete");
+        setMessages(`${filename} processed. ${Number(job.processed_count || 0)} frame scans saved.`);
+        if (job.scan_ids?.[0]) {
+          const view = document.createElement("button");
+          view.type = "button";
+          view.className = "primary-btn";
+          view.textContent = "View Results";
+          view.addEventListener("click", () => { window.location.href = `/result?scanId=${encodeURIComponent(job.scan_ids[0])}`; });
+          messagesEl?.appendChild(view);
+        }
+        return job;
+      }
+      if (job.status === "failed") throw new Error(job.error || "MP4 processing failed.");
+      if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} frames)`;
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    throw new Error("MP4 processing is taking longer than expected. Check History for updates.");
   }
 
   function showDirectUploadLimit(count) {
