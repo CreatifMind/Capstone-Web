@@ -55,7 +55,8 @@ function plApiBaseUrl() {
 }
 
 async function plAuthHeaders(extra = {}) {
-  return { ...extra };
+  const ngrokHeader = plApiBaseUrl().includes(".ngrok-free.dev") ? { "ngrok-skip-browser-warning": "1" } : {};
+  return { ...ngrokHeader, ...extra };
 }
 
 function plStoragePreviewUrl(sourceName) {
@@ -1274,7 +1275,7 @@ function initUploadPage() {
         const chunk = video.slice(offset, end);
         const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, {
           method: "PUT",
-          headers: { "Content-Range": `bytes ${offset}-${end - 1}/${video.size}` },
+          headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${video.size}` }),
           body: chunk
         });
         const chunkPayload = await response.json().catch(() => ({}));
