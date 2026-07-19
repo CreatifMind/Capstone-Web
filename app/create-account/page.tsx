@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Create Account" };
+
 const html = `
 <div class="login-split">
     <div class="login-visual">
@@ -53,10 +55,10 @@ const html = `
           <i class="fa-solid fa-arrow-left"></i> Back to Login
         </a>
         <h2>Create account</h2>
-        <p>Operator access is provisioned by your facility administrator</p>
+        <p>Account creation is not enabled in the public demo yet.</p>
       </div>
 
-      <form id="createAccountForm" action="/upload" method="get" novalidate>
+      <form id="createAccountForm" method="post" novalidate>
         <div class="form-group">
           <label for="fullName">Full Name</label>
           <input type="text" id="fullName" name="fullName" placeholder="Admin Operator" autocomplete="name" required />
@@ -86,7 +88,7 @@ const html = `
 
         <button type="submit" class="btn btn-full btn-lg">
           <i class="fa-solid fa-user-plus"></i>
-          Request Administrator Invite
+          Create Account
         </button>
       </form>
 
@@ -99,8 +101,7 @@ const html = `
       </div>
 
       <div class="login-trust-row">
-        <span class="trust-badge"><i class="fa-solid fa-lock"></i> SSL Secured</span>
-        <span class="trust-badge"><i class="fa-solid fa-shield-check"></i> AI Verified</span>
+        <span class="trust-badge"><i class="fa-solid fa-flask"></i> Public Demo</span>
         <span class="trust-badge"><i class="fa-solid fa-certificate"></i> Capstone 2026</span>
       </div>
     </div>

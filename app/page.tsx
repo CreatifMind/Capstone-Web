@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Public Demo" };
+
 const html = `
 <!-- ══════════════════════════════════════
        TOP NAVIGATION BAR
@@ -23,7 +25,7 @@ const html = `
     <!-- Actions -->
     <div class="nav-actions">
       <div data-theme-slot="landing"></div>
-      <a href="#contact" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">Explore now</a>
+      <a href="#how" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">How It Works</a>
       <a href="/login" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
       <button id="navBurger" class="nav-burger" aria-label="Toggle menu" aria-expanded="false">
         <span class="nav-burger-label">Menu</span>
@@ -51,7 +53,7 @@ const html = `
       <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
       <a href="#capstone" class="nav-link" role="menuitem">Technology</a>
       <a href="/login" class="nav-link" role="menuitem">Login</a>
-      <a href="#contact" class="nav-link" role="menuitem">Explore Now</a>
+      <a href="#how" class="nav-link" role="menuitem">How It Works</a>
     </div>
   </div>
 
@@ -84,8 +86,8 @@ const html = `
         </p>
 
         <div class="hero-btns">
-          <a href="#problem" class="btn btn-lg">
-            <i class="fa-solid fa-arrow-down"></i> Explore Now
+          <a href="#how" class="btn btn-lg">
+            <i class="fa-solid fa-circle-play"></i> How It Works
           </a>
           <a href="/login" class="btn-outline btn-lg">
             Login
@@ -252,7 +254,7 @@ const html = `
           <div class="step-icon-wrap"><i class="fa-solid fa-triangle-exclamation"></i></div>
           <div class="step-num">4</div>
           <h3>Hazard Quarantine</h3>
-          <p>Batteries and chemicals trigger immediate quarantine alerts and are isolated from recyclable streams.</p>
+          <p>Batteries and chemicals trigger alerts for operator quarantine and separation from recyclable streams.</p>
         </div>
 
         <div class="step-connector" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
@@ -273,11 +275,11 @@ const html = `
   ══════════════════════════════════════ -->
   <section id="features" class="section section-alt">
     <div class="section-inner">
-      <div class="section-header" data-aos="fade-right">
+      <div class="section-header centered" data-aos="fade-right">
         <div>
           <div class="section-tag"><i class="fa-solid fa-star"></i> Platform Features</div>
           <h2 class="section-headline">Everything You Need to Run<br>a Smarter Facility</h2>
-          <p class="section-sub">From live inference to executive reporting, PurityLoop AI covers the entire
+          <p class="section-sub">From saved AI results to operational reporting, PurityLoop AI presents the complete
             operational lifecycle.</p>
         </div>
       </div>
@@ -359,12 +361,12 @@ const html = `
         <div class="feature-content" data-aos="fade-left">
           <div class="feature-num">Feature 02</div>
           <h3>Hazard Quarantine & Contaminant Isolation</h3>
-          <p>Batteries, lithium cells, chemical containers, and high-organic materials are automatically flagged and
-            isolated before they can contaminate recyclable bales, protecting commodity value and plant safety.</p>
+          <p>Batteries, lithium cells, chemical containers, and high-organic materials are flagged for operator review
+            before they can contaminate recyclable bales.</p>
           <ul class="feature-list">
-            <li><i class="fa-solid fa-check"></i> Automatic fire-risk battery isolation</li>
+            <li><i class="fa-solid fa-check"></i> Fire-risk battery alerts for operators</li>
             <li><i class="fa-solid fa-check"></i> Multi-level severity classification (low/high/critical)</li>
-            <li><i class="fa-solid fa-check"></i> Real-time quarantine alert with override capability</li>
+            <li><i class="fa-solid fa-check"></i> Reviewable quarantine recommendations</li>
           </ul>
         </div>
         <div class="feature-visual alert-feed-card" data-aos="fade-right">
@@ -375,7 +377,7 @@ const html = `
           <div class="alert-feed-list">
             <div class="alert-feed-row critical">
               <span class="alert-feed-icon"><i class="fa-solid fa-battery-full"></i></span>
-              <div><strong>Battery Hazard | hazard-sample.png</strong><br><small>Lithium risk detected | Immediate quarantine</small></div>
+              <div><strong>Battery Hazard | hazard-sample.png</strong><br><small>Lithium risk detected | Operator quarantine recommended</small></div>
               <span class="alert-feed-severity">Critical</span>
             </div>
             <div class="alert-feed-row high">
@@ -397,11 +399,11 @@ const html = `
         <div class="feature-content" data-aos="fade-right">
           <div class="feature-num">Feature 03</div>
           <h3>Operations Command Dashboard</h3>
-          <p>Upload-wide KPIs, commodity resale tracking, material yield charts, and purity ring gauges in one
+          <p>Upload-wide KPIs, estimated recovery values, material yield charts, and purity gauges in one
             unified command view for facility operators and QA managers.</p>
           <ul class="feature-list">
-            <li><i class="fa-solid fa-check"></i> 1,500t diverted YTD with per-material breakdown</li>
-            <li><i class="fa-solid fa-check"></i> $842,500 estimated commodity revenue tracked</li>
+            <li><i class="fa-solid fa-check"></i> Illustrative diverted-material breakdown</li>
+            <li><i class="fa-solid fa-check"></i> Illustrative recovery-value estimates</li>
             <li><i class="fa-solid fa-check"></i> Drill-through analytics from KPI to raw scan data</li>
           </ul>
         </div>
@@ -412,12 +414,12 @@ const html = `
           </div>
           <div class="material-metric-grid">
             <div class="material-metric-tile">
-              <strong>1,500t</strong>
-              <span>Total Diverted</span>
+              <strong>Demo</strong>
+              <span>Material Summary</span>
             </div>
             <div class="material-metric-tile">
-              <strong>$842k</strong>
-              <span>Revenue</span>
+              <strong>Est.</strong>
+              <span>Recovery Value</span>
             </div>
           </div>
           <div class="material-bar-list">
@@ -444,11 +446,10 @@ const html = `
     <div class="section-inner">
       <div class="section-header centered impact-header" data-aos="fade-up">
         <div class="section-tag impact-tag">
-          <i class="fa-solid fa-chart-line"></i> Real Results
+          <i class="fa-solid fa-flask"></i> Illustrative Demo Metrics
         </div>
         <h2 class="section-headline">Platform Performance at a Glance</h2>
-        <p class="section-sub">Measured across uploaded images and material
-          categories for the 2026 capstone prototype.</p>
+        <p class="section-sub">Example metrics showing how the capstone dashboard presents model and operations data.</p>
       </div>
 
       <div class="impact-grid">
@@ -468,9 +469,9 @@ const html = `
           <p class="impact-sub">Per sorting batch cycle</p>
         </div>
         <div class="impact-item" data-aos="fade-up" data-aos-delay="300">
-          <span id="count-4" class="impact-num">24/7</span>
-          <p class="impact-label">Uptime Monitoring</p>
-          <p class="impact-sub">Continuous AI operation</p>
+          <span id="count-4" class="impact-num">Demo</span>
+          <p class="impact-label">Environment Status</p>
+          <p class="impact-sub">Public capstone workspace</p>
         </div>
       </div>
     </div>
@@ -560,10 +561,12 @@ const html = `
         <div data-aos="fade-right">
           <h3 style="margin-bottom:20px;">Technology Stack</h3>
           <div class="tech-stack-grid">
-            <span class="tech-pill"><i class="fa-brands fa-html5"></i> HTML5</span>
-            <span class="tech-pill"><i class="fa-solid fa-palette"></i> Tailwind CSS</span>
-            <span class="tech-pill"><i class="fa-brands fa-js"></i> JavaScript ES6+</span>
+            <span class="tech-pill"><i class="fa-solid fa-code"></i> Next.js + React</span>
+            <span class="tech-pill"><i class="fa-solid fa-file-code"></i> TypeScript</span>
+            <span class="tech-pill"><i class="fa-brands fa-python"></i> FastAPI + Python</span>
             <span class="tech-pill"><i class="fa-solid fa-chart-bar"></i> Chart.js</span>
+            <span class="tech-pill"><i class="fa-solid fa-database"></i> Supabase</span>
+            <span class="tech-pill"><i class="fa-brands fa-google-drive"></i> Google Drive</span>
             <span class="tech-pill"><i class="fa-solid fa-brain"></i> YOLOv8 AI Model</span>
             <span class="tech-pill"><i class="fa-solid fa-robot"></i> Machine Learning</span>
             <span class="tech-pill"><i class="fa-solid fa-bolt"></i> GSAP Animation</span>
@@ -587,7 +590,7 @@ const html = `
               <i class="fa-solid fa-shield-halved"></i>
               <div>
                 <h4>Hazard Detection & Isolation</h4>
-                <p>Real-time battery and chemical contaminant identification with automatic quarantine triggers.</p>
+                <p>Battery and chemical contaminant identification with operator quarantine recommendations.</p>
               </div>
             </div>
             <div class="research-item">
@@ -620,18 +623,16 @@ const html = `
       <div class="final-cta-inner" data-aos="fade-up">
         <div class="section-tag" style="justify-content:center;"><i class="fa-solid fa-rocket"></i> Get Started</div>
         <h2>Ready to Experience<br>Intelligent Waste Sorting?</h2>
-        <p>Explore the full PurityLoop AI platform, from YOLOv8 inference to operations analytics. Built for real
-          MRF use cases.</p>
+        <p>Explore the PurityLoop AI public demo, from YOLOv8 classification to operations analytics.</p>
         <div class="final-cta-btns">
           <a href="/login" class="btn btn-xl">
-            <i class="fa-solid fa-sign-in-alt"></i> Launch Platform
+            <i class="fa-solid fa-flask"></i> Try the Demo
           </a>
           <a href="#analytics" class="btn-outline btn-xl">
             <i class="fa-solid fa-chart-area"></i> View Analytics Demo
           </a>
         </div>
-        <p style="margin-top:24px;font-size:0.8125rem;color:var(--muted);">Capstone prototype | No account required |
-          Free access</p>
+        <p style="margin-top:24px;font-size:0.8125rem;color:var(--muted);">Public capstone demo | No real account required</p>
       </div>
     </div>
   </section>

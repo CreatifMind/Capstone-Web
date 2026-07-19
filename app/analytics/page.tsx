@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Analytics" };
+
 const html = `
 <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
@@ -33,10 +35,6 @@ const html = `
         <a href="/analytics" class="nav-item active" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Analytics</span>
-        </a>
-        <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket">
-          <i class="nav-item-icon fa-solid fa-ticket"></i>
-          <span class="nav-item-label">Submit Ticket</span>
         </a>
         <a href="/settings" class="nav-item" data-tooltip="Settings">
           <i class="nav-item-icon fa-solid fa-gear"></i>
@@ -75,14 +73,10 @@ const html = `
         <div class="topbar-right">
           <div data-theme-slot="app"></div>
 
-          <label class="analytics-date-control" for="analyticsRange">
-            <span class="sr-only">Analytics date range</span>
+          <label class="analytics-date-control" for="analyticsDate">
+            <span class="sr-only">Date selector</span>
             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-            <select id="analyticsRange" aria-label="Analytics date range">
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-            </select>
+            <input id="analyticsDate" type="date" aria-label="Date selector" />
           </label>
           <div class="date-pill">
             <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
@@ -104,11 +98,12 @@ const html = `
       <div class="page-body">
         <section class="analytics-overview" aria-label="Analytics overview">
           <div id="analyticsOverviewState" class="analytics-overview-state" role="status" aria-live="polite" hidden></div>
+          <p class="analytics-last-updated">Last updated: <time id="analyticsLastUpdated">—</time></p>
           <section class="analytics-kpi-grid" aria-label="Analytics key performance indicators">
-            <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span>Needs Review</span><strong data-overview="needs-review">-</strong><p data-overview="needs-review-note">Loading analytics...</p><small data-overview="needs-review-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">-</strong><p>High-confidence items</p><small data-overview="confirmed-today-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i></span><span>Recoverable Value</span><strong data-overview="recoverable-value">-</strong><p>Estimated recoverable value</p><small data-overview="recoverable-value-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span>Average Confidence</span><strong data-overview="average-confidence">-</strong><p>Across all scans</p><small data-overview="average-confidence-compare" hidden></small></article>
+            <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span>Items Needing Review</span><strong data-overview="needs-review">-</strong><p data-overview="needs-review-note">Loading analytics...</p><small data-overview="needs-review-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">-</strong><p>Confirmed detections</p><small data-overview="confirmed-today-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i></span><span>Estimated Recovery Value</span><strong data-overview="recoverable-value">-</strong><p>Illustrative category estimate</p><small data-overview="recoverable-value-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span>Average Detection Confidence</span><strong data-overview="average-confidence">-</strong><p>Across detected items</p><small data-overview="average-confidence-compare" hidden></small></article>
           </section>
 
           <section class="analytics-attention-banner" data-overview="attention-banner">
@@ -135,7 +130,7 @@ const html = `
             <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/log">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
           </section>
 
-          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><h2 id="analyticsRecentLogHeading">Recent Verification Log</h2><a href="/log">View all history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
+          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><div><h2 id="analyticsRecentLogHeading">Recent Verification History</h2><p class="analytics-data-note">Recent saved records from the shared scan history.</p></div><a href="/log">View audit history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
         </section>
 
         <!-- DETAIL DOCK -->
@@ -266,7 +261,7 @@ const html = `
                 <p class="eyebrow">Ledger Detail</p>
                 <h2>Recent Scan Verification Ledger</h2>
               </div>
-              <a href="/log" class="secondary-btn">Open Verification Logs Page</a>
+              <a href="/log" class="secondary-btn">Open Audit History</a>
             </div>
             <div class="table-wrap">
               <table class="ledger-table">

@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Upload" };
+
 const html = `
 <div class="app-layout">
     <!-- Sidebar Overlay for Mobile -->
@@ -33,10 +35,6 @@ const html = `
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Analytics</span>
-        </a>
-        <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket">
-          <i class="nav-item-icon fa-solid fa-ticket"></i>
-          <span class="nav-item-label">Submit Ticket</span>
         </a>
         <a href="/settings" class="nav-item" data-tooltip="Settings">
           <i class="nav-item-icon fa-solid fa-gear"></i>
@@ -109,9 +107,9 @@ const html = `
                   <label for="zipUpload" class="secondary-btn upload-zip-label"><i class="fa-solid fa-file-zipper"></i> Upload ZIP</label>
                 </div>
                 <input type="file" id="fileUpload" accept="image/jpeg,image/png,image/webp" multiple />
-                <input type="file" id="videoUpload" accept="video/mp4,.mp4" />
-                <input type="file" id="zipUpload" accept=".zip,application/zip" />
-                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each, or MP4 video. Direct upload: 10 images. ZIP: no archive or image-count limit.</p>
+                <input type="file" id="videoUpload" accept="video/mp4,.mp4" multiple />
+                <input type="file" id="zipUpload" accept=".zip,application/zip" multiple />
+                <p id="uploadPolicy" class="upload-file-policy">JPG, PNG, WEBP up to 10 MB each. Select multiple MP4 or ZIP files to preview them here; click Detect Images when ready. ZIP: no archive or image-count cap. MP4: up to 2 GB each.</p>
                 <div id="uploadUtilityActions" class="upload-utility-actions"></div>
                 <p id="fileName" class="file-name">No images selected</p>
                 <div id="uploadMessages" class="upload-messages" aria-live="polite"></div>
@@ -154,11 +152,11 @@ const html = `
               <h2 id="batchSummaryTitle"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Batch Summary</h2>
               <dl class="batch-summary-list">
                 <div><dt>Total Selected</dt><dd id="batchTotalSelected">0 images</dd></div>
-                <div><dt>Valid Images</dt><dd id="batchValidImages">0 images</dd></div>
+                <div><dt>Valid Files</dt><dd id="batchValidImages">0 files</dd></div>
                 <div><dt>Need Review</dt><dd id="batchNeedReview">0 images</dd></div>
                 <div><dt>Unsupported / Skipped</dt><dd id="batchSkippedImages">0 files</dd></div>
                 <div><dt>ZIP Detected</dt><dd id="batchZipDetected">No</dd></div>
-                <div><dt>Max Direct Upload</dt><dd>10 images</dd></div>
+                <div><dt>Direct Upload Limit</dt><dd>10 images</dd></div>
               </dl>
           </section>
         </section>

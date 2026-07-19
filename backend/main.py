@@ -5,17 +5,20 @@ import tempfile
 import traceback
 import threading
 import time
+import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
 from uuid import UUID, uuid4
+from typing import Any, Callable, TypeVar
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from supabase import create_client
 from ultralytics import YOLO
@@ -53,7 +56,14 @@ app.add_middleware(
 )
 
 model = None
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
+
+
+def _new_supabase_client():
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else None
+
+
+# Request handlers may keep using this client. Workers always create their own executor.
+supabase = _new_supabase_client()
 SCAN_RESULTS_TABLE = "mock_scan_results"
 DETECTED_MATERIALS_TABLE = "mock_detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
@@ -62,6 +72,54 @@ PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 CONFIRMATION_THRESHOLD = 0.85
+SUPABASE_RETRY_ATTEMPTS = 6
+SUPABASE_TRANSIENT_ERRORS = (
+    httpx.RemoteProtocolError,
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.TimeoutException,
+)
+T = TypeVar("T")
+
+
+class SupabaseTemporarilyUnavailable(RuntimeError):
+    """A transient transport failure after bounded reconnect attempts."""
+
+
+class SupabaseExecutor:
+    """Retry one Supabase operation and replace a broken PostgREST client."""
+
+    def __init__(self, client: Any | None = None, client_factory: Callable[[], Any] = _new_supabase_client,
+                 attempts: int = SUPABASE_RETRY_ATTEMPTS, sleeper: Callable[[float], None] = time.sleep,
+                 random_value: Callable[[], float] = random.random):
+        self.client = client or client_factory()
+        self.client_factory = client_factory
+        self.attempts = attempts
+        self.sleeper = sleeper
+        self.random_value = random_value
+
+    def execute(self, operation: Callable[[Any], T], recover: Callable[[Any], T | None] | None = None) -> T:
+        if not self.client:
+            raise RuntimeError("Supabase backend env is not configured")
+        last_error: Exception | None = None
+        for attempt in range(self.attempts):
+            try:
+                return operation(self.client)
+            except SUPABASE_TRANSIENT_ERRORS as exc:
+                last_error = exc
+                # A protocol disconnect can leave the synchronous HTTP/2 connection unusable.
+                self.client = self.client_factory()
+                if recover and self.client:
+                    try:
+                        recovered = recover(self.client)
+                        if recovered is not None:
+                            return recovered
+                    except SUPABASE_TRANSIENT_ERRORS:
+                        self.client = self.client_factory()
+                if attempt + 1 < self.attempts:
+                    self.sleeper(min(4.0, 0.25 * (2 ** attempt)) + (self.random_value() * 0.2))
+        raise SupabaseTemporarilyUnavailable("Supabase connection temporarily unavailable") from last_error
 # ponytail: local demo is one backend process; use shared storage for multi-instance deployment.
 UPLOAD_SESSIONS: dict[str, str] = {}
 CATEGORY_CLASS_MAP = {
@@ -129,17 +187,19 @@ def safe_drive_filename(original_filename: str | None) -> str:
     return f"purityloop_{timestamp}_{safe_name}"
 
 
-def upload_original_to_supabase_storage(file_bytes: bytes, original_filename: str | None, content_type: str) -> dict:
-    if not supabase:
+def upload_original_to_supabase_storage(file_bytes: bytes, original_filename: str | None, content_type: str,
+                                        database: SupabaseExecutor | None = None) -> dict:
+    database = database or SupabaseExecutor(supabase)
+    if not database.client:
         raise RuntimeError("Supabase backend env is not configured")
 
     path = safe_drive_filename(original_filename)
-    supabase.storage.from_(PREVIEW_BUCKET).upload(
+    database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).upload(
         path=path,
         file=file_bytes,
         file_options={"content-type": content_type, "upsert": "false"},
-    )
-    public_url = supabase.storage.from_(PREVIEW_BUCKET).get_public_url(path)
+    ))
+    public_url = database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).get_public_url(path))
     if isinstance(public_url, dict):
         public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
     if not public_url:
@@ -479,9 +539,11 @@ def run_scan(
     content_type: str | None = None,
     existing_drive_metadata: dict | None = None,
     frame_time_seconds: float | None = None,
+    database: SupabaseExecutor | None = None,
 ) -> dict:
     """Run one image through the existing YOLO path and persist one canonical scan."""
-    if not supabase:
+    database = database or SupabaseExecutor(supabase)
+    if not database.client:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     suffix, normalized_type = _image_content_type(filename, content_type)
     tmp_path = None
@@ -516,7 +578,7 @@ def run_scan(
                 print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
 
         try:
-            preview_upload = upload_original_to_supabase_storage(file_bytes, filename, normalized_type)
+            preview_upload = upload_original_to_supabase_storage(file_bytes, filename, normalized_type, database)
             drive_metadata["preview_image_url"] = preview_upload["public_url"]
             drive_metadata["preview_upload_status"] = "uploaded"
         except Exception as exc:
@@ -537,12 +599,24 @@ def run_scan(
         if principal and principal.kind == "user":
             scan_row["user_id"] = principal.id
 
+        def recover_scan(client):
+            if source_type != "video_frame" or not batch_id:
+                return None
+            response = client.table(SCAN_RESULTS_TABLE).select("*").eq("batch_id", batch_id).eq("source_name", scan_row["source_name"]).maybe_single().execute()
+            return [response.data] if response and response.data else None
+
         try:
-            scan_data = supabase.table(SCAN_RESULTS_TABLE).insert(scan_row).execute().data or []
+            scan_data = database.execute(
+                lambda client: client.table(SCAN_RESULTS_TABLE).insert(scan_row).execute().data or [],
+                recover=recover_scan,
+            )
         except Exception as exc:
             if getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
                 raise
-            scan_data = supabase.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, filename)).execute().data or []
+            scan_data = database.execute(
+                lambda client: client.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, filename)).execute().data or [],
+                recover=recover_scan,
+            )
         if not scan_data:
             raise HTTPException(status_code=500, detail="Unable to save scan result.")
 
@@ -558,14 +632,25 @@ def run_scan(
         if frame_time_seconds is not None:
             linked_materials = [{**item, "frame_time_seconds": frame_time_seconds} for item in linked_materials]
         if linked_materials:
+            def recover_materials(client):
+                response = client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute()
+                rows = response.data or []
+                return rows if len(rows) >= len(linked_materials) else None
+
             try:
-                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or []
+                stored_materials = database.execute(
+                    lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or [],
+                    recover=recover_materials,
+                )
             except Exception as exc:
                 if frame_time_seconds is None or getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
                     raise
-                stored_materials = supabase.table(DETECTED_MATERIALS_TABLE).insert(
-                    [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in linked_materials]
-                ).execute().data or []
+                stored_materials = database.execute(
+                    lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(
+                        [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in linked_materials]
+                    ).execute().data or [],
+                    recover=recover_materials,
+                )
         else:
             stored_materials = []
         if len(stored_materials) != len(linked_materials):
@@ -603,7 +688,13 @@ class IngestInput(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True}
+    return {
+        "ok": True,
+        "mode": "public_demo",
+        "model_available": MODEL_PATH.exists(),
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
+        "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
+    }
 
 
 def _drive_service():
@@ -630,7 +721,14 @@ def _download_drive_file(file_id: str) -> bytes:
     return output.getvalue()
 
 
-def _process_drive_file(file_id: str, job: dict, principal: Principal | None) -> list[str]:
+def _find_video_frame_scan(database: SupabaseExecutor, job_id: str, filename: str) -> str | None:
+    response = database.execute(
+        lambda client: client.table(SCAN_RESULTS_TABLE).select("id").eq("batch_id", job_id).eq("source_name", filename).maybe_single().execute()
+    )
+    return str(response.data["id"]) if response and response.data else None
+
+
+def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
     info = _drive_file_info(file_id)
     if info.get("trashed"):
         return []
@@ -648,13 +746,18 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None) ->
         import cv2
         stride = max(1, int((job.get("options") or {}).get("vid_stride", 30)))
         tmp_path = None
-        scan_ids: list[str] = []
+        scan_ids = [str(scan_id) for scan_id in job.get("scan_ids") or []]
+        last_checkpoint_count = len(scan_ids)
+        last_checkpoint_at = time.monotonic()
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                 tmp.write(payload)
                 tmp_path = tmp.name
             capture = cv2.VideoCapture(tmp_path)
             fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+            frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            sampled_total = (frame_total + stride - 1) // stride if frame_total else None
+            _update_job(job["id"], database, total_count=sampled_total)
             frame_index = 0
             while True:
                 ok, frame = capture.read()
@@ -663,21 +766,26 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None) ->
                 if frame_index % stride == 0:
                     encoded_ok, encoded = cv2.imencode(".jpg", frame)
                     if encoded_ok:
-                        result = run_scan(
-                            encoded.tobytes(),
-                            f"{Path(name).stem}_frame_{frame_index:08d}.jpg",
-                            "video_frame",
-                            source_ref=file_id,
-                            batch_id=str(job["id"]),
-                            principal=principal,
-                            content_type="image/jpeg",
-                            existing_drive_metadata=existing,
-                            frame_time_seconds=(frame_index / fps if fps else None),
-                        )
-                        scan_ids.append(str(result["scan_result_id"]))
-                        _update_job(job["id"], processed_count=len(scan_ids), scan_ids=scan_ids)
+                        frame_name = f"{Path(name).stem}_frame_{frame_index:08d}.jpg"
+                        scan_id = _find_video_frame_scan(database, str(job["id"]), frame_name)
+                        if not scan_id:
+                            result = run_scan(
+                                encoded.tobytes(), frame_name, "video_frame", source_ref=file_id,
+                                batch_id=str(job["id"]), principal=principal, content_type="image/jpeg",
+                                existing_drive_metadata=existing,
+                                frame_time_seconds=(frame_index / fps if fps else None), database=database,
+                            )
+                            scan_id = str(result["scan_result_id"])
+                        if scan_id not in scan_ids:
+                            scan_ids.append(scan_id)
+                        now = time.monotonic()
+                        if len(scan_ids) - last_checkpoint_count >= 10 or now - last_checkpoint_at >= 5:
+                            _update_job(job["id"], database, processed_count=len(scan_ids), scan_ids=scan_ids)
+                            last_checkpoint_count = len(scan_ids)
+                            last_checkpoint_at = now
                 frame_index += 1
             capture.release()
+            _update_job(job["id"], database, processed_count=len(scan_ids), total_count=sampled_total or len(scan_ids), scan_ids=scan_ids)
             return scan_ids
         finally:
             if tmp_path:
@@ -691,16 +799,18 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None) ->
         principal=principal,
         content_type=mime or guess_type(name)[0] or "image/jpeg",
         existing_drive_metadata=existing,
+        database=database,
     )
     return [str(result["scan_result_id"])]
 
 
-def _update_job(job_id: str, **fields) -> None:
-    if supabase:
-        supabase.table(JOBS_TABLE).update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
+def _update_job(job_id: str, database: SupabaseExecutor, **fields) -> None:
+    database.execute(
+        lambda client: client.table(JOBS_TABLE).update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
+    )
 
 
-def _process_job(job: dict) -> list[str]:
+def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
     principal = Principal(
         str(job.get("created_by_type") or "api_key"),
         str(job.get("created_by") or "worker"),
@@ -724,45 +834,76 @@ def _process_job(job: dict) -> list[str]:
 
     scan_ids: list[str] = []
     for file_id in file_ids:
-        if supabase:
-            existing_response = supabase.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
-            existing = existing_response.data if existing_response else None
-            if existing:
-                continue
-        scan_ids.extend(_process_drive_file(file_id, job, principal))
-        if supabase:
-            supabase.table(PROCESSED_DRIVE_FILES_TABLE).insert({"drive_file_id": file_id, "scan_result_id": scan_ids[-1] if scan_ids else None}).execute()
+        existing_response = database.execute(
+            lambda client: client.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
+        )
+        existing = existing_response.data if existing_response else None
+        if existing:
+            saved = database.execute(
+                lambda client: client.table(SCAN_RESULTS_TABLE).select("id").eq("batch_id", str(job["id"])).execute()
+            ).data or []
+            scan_ids.extend(str(row["id"]) for row in saved if row.get("id"))
+            continue
+        scan_ids.extend(_process_drive_file(file_id, job, principal, database))
+        def recover_processed_file(client):
+            response = client.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
+            return response.data if response and response.data else None
+
+        database.execute(
+            lambda client: client.table(PROCESSED_DRIVE_FILES_TABLE).insert({"drive_file_id": file_id, "scan_result_id": scan_ids[-1] if scan_ids else None}).execute(),
+            recover=recover_processed_file,
+        )
     return scan_ids
 
 
 def _worker_loop() -> None:
+    database = SupabaseExecutor()
+    active_job = None
     while True:
         job_id = None
         try:
-            if not supabase:
+            if not database.client:
                 time.sleep(15)
                 continue
-            job_response = supabase.table(JOBS_TABLE).select("*").eq("status", "queued").order("created_at").limit(1).maybe_single().execute()
-            job = job_response.data if job_response else None
-            if not job:
-                time.sleep(5)
-                continue
-            job_id = str(job["id"])
-            _update_job(job_id, status="processing", started_at=datetime.now(timezone.utc).isoformat(), attempts=int(job.get("attempts") or 0) + 1)
-            scan_ids = _process_job(job)
-            _update_job(job_id, status="complete", scan_ids=scan_ids, processed_count=len(scan_ids), total_count=len(scan_ids), completed_at=datetime.now(timezone.utc).isoformat())
+            if active_job is None:
+                job_response = database.execute(
+                    lambda client: client.table(JOBS_TABLE).select("*").eq("status", "queued").order("created_at").limit(1).maybe_single().execute()
+                )
+                active_job = job_response.data if job_response else None
+                if not active_job:
+                    time.sleep(5)
+                    continue
+                job_id = str(active_job["id"])
+                _update_job(job_id, database, status="processing", started_at=datetime.now(timezone.utc).isoformat(), attempts=int(active_job.get("attempts") or 0) + 1)
+            job_id = str(active_job["id"])
+            scan_ids = _process_job(active_job, database)
+            _update_job(job_id, database, status="completed", scan_ids=scan_ids, processed_count=len(scan_ids), total_count=len(scan_ids), completed_at=datetime.now(timezone.utc).isoformat())
+            active_job = None
+        except SupabaseTemporarilyUnavailable:
+            # Keep this in-memory job alive. A later retry resumes via persisted frame names.
+            print("[worker] Supabase temporarily unavailable; keeping job active for retry")
+            time.sleep(2)
         except Exception as exc:
             print(f"[worker] job failed: {type(exc).__name__}: {safe_error_message(exc)}")
             if job_id:
-                _update_job(job_id, status="failed", error=safe_error_message(exc))
+                try:
+                    _update_job(job_id, database, status="failed", error=safe_error_message(exc))
+                except SupabaseTemporarilyUnavailable:
+                    print("[worker] unable to persist failure; keeping job active for retry")
+                    time.sleep(2)
+                    continue
+            active_job = None
             time.sleep(5)
 
 
 @app.on_event("startup")
 def start_worker() -> None:
-    if supabase and os.getenv("DISABLE_WORKER", "false").lower() != "true":
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and os.getenv("DISABLE_WORKER", "false").lower() != "true":
         try:
-            supabase.table(JOBS_TABLE).update({"status": "queued", "error": "Worker restarted before completion."}).eq("status", "processing").execute()
+            startup_database = SupabaseExecutor()
+            startup_database.execute(
+                lambda client: client.table(JOBS_TABLE).update({"status": "queued", "error": "Worker restarted before completion."}).eq("status", "processing").execute()
+            )
         except Exception as exc:
             print(f"[worker] restart recovery skipped: {type(exc).__name__}: {safe_error_message(exc)}")
         threading.Thread(target=_worker_loop, name="purityloop-worker", daemon=True).start()
@@ -847,12 +988,22 @@ def ingest(payload: IngestInput, principal: Principal = Depends(require_scope("s
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str, principal: Principal = Depends(require_scope("job:read"))):
-    if not supabase:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    query = supabase.table(JOBS_TABLE).select("*").eq("id", job_id)
-    if principal.kind == "user":
-        query = query.eq("created_by", principal.id).eq("created_by_type", "user")
-    response = query.maybe_single().execute()
+    database = SupabaseExecutor()
+    try:
+        def get_query(client):
+            query = client.table(JOBS_TABLE).select("*").eq("id", job_id)
+            if principal.kind == "user":
+                query = query.eq("created_by", principal.id).eq("created_by_type", "user")
+            return query.maybe_single().execute()
+        response = database.execute(get_query)
+    except SupabaseTemporarilyUnavailable:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Job status temporarily unavailable. Retry shortly.", "retryable": True},
+            headers={"Retry-After": "3"},
+        )
     row = response.data if response else None
     if not row:
         raise HTTPException(status_code=404, detail="Processing job was not found.")
@@ -962,13 +1113,46 @@ def create_review(decision: ReviewDecisionInput, principal: Principal = Depends(
 
 
 @app.get("/api/scans")
-def get_scan_history(limit: int = 50, offset: int = 0, principal: Principal = Depends(require_scope("scan:read"))):
+def get_scan_history(
+    limit: int = 50,
+    offset: int = 0,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    principal: Principal = Depends(require_scope("scan:read")),
+):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     try:
         limit = max(1, min(int(limit), 200))
         offset = max(0, int(offset))
-        scans = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").order("created_at", desc=True).range(offset, offset + limit - 1), principal).execute().data or []
+        scan_query = supabase.table(SCAN_RESULTS_TABLE).select("*", count="exact")
+        if start_date:
+            scan_query = scan_query.gte("created_at", start_date)
+        if end_date:
+            scan_query = scan_query.lt("created_at", end_date)
+        scan_response = scoped_query(
+            scan_query.order("created_at", desc=True).range(offset, offset + limit - 1), principal
+        ).execute()
+        scans = scan_response.data or []
+        count_value = getattr(scan_response, "count", None)
+        if count_value is None:
+            raise RuntimeError("Supabase did not return an exact scan count")
+        total = int(count_value)
+        def exact_count(query):
+            response = scoped_query(query, principal).execute()
+            value = getattr(response, "count", None)
+            return int(value) if value is not None else 0
+
+        rejected_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+        needs_review_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+        for query in (rejected_query, needs_review_query):
+            if start_date:
+                query.gte("created_at", start_date)
+            if end_date:
+                query.lt("created_at", end_date)
+        rejected = exact_count(rejected_query.in_("overall_status", ["rejected", "quarantined"]))
+        needs_review = exact_count(needs_review_query.eq("human_review_required", True))
+        confirmed = max(0, total - rejected - needs_review)
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
         if scan_ids:
             materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
@@ -985,11 +1169,22 @@ def get_scan_history(limit: int = 50, offset: int = 0, principal: Principal = De
                 **material,
                 "review_decision": latest_decisions.get(str(material.get("id", ""))),
             })
+        items = [
+            {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
+            for scan in scans
+        ]
         return {
-            "scans": [
-                {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
-                for scan in scans
-            ]
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "start_date": start_date,
+            "end_date": end_date,
+            "summary": {
+                "confirmed": confirmed,
+                "needs_review": needs_review,
+                "rejected": rejected,
+            },
         }
     except Exception as exc:
         print(f"[scans] Supabase history fetch failed: {safe_error_message(exc)}")

@@ -40,6 +40,16 @@ function plSafeFiles(files) {
 const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
 const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
 const PL_UPLOADS_KEY = "purityloop_uploads";
+const PL_SCAN_PAGE_SIZE = 200;
+const PL_SCAN_META_KEY = "purityloop_scan_meta";
+let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
+  total: null,
+  limit: PL_SCAN_PAGE_SIZE,
+  offset: 0,
+  summary: { confirmed: null, needs_review: null, rejected: null }
+});
+let plScanHistoryRefreshPromise = null;
+let plAnalyticsDateData = null;
 let plSelectedUploadFiles = [];
 
 function plConfig() {
@@ -48,6 +58,10 @@ function plConfig() {
 
 function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
+}
+
+function plVideoPollingDelay(transientFailures) {
+  return Math.min(15000, 1000 * (2 ** Math.min(4, Math.max(0, transientFailures - 1)))) + Math.round(Math.random() * 250);
 }
 
 async function plAuthHeaders(extra = {}) {
@@ -224,37 +238,52 @@ function plNormalizeScan(scan) {
 }
 
 async function plRefreshScanResultsFromSupabase(options = {}) {
-  const isCurrent = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+  if (plScanHistoryRefreshPromise) return plScanHistoryRefreshPromise;
   const apiBase = plApiBaseUrl();
   if (!apiBase) {
     console.error("PurityLoop: backend API base URL is missing for scan history refresh.");
     return false;
   }
-  try {
-    const response = await fetch(`${apiBase}/api/scans?limit=200`, { headers: await plAuthHeaders() });
-    const body = await response.text();
-    if (!response.ok) {
-      console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
+  plScanHistoryRefreshPromise = (async () => {
+    try {
+      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
+      const body = await response.text();
+      if (!response.ok) {
+        console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
+        return false;
+      }
+      const payload = plSafeJsonParse(body, null);
+      const scansPayload = Array.isArray(payload) ? payload : payload?.items || payload?.scans;
+      if (!Array.isArray(scansPayload)) {
+        console.error("PurityLoop: scan history refresh returned an unexpected payload.", { status: response.status, body });
+        return false;
+      }
+      const scans = scansPayload
+        .map(scan => ({ ...scan, source_name: scan.source_name || scan.source_type }))
+        .map(plNormalizeScan)
+        .filter(Boolean);
+      plScanHistoryMeta = {
+        total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
+        limit: Number(payload?.limit) || PL_SCAN_PAGE_SIZE,
+        offset: Number(payload?.offset) || 0,
+        summary: {
+          confirmed: Number.isFinite(Number(payload?.summary?.confirmed)) ? Number(payload.summary.confirmed) : null,
+          needs_review: Number.isFinite(Number(payload?.summary?.needs_review)) ? Number(payload.summary.needs_review) : null,
+          rejected: Number.isFinite(Number(payload?.summary?.rejected)) ? Number(payload.summary.rejected) : null
+        }
+      };
+      plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
+      plSetScanResults(scans);
+      window.dispatchEvent(new Event("purityloop:scan-history-refreshed"));
+      return true;
+    } catch (error) {
+      console.error("PurityLoop: scan history refresh request failed.", error);
       return false;
+    } finally {
+      plScanHistoryRefreshPromise = null;
     }
-    const payload = plSafeJsonParse(body, null);
-    const scansPayload = Array.isArray(payload) ? payload : payload?.scans;
-    if (!Array.isArray(scansPayload)) {
-      console.error("PurityLoop: scan history refresh returned an unexpected payload.", { status: response.status, body });
-      return false;
-    }
-    const scans = scansPayload
-      .map(scan => ({ ...scan, source_name: scan.source_name || scan.source_type }))
-      .map(plNormalizeScan)
-      .filter(Boolean);
-    if (!isCurrent()) return true;
-    plSetScanResults(scans);
-    window.dispatchEvent(new Event("purityloop:scan-history-refreshed"));
-    return true;
-  } catch (error) {
-    console.error("PurityLoop: scan history refresh request failed.", error);
-    return false;
-  }
+  })();
+  return plScanHistoryRefreshPromise;
 }
 
 function plGetScanResults() {
@@ -334,7 +363,7 @@ function plMaterialsToBoxes(materials) {
     return {
       label: material.material_name || material.category || "Detected material",
       confidence: `${Math.round(plConfidencePercent(material.confidence))}%`,
-      color: decision.materialClass === "contaminant" ? "#ff8000" : (detectionResults[decision.category]?.color || "#39d12f"),
+      color: decision.materialClass === "contaminant" ? "#ff8000" : "#39d12f",
       x: Number(material.bbox_x || 0) / 100,
       y: Number(material.bbox_y || 0) / 100,
       w: Number(material.bbox_width || 0) / 100,
@@ -473,15 +502,17 @@ function plAnalyticsDayStart(value = new Date()) {
 
 function plGetAnalyticsSummary(options = {}) {
   const now = options.now ? new Date(options.now) : new Date();
+  const selectedDate = options.date ? String(options.date) : "";
   const requestedDays = Number(options.days);
-  const hasRange = Boolean(options.rangeStart || options.rangeEnd || (Number.isFinite(requestedDays) && requestedDays > 0));
+  const hasRange = Boolean(selectedDate || options.rangeStart || options.rangeEnd || (Number.isFinite(requestedDays) && requestedDays > 0));
   const days = Math.max(1, requestedDays || 1);
-  const rangeStart = options.rangeStart ? new Date(options.rangeStart) : hasRange ? (() => {
+  const rangeStart = selectedDate ? new Date(`${selectedDate}T00:00:00`) : options.rangeStart ? new Date(options.rangeStart) : hasRange ? (() => {
     const start = plAnalyticsDayStart(now);
     start.setDate(start.getDate() - (days - 1));
     return start;
   })() : new Date(0);
-  const rangeEnd = options.rangeEnd ? new Date(options.rangeEnd) : hasRange ? now : new Date(8640000000000000);
+  const rangeEnd = selectedDate ? new Date(`${selectedDate}T00:00:00`) : options.rangeEnd ? new Date(options.rangeEnd) : hasRange ? now : new Date(8640000000000000);
+  if (selectedDate) rangeEnd.setDate(rangeEnd.getDate() + 1);
   const allScans = plSafeArray(options.scans || plGetScanResults());
   const scans = allScans.filter(scan => {
     const createdAt = new Date(scan?.created_at || 0);
@@ -621,7 +652,7 @@ function plGetAnalyticsSummary(options = {}) {
     materialRows,
     rangeStart,
     rangeEnd,
-    savedScansCount: scans.length,
+    savedScansCount: Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : null,
     detectedMaterialsCount: materials.length,
     categoryLabels: categoryRows.map(row => row[0]),
     categoryValues: categoryRows.map(row => row[1]),
@@ -1081,8 +1112,10 @@ function initUploadPage() {
       if (files.length > 0) {
         const dropped = plSafeFiles(files);
         const videos = dropped.filter(file => /^video\/mp4$/i.test(String(file.type || "")) || /\.mp4$/i.test(file.name || ""));
-        if (videos[0]) processVideoUpload(videos[0]);
-        const images = dropped.filter(file => !videos.includes(file));
+        const archives = dropped.filter(file => /\.zip$/i.test(file.name || ""));
+        if (videos.length) processVideoUploads(videos);
+        if (archives.length) processZipUploads(archives);
+        const images = dropped.filter(file => !videos.includes(file) && !archives.includes(file));
         if (images.length) processSelectedFiles(images);
       }
     });
@@ -1095,13 +1128,13 @@ function initUploadPage() {
   });
   if (zipUpload) {
     zipUpload.addEventListener("change", function () {
-      const archive = zipUpload.files?.[0];
-      if (archive) processZipUpload(archive);
+      const archives = plSafeFiles(zipUpload.files);
+      if (archives.length) processZipUploads(archives);
     });
   }
   if (videoUpload) videoUpload.addEventListener("change", () => {
-    const video = videoUpload.files?.[0];
-    if (video) processVideoUpload(video);
+    const videos = plSafeFiles(videoUpload.files);
+    if (videos.length) processVideoUploads(videos);
     videoUpload.value = "";
   });
 
@@ -1236,97 +1269,82 @@ function initUploadPage() {
     renderQueue();
   }
 
-  async function processVideoUpload(video) {
+  async function processVideoUploads(videos) {
     if (isProcessing) return;
-    if (!/^video\/mp4$/i.test(String(video.type || "")) && !/\.mp4$/i.test(video.name || "")) {
-      setMessages("Choose an MP4 video file.");
-      return;
-    }
-    if (!Number(video.size || 0) || video.size > MAX_VIDEO_SIZE) {
-      setMessages("MP4 upload must be larger than zero and no larger than 2 GB.");
-      return;
-    }
-    const apiBase = plApiBaseUrl();
-    if (!apiBase) {
-      setMessages("Backend API URL is not configured.");
-      return;
-    }
-    try {
-      isProcessing = true;
-      renderQueue();
-      setMessages(`Starting resumable MP4 upload for ${video.name}...`);
-      const startResponse = await fetch(`${apiBase}/api/uploads/start`, {
-        method: "POST",
-        headers: await plAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ filename: video.name, size_bytes: video.size, mime: "video/mp4" })
-      });
-      const startPayload = await startResponse.json().catch(() => ({}));
-      if (!startResponse.ok || !startPayload.upload_id) throw new Error(startPayload.detail || "Unable to start MP4 upload.");
-
-      const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
-      let offset = 0;
-      let driveFile = null;
-      while (offset < video.size) {
-        const end = Math.min(video.size, offset + chunkSize);
-        const chunk = video.slice(offset, end);
-        const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, {
-          method: "PUT",
-          headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${video.size}` }),
-          body: chunk
-        });
-        const chunkPayload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(chunkPayload.detail || `MP4 chunk upload failed (${response.status}).`);
-        if (chunkPayload.complete) driveFile = chunkPayload.drive_file || null;
-        offset = end;
-        plSetUploadProgress((offset / video.size) * 90, "Uploading MP4 to Google Drive");
+    const keys = new Set(queue.map(item => item.key));
+    const rejected = [];
+    for (const video of videos) {
+      const key = `${video.name}|${video.size}|${video.lastModified}`;
+      if ((!/^video\/mp4$/i.test(String(video.type || "")) && !/\.mp4$/i.test(video.name || ""))) {
+        rejectFile(rejected, video.name, "Unsupported video type.", "video");
+      } else if (!Number(video.size || 0) || video.size > MAX_VIDEO_SIZE) {
+        rejectFile(rejected, video.name, "MP4 must be larger than zero and no larger than 2 GB.", "video");
+      } else if (keys.has(key)) {
+        rejectFile(rejected, video.name, "Duplicate file.", "video");
+      } else {
+        queue.push(createVideoQueueItem(video, key));
+        keys.add(key);
       }
-      const driveFileId = driveFile?.id;
-      if (!driveFileId) throw new Error("Google Drive did not return the uploaded file id.");
-      const ingestResponse = await fetch(`${apiBase}/api/ingest`, {
-        method: "POST",
-        headers: await plAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ source: "drive_file", ref: driveFileId, options: { vid_stride: 30 } })
-      });
-      const ingestPayload = await ingestResponse.json().catch(() => ({}));
-      if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(ingestPayload.detail || "Unable to queue MP4 processing.");
-      await pollVideoJob(apiBase, ingestPayload.job_id, video.name);
-    } catch (error) {
-      setMessages(error?.message || "MP4 upload failed.");
-      plHideUploadProgress();
-    } finally {
-      isProcessing = false;
-      renderQueue();
     }
+    if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (uploadBox) uploadBox.dataset.batchId = batchId;
+    setMessages(`${videos.length} MP4 file${videos.length === 1 ? "" : "s"} staged. Click Detect Images to start processing.`, rejected);
+    renderQueue();
+  }
+
+  function createVideoQueueItem(file, key) {
+    return {
+      localId: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      key,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      dataUrl: "",
+      source: "video",
+      mediaType: "video",
+      status: "ready",
+      errorMessage: "",
+      scanId: ""
+    };
+  }
+
+  async function processVideoUpload(video) {
+    return processVideoUploads([video]);
   }
 
   async function pollVideoJob(apiBase, jobId, filename) {
-    for (let attempt = 0; attempt < 240; attempt += 1) {
+    let transientFailures = 0;
+    while (true) {
       let response;
       try {
         response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
-      } catch (error) {
-        if (attempt < 20) {
-          if (processingStatusEl) processingStatusEl.textContent = "Connecting to MP4 processing job...";
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          continue;
-        }
-        throw error;
+      } catch {
+        transientFailures += 1;
+        const message = "Connection temporarily interrupted. Retrying…";
+        if (processingStatusEl) processingStatusEl.textContent = message;
+        setMessages(message);
+        await new Promise(resolve => setTimeout(resolve, plVideoPollingDelay(transientFailures)));
+        continue;
       }
       const job = await response.json().catch(() => ({}));
+      if (response.status === 503 || job.retryable) {
+        transientFailures += 1;
+        const message = "Connection temporarily interrupted. Retrying…";
+        if (processingStatusEl) processingStatusEl.textContent = message;
+        setMessages(message);
+        await new Promise(resolve => setTimeout(resolve, plVideoPollingDelay(transientFailures)));
+        continue;
+      }
       if (!response.ok) throw new Error(job.detail || "Unable to read MP4 job status.");
-      if (job.status === "complete") {
+      transientFailures = 0;
+      if (job.status === "complete" || job.status === "completed") {
         plSetUploadProgress(100, "MP4 processing complete");
         setMessages(`${filename} processed. ${Number(job.processed_count || 0)} frame scans saved.`);
-        if (job.scan_ids?.[0]) {
-          window.location.href = `/result?scanId=${encodeURIComponent(job.scan_ids[0])}`;
-        }
         return job;
       }
       if (job.status === "failed") throw new Error(job.error || "MP4 processing failed.");
       if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} frames)`;
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
-    throw new Error("MP4 processing is taking longer than expected. Check History for updates.");
   }
 
   function showDirectUploadLimit(count) {
@@ -1346,6 +1364,12 @@ function initUploadPage() {
     chooseFewer.addEventListener("click", () => fileUpload?.click());
     actions.append(uploadZip, chooseFewer);
     messagesEl.appendChild(actions);
+  }
+
+  async function processZipUploads(archives) {
+    if (isProcessing) return;
+    for (const archive of archives) await processZipUpload(archive);
+    if (zipUpload) zipUpload.value = "";
   }
 
   async function processZipUpload(archive) {
@@ -1501,6 +1525,7 @@ function initUploadPage() {
         previewUrl,
         dataUrl: createResultPreview(image),
         source,
+        mediaType: "image",
         status: "ready",
         errorMessage: "",
         scanId: ""
@@ -1527,29 +1552,36 @@ function initUploadPage() {
     const hasSelection = hasItems || rejectedItems.length > 0;
     renderUploadStats();
     plSelectedUploadFiles = queue.map(item => item.file);
-    if (fileName) fileName.textContent = hasSelection ? `${queue.length + rejectedItems.length} file${queue.length + rejectedItems.length === 1 ? "" : "s"} selected` : "No images selected";
+    if (fileName) fileName.textContent = hasSelection ? `${queue.length + rejectedItems.length} file${queue.length + rejectedItems.length === 1 ? "" : "s"} selected` : "No files selected";
     if (scanImageBtn) {
       const readyCount = queue.filter(item => item.status === "ready").length;
       scanImageBtn.disabled = isProcessing || !readyCount;
       scanImageBtn.innerHTML = isProcessing
         ? '<i class="fa-solid fa-spinner fa-spin"></i> Detecting Images'
-        : `<i class="fa-solid fa-magnifying-glass-chart"></i> Detect ${readyCount} Image${readyCount === 1 ? "" : "s"}`;
+        : `<i class="fa-solid fa-magnifying-glass-chart"></i> Detect ${readyCount} File${readyCount === 1 ? "" : "s"}`;
     }
     if (fileUpload) fileUpload.disabled = isProcessing;
+    if (videoUpload) videoUpload.disabled = isProcessing;
     if (zipUpload) zipUpload.disabled = isProcessing;
     if (clearUploadBtn) clearUploadBtn.disabled = isProcessing || !hasSelection;
     if (cameraLauncher) cameraLauncher.disabled = isProcessing;
     if (!queueEl) return;
     queueEl.innerHTML = "";
     if (!hasItems) {
-      queueEl.innerHTML = '<p class="upload-queue-empty">No valid images selected.</p>';
+      queueEl.innerHTML = '<p class="upload-queue-empty">No valid files selected.</p>';
     }
     queue.forEach(item => {
       const row = document.createElement("div");
       row.className = `upload-queue-item status-${item.status}`;
-      const image = document.createElement("img");
-      image.src = item.previewUrl;
-      image.alt = "";
+      const preview = item.mediaType === "video" ? document.createElement("video") : document.createElement("img");
+      preview.src = item.previewUrl;
+      preview.alt = "";
+      if (item.mediaType === "video") {
+        preview.controls = true;
+        preview.muted = true;
+        preview.playsInline = true;
+        preview.preload = "metadata";
+      }
       const details = document.createElement("div");
       details.className = "upload-queue-details";
       const name = document.createElement("strong");
@@ -1568,7 +1600,7 @@ function initUploadPage() {
       remove.disabled = isProcessing || item.status === "processing";
       remove.setAttribute("aria-label", `Remove ${item.file.name}`);
       remove.addEventListener("click", () => removeQueueItem(item.localId));
-      row.append(image, details, status, remove);
+      row.append(preview, details, status, remove);
       queueEl.appendChild(row);
     });
     if (rejectedItems.length) {
@@ -1651,10 +1683,39 @@ function initUploadPage() {
     plSelectedUploadFiles = [];
     plSetJson(PL_UPLOADS_KEY, []);
     if (fileUpload) fileUpload.value = "";
+    if (videoUpload) videoUpload.value = "";
+    if (zipUpload) zipUpload.value = "";
     if (batchSummaryEl) batchSummaryEl.hidden = true;
     if (processingStatusEl) processingStatusEl.textContent = "";
-    setMessages("No images selected.");
+    setMessages("No files selected.");
     renderQueue();
+  }
+
+  async function processVideoQueueItem(item) {
+    const apiBase = plApiBaseUrl();
+    if (!apiBase) throw new Error("Backend API URL is not configured.");
+    const startResponse = await fetch(`${apiBase}/api/uploads/start`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ filename: item.file.name, size_bytes: item.file.size, mime: "video/mp4" }) });
+    const startPayload = await startResponse.json().catch(() => ({}));
+    if (!startResponse.ok || !startPayload.upload_id) throw new Error(startPayload.detail || "Unable to start MP4 upload.");
+    const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
+    let offset = 0;
+    let driveFile = null;
+    while (offset < item.file.size) {
+      const end = Math.min(item.file.size, offset + chunkSize);
+      const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, { method: "PUT", headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${item.file.size}` }), body: item.file.slice(offset, end) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || `MP4 chunk upload failed (${response.status}).`);
+      if (payload.complete) driveFile = payload.drive_file || null;
+      offset = end;
+      plSetUploadProgress((offset / item.file.size) * 90, `Uploading ${item.file.name}`);
+    }
+    if (!driveFile?.id) throw new Error("Google Drive did not return the uploaded file id.");
+    const ingestResponse = await fetch(`${apiBase}/api/ingest`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ source: "drive_file", ref: driveFile.id, options: { vid_stride: 30 } }) });
+    const ingestPayload = await ingestResponse.json().catch(() => ({}));
+    if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(ingestPayload.detail || "Unable to queue MP4 processing.");
+    const job = await pollVideoJob(apiBase, ingestPayload.job_id, item.file.name);
+    item.scanId = job.scan_ids?.[0] || "";
+    return job;
   }
 
   async function runBatch(items) {
@@ -1673,9 +1734,14 @@ function initUploadPage() {
       if (processingStatusEl) processingStatusEl.textContent = `${retrying ? "Retrying" : "Processing"} ${index + 1} of ${items.length} images`;
       renderQueue();
       try {
-        const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
-        item.scanId = scan.id;
-        item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+        if (item.mediaType === "video") {
+          await processVideoQueueItem(item);
+          item.status = "completed";
+        } else {
+          const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
+          item.scanId = scan.id;
+          item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+        }
       } catch (error) {
         item.status = "failed";
         item.errorMessage = error?.message || "The image could not be processed. Check the connection and try again.";
@@ -1814,6 +1880,7 @@ function initResultPage() {
   const previousScanBtn = document.getElementById("previousScanBtn");
   const nextScanBtn = document.getElementById("nextScanBtn");
   const navigationStatus = document.getElementById("finderNavigationStatus");
+  const resultSourceState = document.getElementById("resultSourceState");
 
   const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
@@ -1848,6 +1915,7 @@ function initResultPage() {
   }
   let activeScan = requestedScan || scans[0] || null;
   let activeImageObj = null;
+  if (resultSourceState) resultSourceState.textContent = activeScan ? "Saved AI result" : "No saved result";
 
   // Keep page headings aligned with the upload-to-result workflow
   const eyebrowEl = document.querySelector(".main-content .eyebrow");
@@ -1881,11 +1949,26 @@ function initResultPage() {
   const onResultResize = () => {
     if (activeImageObj) drawCanvasFrame();
   };
+  const onResultHistoryRefresh = () => {
+    const refreshedScans = plGetScanResults();
+    uploads = refreshedScans.map(scan => {
+      const previewUrl = scan.preview_image_url || "";
+      const hasScanImage = Boolean(previewUrl);
+      const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
+      return { name: scan.source_name || scan.id, size: scan.source_size || 0, thumbnailSrc: previewUrl, dataUrl: hasScanImage ? "" : cachedPreview, assetPath: previewUrl, scanId: scan.id };
+    });
+    const refreshedActive = activeScan ? plGetScanResultById(activeScan.id) : plGetLatestScanResult();
+    activeScan = refreshedActive || refreshedScans[0] || null;
+    activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === activeScan?.id));
+    renderFinderGrid();
+    if (activeScan) loadActiveImage();
+  };
   const onResultThemeChange = () => {
     if (activeImageObj) drawCanvasFrame();
     else drawEmptyScanCanvas("No scan data");
   };
   window.addEventListener('resize', onResultResize);
+  window.addEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
   window.addEventListener("purityloop:theme-change", onResultThemeChange);
 
   // Live Auto-Scan simulation
@@ -1906,6 +1989,7 @@ function initResultPage() {
   window.addEventListener("purityloop:page-cleanup", () => {
     stopAutoScanSimulation();
     window.removeEventListener('resize', onResultResize);
+    window.removeEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
     window.removeEventListener("purityloop:theme-change", onResultThemeChange);
   }, { once: true });
 
@@ -1936,8 +2020,11 @@ function initResultPage() {
     const countText = document.getElementById("finderCountText");
     if (!grid) return;
     grid.innerHTML = "";
-    if (countText) countText.textContent = `${uploads.length} item(s)`;
-    if (navigationStatus) navigationStatus.textContent = uploads.length ? `Scan ${activeIndex + 1} of ${uploads.length}` : "No uploads";
+    const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : null;
+    if (countText) countText.textContent = totalUploads === null ? "— item(s)" : `${totalUploads} item(s)`;
+    if (navigationStatus) navigationStatus.textContent = uploads.length
+      ? `Scan ${activeIndex + 1} of ${totalUploads === null ? "—" : totalUploads}`
+      : totalUploads ? `0 of ${totalUploads} loaded` : "No uploads";
     if (previousScanBtn) previousScanBtn.disabled = uploads.length < 2;
     if (nextScanBtn) nextScanBtn.disabled = uploads.length < 2;
 
@@ -1948,10 +2035,11 @@ function initResultPage() {
 
     uploads.forEach((file, index) => {
       const scan = plGetScanResultById(file.scanId);
-      const fileResult = scan ? { statusClass: plNormalizeStatus(scan.overall_status) === "quarantined" ? "danger" : scan.human_review_required ? "warning" : "safe" } : detectWasteTypeFromFileName(file.name);
+      const fileResult = scan ? { statusClass: plNormalizeStatus(scan.overall_status) === "quarantined" ? "danger" : scan.human_review_required ? "warning" : "safe" } : { statusClass: "unknown" };
       let tagColor = "green";
       if (fileResult.statusClass === "danger") tagColor = "red";
       if (fileResult.statusClass === "warning") tagColor = "yellow";
+      if (fileResult.statusClass === "unknown") tagColor = "gray";
 
       const card = document.createElement("div");
       card.className = `finder-file-card ${index === activeIndex ? "active" : ""}`;
@@ -2036,7 +2124,7 @@ function initResultPage() {
       console.info("[result] preview image_url", activeScan.id, "");
       drawEmptyScanCanvas("No image preview");
       updateResultDetails({
-        ...detectWasteTypeFromFileName(activeFile.name),
+        category: activeScan.detected_materials?.[0]?.category || "unknown",
         confidence: `${Math.round(plConfidencePercent(activeScan.overall_confidence))}%`,
         statusClass: plNormalizeStatus(activeScan.overall_status) === "quarantined" ? "danger" : activeScan.human_review_required ? "warning" : "safe",
         status: activeScan.overall_status,
@@ -2047,7 +2135,7 @@ function initResultPage() {
     console.info("[result] preview image_url", activeScan.id, activeImageObj.src);
 
     const result = {
-      ...detectWasteTypeFromFileName(activeFile.name),
+      category: activeScan.detected_materials?.[0]?.category || "unknown",
       confidence: `${Math.round(plConfidencePercent(activeScan.overall_confidence))}%`,
       statusClass: plNormalizeStatus(activeScan.overall_status) === "quarantined" ? "danger" : activeScan.human_review_required ? "warning" : "safe",
       status: activeScan.overall_status,
@@ -2063,8 +2151,7 @@ function initResultPage() {
     if (itemsPurityEl) itemsPurityEl.textContent = "0%";
     const marketValueEl = document.getElementById("liveMarketValue");
     const reviewNeededEl = document.getElementById("liveReviewNeeded");
-    const totalEstimatedResaleValueRm = boxes.reduce((sum, box) => sum + getEstimatedResaleValueRm(box.label), 0);
-    if (marketValueEl) marketValueEl.textContent = plFormatRm(totalEstimatedResaleValueRm);
+    if (marketValueEl) marketValueEl.textContent = plFormatRm(0);
     if (reviewNeededEl) reviewNeededEl.textContent = "No data";
     if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">No scan selected. Upload an image to generate results.</div>`;
     if (actionText) {
@@ -2141,7 +2228,7 @@ function initResultPage() {
     if (marketValueEl) marketValueEl.textContent = plFormatRm(materials.reduce((sum, material) => sum + getEstimatedResaleValueRm(material), 0));
     if (reviewNeededEl) {
       const reviewCount = materials.filter(material => plEvaluateMaterial(material).reviewRequired).length;
-      reviewNeededEl.textContent = reviewCount ? `${reviewCount} item${reviewCount === 1 ? "" : "s"}` : "Clear";
+      reviewNeededEl.textContent = reviewCount ? `${reviewCount} item${reviewCount === 1 ? "" : "s"}` : "No manual review";
     }
 
     // Next Steps Action Guide Generator
@@ -2168,8 +2255,7 @@ function initResultPage() {
         actionHtml = `
           <dl class="action-status-sheet">
             <div><dt>Status</dt><dd>${primaryDecision.displayStatus}</dd></div>
-            <div><dt>Next Step</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div>
-            <div><dt>Route</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div>
+            <div><dt>Recommended route</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div>
           </dl>
           <p class="action-callout"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> ${plNormalizeCategory(primaryDecision.category)} is confirmed${primary?.review_decision ? " after human review" : " automatically"}.</p>
         `;
@@ -2204,9 +2290,9 @@ function initResultPage() {
       const metrics = document.createElement("dl");
       metrics.className = "material-metrics";
       metrics.innerHTML = `
-        <div><dt>Object Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
-        <div><dt>Estimated Reusable Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
-        <div><dt>Disposal / Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
+        <div><dt>Estimated Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
+        <div><dt>Illustrative Recovery Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
+        <div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
       `;
       liveFeed.appendChild(metrics);
 
@@ -2518,16 +2604,17 @@ function initReviewModal() {
   function updateSummary(rows) {
     const scans = plGetScanResults();
     const statuses = scanSummary(rows, scans);
-    const today = new Date().toDateString();
     const reviewRows = rows.filter(row => row.decisionStatus === "review_needed");
     const frequent = leadingCategory(rows);
     const reviewCategory = leadingCategory(reviewRows);
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    setText("historyConfirmed", statuses.filter(status => status === "confirmed").length);
-    setText("historyReviewCount", statuses.filter(status => status === "review_needed").length);
-    setText("historyRejected", statuses.filter(status => status === "rejected").length);
-    setText("historyProcessedToday", scans.filter(scan => new Date(scan.created_at).toDateString() === today).length);
+    const exactSummary = plScanHistoryMeta.summary || {};
+    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : "—");
+    setText("historyReviewCount", Number.isFinite(Number(exactSummary.needs_review)) ? exactSummary.needs_review : "—");
+    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : "—");
+    const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : "—";
+    setText("historyProcessedToday", totalUploads);
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
     setText("historyAverageConfidence", rows.length ? `${Math.round(average)}%` : "No data");
@@ -2601,10 +2688,23 @@ function initReviewModal() {
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     state.page = Math.min(state.page, totalPages);
     const visible = rows.slice((state.page - 1) * pageSize, state.page * pageSize);
+    const exportButton = document.getElementById("exportHistory");
+    if (exportButton) exportButton.disabled = rows.length === 0;
+    const reviewButton = document.getElementById("showReviewQueue");
+    if (reviewButton) reviewButton.disabled = !rows.some(row => row.decisionStatus === "review_needed");
     tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
     const start = rows.length ? (state.page - 1) * pageSize + 1 : 0;
-    if (range) range.textContent = `Showing ${start} to ${Math.min(state.page * pageSize, rows.length)} of ${rows.length} results`;
-    if (pageButtons) pageButtons.innerHTML = Array.from({ length: totalPages }, (_, index) => `<button type="button" class="${state.page === index + 1 ? "active" : ""}" data-page="${index + 1}" aria-label="Page ${index + 1}" ${state.page === index + 1 ? 'aria-current="page"' : ""}>${index + 1}</button>`).join("");
+    const resultTotal = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows.length;
+    if (range) range.textContent = `Showing ${start} to ${Math.min(state.page * pageSize, rows.length)} loaded results of ${resultTotal} total`;
+    if (pageButtons) {
+      const pages = new Set([1, totalPages, state.page - 1, state.page, state.page + 1].filter(page => page >= 1 && page <= totalPages));
+      const pageItems = [];
+      [...pages].sort((a, b) => a - b).forEach((page, index, visiblePages) => {
+        if (index && page - visiblePages[index - 1] > 1) pageItems.push('<span class="history-page-gap" aria-hidden="true">…</span>');
+        pageItems.push(`<button type="button" class="${state.page === page ? "active" : ""}" data-page="${page}" aria-label="Page ${page}" ${state.page === page ? 'aria-current="page"' : ""}>${page}</button>`);
+      });
+      pageButtons.innerHTML = `<button type="button" class="history-page-prev" data-page="${Math.max(1, state.page - 1)}" aria-label="Previous page" ${state.page === 1 ? "disabled" : ""}>‹</button>${pageItems.join("")}<button type="button" class="history-page-next" data-page="${Math.min(totalPages, state.page + 1)}" aria-label="Next page" ${state.page === totalPages ? "disabled" : ""}>›</button>`;
+    }
     tableBody.querySelectorAll("[data-review]").forEach(button => button.addEventListener("click", () => openReview(allRows.find(row => row.id === button.dataset.review), button)));
     pageButtons?.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => { state.page = Number(button.dataset.page); render(); }));
   }
@@ -2680,7 +2780,7 @@ function plOverviewChart(canvasId, config) {
   return true;
 }
 
-function renderAnalyticsOverview(days = 7, state = "ready") {
+function renderAnalyticsOverview(dateValue = "", state = "ready") {
   const overview = document.querySelector(".analytics-overview");
   if (!overview) return;
   const stateEl = document.getElementById("analyticsOverviewState");
@@ -2707,18 +2807,27 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
     return;
   }
 
-  const summary = plGetAnalyticsSummary({ days });
+  const summary = plGetAnalyticsSummary({ date: dateValue, scans: plAnalyticsDateData?.items });
+  const exactSummary = plAnalyticsDateData?.summary || {};
+  const exactReviewCount = Number.isFinite(Number(exactSummary.needs_review)) ? Number(exactSummary.needs_review) : summary.reviewCount;
+  const exactConfirmedCount = Number.isFinite(Number(exactSummary.confirmed)) ? Number(exactSummary.confirmed) : summary.confirmedTodayCount;
+  const updated = document.getElementById("analyticsLastUpdated");
+  if (updated) {
+    const now = new Date();
+    updated.dateTime = now.toISOString();
+    updated.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
 
-  plOverviewSet("needs-review", String(summary.reviewCount));
-  plOverviewSet("needs-review-note", summary.reviewCount ? "Scans require attention" : "All scans are up to date");
-  plOverviewSet("confirmed-today", String(summary.confirmedTodayCount));
+  plOverviewSet("needs-review", String(exactReviewCount));
+  plOverviewSet("needs-review-note", exactReviewCount ? "Scans require attention" : "All scans are up to date");
+  plOverviewSet("confirmed-today", String(exactConfirmedCount));
   plOverviewSet("recoverable-value", plFormatRm(summary.totalEstimatedResaleValueRm));
   plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No data");
 
   const banner = overview.querySelector("[data-overview='attention-banner']");
-  const hasReviews = summary.reviewCount > 0;
+  const hasReviews = exactReviewCount > 0;
   banner?.classList.toggle("is-clear", !hasReviews);
-  plOverviewSet("attention-title", hasReviews ? `${summary.reviewCount} item${summary.reviewCount === 1 ? "" : "s"} need attention today` : "All scans are up to date");
+  plOverviewSet("attention-title", hasReviews ? `${exactReviewCount} item${exactReviewCount === 1 ? "" : "s"} need attention on this date` : "All scans are up to date");
   plOverviewSet("attention-copy", hasReviews ? "Review low-confidence items to keep reporting accurate and reduce contamination." : "No unresolved classifications require attention.");
   const reviewLink = overview.querySelector("[data-overview='review-link']");
   if (reviewLink) reviewLink.textContent = hasReviews ? "Open Review Queue" : "View History";
@@ -2787,29 +2896,85 @@ function renderAnalyticsOverview(days = 7, state = "ready") {
 }
 
 function initAnalyticsOverview() {
-  const range = document.getElementById("analyticsRange");
-  if (!range) return;
-  const render = state => renderAnalyticsOverview(Number(range.value) || 7, state);
-  render();
-  if (!range.dataset.overviewBound) {
-    range.addEventListener("change", () => render());
+  const dateInput = document.getElementById("analyticsDate");
+  if (!dateInput) return;
+  if (!dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+  const render = state => renderAnalyticsOverview(dateInput.value, state);
+  const refreshDate = async () => {
+    const date = dateInput.value;
+    if (!date) return;
+    render("loading");
+    try {
+      const startDate = new Date(`${date}T00:00:00`);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?limit=${PL_SCAN_PAGE_SIZE}&offset=0&start_date=${encodeURIComponent(startDate.toISOString())}&end_date=${encodeURIComponent(endDate.toISOString())}`, { headers: await plAuthHeaders() });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || "Unable to load date summary");
+      plAnalyticsDateData = payload;
+      render();
+      updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date, scans: payload.items }));
+    } catch (error) {
+      console.error("PurityLoop: date analytics refresh failed.", error);
+      render("error");
+    }
+  };
+  refreshDate();
+  if (!dateInput.dataset.overviewBound) {
+    dateInput.addEventListener("change", refreshDate);
     const onThemeChange = () => render();
     window.addEventListener("purityloop:theme-change", onThemeChange);
     window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", onThemeChange), { once: true });
-    range.dataset.overviewBound = "true";
+    dateInput.dataset.overviewBound = "true";
   }
 }
 
 function initAnalyticsCharts() {
-  const range = document.getElementById("analyticsRange");
-  if (!range || range.dataset.analyticsReady === "true") return;
-  range.dataset.analyticsReady = "true";
+  const dateInput = document.getElementById("analyticsDate");
+  if (!dateInput || dateInput.dataset.analyticsReady === "true") return;
+  dateInput.dataset.analyticsReady = "true";
   initAnalyticsOverview();
-  updateAnalyticsDetailPanels(plGetAnalyticsSummary({ days: Number(range.value) || 7 }));
+  updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date: dateInput.value, scans: plAnalyticsDateData?.items }));
+  const onHistoryRefresh = () => {
+    initAnalyticsOverview();
+    updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date: dateInput.value, scans: plAnalyticsDateData?.items }));
+  };
+  window.addEventListener("purityloop:scan-history-refreshed", onHistoryRefresh);
   window.addEventListener("purityloop:page-cleanup", () => {
     Object.values(plOverviewCharts).forEach(chart => chart.destroy());
     Object.keys(plOverviewCharts).forEach(key => delete plOverviewCharts[key]);
+    window.removeEventListener("purityloop:scan-history-refreshed", onHistoryRefresh);
   }, { once: true });
+}
+
+async function initSettingsPage() {
+  if (!document.getElementById("settingsBackendStatus")) return;
+  const modelStatus = document.getElementById("settingsModelStatus");
+  const backendStatus = document.getElementById("settingsBackendStatus");
+  const themeStatus = document.getElementById("settingsThemeStatus");
+  const renderTheme = () => {
+    const preference = document.documentElement.dataset.themePreference || localStorage.getItem("purityloop-theme") || "system";
+    if (themeStatus) themeStatus.textContent = preference.charAt(0).toUpperCase() + preference.slice(1);
+  };
+  renderTheme();
+  window.addEventListener("purityloop:theme-change", renderTheme);
+  window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", renderTheme), { once: true });
+  const apiBase = plApiBaseUrl();
+  if (!apiBase) {
+    if (backendStatus) backendStatus.textContent = "Backend unavailable";
+    if (modelStatus) modelStatus.textContent = "Status unavailable";
+    return;
+  }
+  try {
+    const response = await fetch(`${apiBase}/api/health`, { headers: await plAuthHeaders() });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error("Health check failed");
+    if (backendStatus) backendStatus.textContent = "Connected";
+    if (modelStatus) modelStatus.textContent = payload.model_available ? "YOLOv8 available" : "YOLOv8 unavailable";
+  } catch {
+    if (backendStatus) backendStatus.textContent = "Backend unavailable";
+    if (modelStatus) modelStatus.textContent = "Status unavailable";
+  }
 }
 
 /******************************************
@@ -3134,43 +3299,6 @@ function showToast(message, type = "success") {
   }, 3500);
 }
 
-/*****************************************
- * SUBMIT TICKET PAGE                    *
- *****************************************/
-function initSubmitTicketPage() {
-  const submitBtn = document.getElementById("submitTicketBtn");
-  if (!submitBtn || submitBtn.dataset.ticketReady === "true") return;
-  submitBtn.dataset.ticketReady = "true";
-
-  submitBtn.addEventListener("click", () => {
-    const title = document.getElementById("ticketTitle");
-    const description = document.getElementById("ticketDescription");
-
-    if (!title?.value.trim() || !description?.value.trim()) {
-      showToast("Add a ticket title and description before submitting.", "warning");
-      return;
-    }
-
-    const originalText = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
-
-    setTimeout(() => {
-      showToast("Ticket submitted. Status set to Open for operator review.", "success");
-      title.value = "";
-      description.value = "";
-      const image = document.getElementById("ticketImage");
-      if (image) image.value = "";
-      submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Ticket Submitted';
-
-      setTimeout(() => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-      }, 1800);
-    }, 420);
-  });
-}
-
 /* Mobile Sidebar Navigation & Toggle */
 function initMobileNav() {
   const toggleBtn = document.getElementById("sidebarToggle");
@@ -3286,13 +3414,14 @@ async function initPurityLoopApp() {
 
     await plRunAppInit("password toggle init", initPasswordToggle);
     await plRunAppInit("progress bar init", animateProgressBars);
-    await plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
+    // Render cached/page data first. Refresh one server page in the background.
+    void plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
     if (plCurrentRouteKey() !== routeKey) return;
     await plRunAppInit("upload page init", initUploadPage);
     await plRunAppInit("result page init", initResultPage);
-    await plRunAppInit("submit ticket init", initSubmitTicketPage);
     await plRunAppInit("review modal init", initReviewModal);
     await plRunAppInit("analytics charts init", initAnalyticsCharts);
+    await plRunAppInit("settings page init", initSettingsPage);
     await plRunAppInit("drill-through init", initDrillThrough);
     plAppInitializedKey = routeKey;
     plRevealPageFallback();

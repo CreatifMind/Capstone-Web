@@ -42,6 +42,8 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
       } else {
         document.body.removeAttribute("data-page");
       }
+      const main = document.querySelector("main");
+      if (main && !main.id) main.id = "main-content";
 
       const isDesktop = window.matchMedia("(min-width: 1001px)").matches;
       const sidebar = document.getElementById("appSidebar");
@@ -83,6 +85,7 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: pageStateScript }} />
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <div
         className={bodyClass}
         data-page={dataPage}

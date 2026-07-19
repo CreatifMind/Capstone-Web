@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | AI Results" };
+
 const html = `
 <div class="app-layout">
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -24,17 +26,13 @@ const html = `
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
           <span class="nav-item-label">Result</span>
         </a>
-        <a href="/log" class="nav-item" data-tooltip="Log">
+        <a href="/log" class="nav-item" data-tooltip="History">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Log</span>
+          <span class="nav-item-label">History</span>
         </a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Analytics</span>
-        </a>
-        <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket">
-          <i class="nav-item-icon fa-solid fa-ticket"></i>
-          <span class="nav-item-label">Submit Ticket</span>
         </a>
         <a href="/settings" class="nav-item" data-tooltip="Settings">
           <i class="nav-item-icon fa-solid fa-gear"></i>
@@ -143,7 +141,7 @@ const html = `
             <section class="mini-panel detection-panel bbox-card">
               <div class="panel-heading-row">
                 <h3>Material breakdown</h3>
-                <span>Live inference</span>
+                <span id="resultSourceState">Saved AI result</span>
               </div>
               <div id="liveFeed" class="live-feed">
                 <div class="feed-empty">Upload or select an image to view detected materials.</div>
@@ -230,8 +228,8 @@ const html = `
             </div>
 
             <div class="detail-grid three">
-              <div class="metric-tile static"><span>Processing load</span><strong data-belt-load>On-demand</strong><small
-                  data-belt-capacity>Upload queue</small></div>
+              <div class="metric-tile static"><span>Total upload load</span><strong data-belt-load>0</strong><small
+                  data-belt-capacity>Saved scans</small></div>
               <div class="metric-tile static"><span>AI model</span><strong data-belt-speed>YOLOv8 active</strong><small
                   data-belt-max-speed>Classification core</small></div>
               <div class="metric-tile static"><span>Review action</span><strong
@@ -252,7 +250,7 @@ const html = `
                   </div>
                   <div>
                     <dt>File policy</dt>
-                    <dd data-belt-air>100 MB batch limit</dd>
+                    <dd data-belt-air>10 MB per image · ZIP uncapped</dd>
                   </div>
                 </dl>
               </div>

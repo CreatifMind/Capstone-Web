@@ -130,6 +130,7 @@ function initLiveClock() {
   function tick() {
     const now = new Date();
     el.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    el.classList.add('clock-ready');
   }
   tick();
   const timer = window.setInterval(tick, 1000);
@@ -638,7 +639,14 @@ function initCreateAccountForm() {
   form.dataset.authReady = 'true';
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    window.showToast?.('Operator accounts are invite-only. Ask your facility administrator to provision access.', 'warning');
+    const requiredFields = [...form.querySelectorAll('[required]')];
+    const invalid = requiredFields.find(field => !String(field.value || '').trim() || (field.type === 'email' && !field.checkValidity()));
+    if (invalid) {
+      invalid.focus();
+      window.showToast?.('Complete required fields with a valid email before creating an account.', 'warning');
+      return;
+    }
+    window.showToast?.('Account creation is not enabled in this public demo yet. No account or password was saved.', 'warning');
   });
 }
 

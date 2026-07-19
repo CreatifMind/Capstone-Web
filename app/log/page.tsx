@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Audit History" };
+
 const html = `
 <div class="app-layout">
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
@@ -24,17 +26,13 @@ const html = `
           <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
           <span class="nav-item-label">Result</span>
         </a>
-        <a href="/log" class="nav-item active" data-tooltip="Log">
+        <a href="/log" class="nav-item active" data-tooltip="History">
           <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">Log</span>
+          <span class="nav-item-label">History</span>
         </a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
           <span class="nav-item-label">Analytics</span>
-        </a>
-        <a href="/submit-ticket" class="nav-item" data-tooltip="Submit Ticket">
-          <i class="nav-item-icon fa-solid fa-ticket"></i>
-          <span class="nav-item-label">Submit Ticket</span>
         </a>
         <a href="/settings" class="nav-item" data-tooltip="Settings">
           <i class="nav-item-icon fa-solid fa-gear"></i>
@@ -64,8 +62,8 @@ const html = `
             <i class="fa-solid fa-bars"></i>
           </button>
           <div class="topbar-title">
-            <h1>Audit Verification</h1>
-            <p>Review and manage scan history</p>
+            <h1>Audit History</h1>
+            <p>Review and manage recent scan records</p>
           </div>
         </div>
 
@@ -108,7 +106,7 @@ const html = `
               <strong id="historyRejected">0</strong>
               <small>Rejected scans</small>
             </div>
-            <div class="ops-status-card processed"><span>Processed today</span><strong id="historyProcessedToday">0</strong><small>Scans uploaded</small></div>
+            <div class="ops-status-card processed"><span>Total uploads</span><strong id="historyProcessedToday">0</strong><small>Saved scans</small></div>
           </div>
         </section>
 
@@ -132,9 +130,9 @@ const html = `
           <section class="panel ledger-panel bbox-card">
             <div class="section-heading">
               <div>
-                <p class="eyebrow">Scan history</p>
-                <h2>Scan History</h2>
-                <p class="history-subtitle">All uploaded scans and AI verification results</p>
+                <p class="eyebrow">Audit history</p>
+                <h2>Audit History</h2>
+                <p class="history-subtitle">Recent scan and review records</p>
               </div>
               <div class="history-filters" aria-label="History filters">
                 <label class="sr-only" for="historySearch">Search scan history</label><input id="historySearch" type="search" placeholder="Search scans" />

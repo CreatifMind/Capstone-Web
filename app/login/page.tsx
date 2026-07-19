@@ -1,5 +1,7 @@
 import PageHtml from "@/components/PageHtml";
 
+export const metadata = { title: "PurityLoop AI | Public Demo Login" };
+
 const html = `
 <div class="login-split">
 
@@ -102,8 +104,8 @@ const html = `
           style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:0.8125rem;font-weight:600;margin-bottom:28px;text-decoration:none;">
           <i class="fa-solid fa-arrow-left"></i> Back to Home
         </a>
-        <h2>Welcome back</h2>
-        <p>Sign in to access the PurityLoop AI platform</p>
+        <h2>Enter the Public Demo</h2>
+        <p>Use any non-empty email and password. No real account is created.</p>
       </div>
 
       <!-- Login Form -->
@@ -126,39 +128,29 @@ const html = `
           </div>
         </div>
 
-        <div class="login-form-options">
-          <label class="remember-label">
-            <input type="checkbox" style="width:16px;height:16px;accent-color:var(--primary);" />
-            Remember me
-          </label>
-          <a href="#" class="forgot-password-link">Forgot
-            password?</a>
-        </div>
-
         <button type="submit" class="btn btn-full btn-lg" id="loginBtn">
           <i class="fa-solid fa-sign-in-alt"></i>
-          Access Platform
+          Continue to Demo
         </button>
 
       </form>
 
       <div class="create-account-panel">
         <div>
-          <span>First time user?</span>
-          <strong>Create an operator account</strong>
+          <span>Planning future account access?</span>
+          <strong>Create an account when authentication is enabled</strong>
         </div>
         <a href="/create-account" class="create-account-link">Create Account</a>
       </div>
 
       <!-- Trust indicators -->
       <div class="login-trust-row">
-        <span class="trust-badge"><i class="fa-solid fa-lock"></i> SSL Secured</span>
-        <span class="trust-badge"><i class="fa-solid fa-shield-check"></i> AI Verified</span>
+        <span class="trust-badge"><i class="fa-solid fa-flask"></i> Public Demo</span>
         <span class="trust-badge"><i class="fa-solid fa-certificate"></i> Capstone 2026</span>
       </div>
 
       <div class="small-note" style="margin-top:24px;">
-        Demo mode accepts any email and password.
+        Demo mode accepts any non-empty email and password. Credentials are not used to create an account.
       </div>
     </div>
 
