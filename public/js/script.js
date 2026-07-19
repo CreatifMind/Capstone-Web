@@ -1870,6 +1870,8 @@ function initResultPage() {
   const canvas = document.getElementById("liveInferenceCanvas");
   if (!canvas) return; // Not on the result route
 
+  const isReviewWorkspace = document.body.dataset.page === "review";
+
   const ctx2d = canvas.getContext("2d");
   const itemsScannedEl = document.getElementById("liveScanned");
   const itemsPurityEl = document.getElementById("livePurity");
@@ -1881,6 +1883,15 @@ function initResultPage() {
   const nextScanBtn = document.getElementById("nextScanBtn");
   const navigationStatus = document.getElementById("finderNavigationStatus");
   const resultSourceState = document.getElementById("resultSourceState");
+  const reviewCategorySelect = document.getElementById("reviewCategorySelect");
+  const reviewVerifyButton = document.getElementById("reviewVerifyButton");
+  const reviewRejectButton = document.getElementById("reviewRejectButton");
+  const reviewWarning = document.getElementById("reviewWorkspaceWarning");
+  const reviewFeedback = document.getElementById("reviewActionFeedback");
+  let activeReviewMaterial = null;
+  let isReviewSaving = false;
+  let isReviewNavigating = false;
+  let reviewNavigationState = null;
 
   const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
@@ -1917,23 +1928,24 @@ function initResultPage() {
   let activeImageObj = null;
   if (resultSourceState) resultSourceState.textContent = activeScan ? "Saved AI result" : "No saved result";
 
-  // Keep page headings aligned with the upload-to-result workflow
-  const eyebrowEl = document.querySelector(".main-content .eyebrow");
-  if (eyebrowEl) eyebrowEl.textContent = "AI Classification Hub";
+  if (!isReviewWorkspace) {
+    // Keep page headings aligned with the upload-to-result workflow.
+    const eyebrowEl = document.querySelector(".main-content .eyebrow");
+    if (eyebrowEl) eyebrowEl.textContent = "AI Classification Hub";
 
-  const headingEl = document.querySelector(".main-content h1");
-  if (headingEl) headingEl.textContent = "Image Classification Results";
+    const headingEl = document.querySelector(".main-content h1");
+    if (headingEl) headingEl.textContent = "Image Classification Results";
 
-  const descEl = document.querySelector(".main-content header p");
-  if (descEl) descEl.textContent = "Review uploaded images, confidence scores, contaminants, and recommended sorting action.";
+    const descEl = document.querySelector(".main-content header p");
+    if (descEl) descEl.textContent = "Review uploaded images, confidence scores, contaminants, and recommended sorting action.";
 
-  // Rename sidebar menu
-  const sidebarNote = document.querySelector(".sidebar-note");
-  if (sidebarNote) {
-    sidebarNote.innerHTML = `
-      <strong>Classification Hub</strong>
-      <p>Audit uploaded datasets and webcam frame results before database ledger logging.</p>
-    `;
+    const sidebarNote = document.querySelector(".sidebar-note");
+    if (sidebarNote) {
+      sidebarNote.innerHTML = `
+        <strong>Classification Hub</strong>
+        <p>Audit uploaded datasets and webcam frame results before database ledger logging.</p>
+      `;
+    }
   }
 
 
@@ -1961,15 +1973,31 @@ function initResultPage() {
     activeScan = refreshedActive || refreshedScans[0] || null;
     activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === activeScan?.id));
     renderFinderGrid();
-    if (activeScan) loadActiveImage();
+    if (activeScan) {
+      loadActiveImage();
+      if (isReviewWorkspace) {
+        window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
+      }
+    }
   };
   const onResultThemeChange = () => {
     if (activeImageObj) drawCanvasFrame();
     else drawEmptyScanCanvas("No scan data");
   };
+  const onReviewScanSelection = event => {
+    const scanId = event?.detail?.scanId;
+    const selectedIndex = uploads.findIndex(upload => upload.scanId === scanId);
+    if (selectedIndex >= 0) selectScan(selectedIndex);
+  };
+  const onReviewNavigationState = event => {
+    reviewNavigationState = event?.detail || null;
+    updateNavigationButtons();
+  };
   window.addEventListener('resize', onResultResize);
   window.addEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
   window.addEventListener("purityloop:theme-change", onResultThemeChange);
+  if (isReviewWorkspace) window.addEventListener("purityloop:review-select-scan", onReviewScanSelection);
+  if (isReviewWorkspace) window.addEventListener("purityloop:review-navigation-state", onReviewNavigationState);
 
   // Live Auto-Scan simulation
   const autoScanCheckbox = document.getElementById("autoScanCheckbox");
@@ -1991,6 +2019,8 @@ function initResultPage() {
     window.removeEventListener('resize', onResultResize);
     window.removeEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
     window.removeEventListener("purityloop:theme-change", onResultThemeChange);
+    if (isReviewWorkspace) window.removeEventListener("purityloop:review-select-scan", onReviewScanSelection);
+    if (isReviewWorkspace) window.removeEventListener("purityloop:review-navigation-state", onReviewNavigationState);
   }, { once: true });
 
   if (autoScanCheckbox) {
@@ -2005,28 +2035,61 @@ function initResultPage() {
 
   function selectScan(index) {
     if (!uploads.length) return;
-    activeIndex = (index + uploads.length) % uploads.length;
+    if (index < 0 || index >= uploads.length) return;
+    activeIndex = index;
     activeScan = plGetScanResultById(uploads[activeIndex].scanId);
-    if (activeScan) window.history.replaceState(null, "", `/result?scanId=${encodeURIComponent(activeScan.id)}`);
+    if (activeScan) window.history.replaceState(null, "", `${window.location.pathname}?scanId=${encodeURIComponent(activeScan.id)}`);
     renderFinderGrid();
     loadActiveImage();
+    if (isReviewWorkspace && activeScan) {
+      window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
+    }
   }
 
-  if (previousScanBtn) previousScanBtn.addEventListener("click", () => selectScan(activeIndex - 1));
-  if (nextScanBtn) nextScanBtn.addEventListener("click", () => selectScan(activeIndex + 1));
+  function canNavigateScan(direction) {
+    if (isReviewWorkspace && reviewNavigationState) return direction < 0 ? reviewNavigationState.hasPrevious : reviewNavigationState.hasNext;
+    return direction < 0 ? activeIndex > 0 : activeIndex < uploads.length - 1;
+  }
+
+  function updateNavigationButtons() {
+    const disabled = isReviewNavigating;
+    if (previousScanBtn) previousScanBtn.disabled = disabled || !canNavigateScan(-1);
+    if (nextScanBtn) nextScanBtn.disabled = disabled || !canNavigateScan(1);
+  }
+
+  function navigateScan(direction) {
+    if (isReviewNavigating || !canNavigateScan(direction)) return;
+    isReviewNavigating = true;
+    updateNavigationButtons();
+    const moved = isReviewWorkspace && typeof window.plReviewNavigateScan === "function"
+      ? window.plReviewNavigateScan(direction)
+      : (selectScan(activeIndex + direction), true);
+    if (!moved) {
+      isReviewNavigating = false;
+      updateNavigationButtons();
+      return;
+    }
+    window.setTimeout(() => {
+      isReviewNavigating = false;
+      updateNavigationButtons();
+    }, 160);
+  }
+
+  if (previousScanBtn) previousScanBtn.addEventListener("click", () => navigateScan(-1));
+  if (nextScanBtn) nextScanBtn.addEventListener("click", () => navigateScan(1));
 
   function renderFinderGrid() {
     const grid = document.getElementById("finderGrid");
     const countText = document.getElementById("finderCountText");
-    if (!grid) return;
-    grid.innerHTML = "";
     const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : null;
     if (countText) countText.textContent = totalUploads === null ? "— item(s)" : `${totalUploads} item(s)`;
     if (navigationStatus) navigationStatus.textContent = uploads.length
       ? `Scan ${activeIndex + 1} of ${totalUploads === null ? "—" : totalUploads}`
       : totalUploads ? `0 of ${totalUploads} loaded` : "No uploads";
-    if (previousScanBtn) previousScanBtn.disabled = uploads.length < 2;
-    if (nextScanBtn) nextScanBtn.disabled = uploads.length < 2;
+    updateNavigationButtons();
+
+    if (isReviewWorkspace || !grid) return;
+    grid.innerHTML = "";
 
     if (!uploads.length) {
       grid.innerHTML = `<div class="feed-empty">No uploaded images yet.</div>`;
@@ -2091,7 +2154,10 @@ function initResultPage() {
       renderEmptyResult();
       return;
     }
-    if (activeBeltTitle) activeBeltTitle.textContent = activeFile.name;
+    if (activeBeltTitle) {
+      activeBeltTitle.textContent = activeFile.name;
+      activeBeltTitle.title = activeFile.name;
+    }
 
     activeImageObj = new Image();
     activeImageObj.onload = function () {
@@ -2146,7 +2212,10 @@ function initResultPage() {
 
   function renderEmptyResult() {
     activeImageObj = null;
-    if (activeBeltTitle) activeBeltTitle.textContent = "No scan selected";
+    if (activeBeltTitle) {
+      activeBeltTitle.textContent = "No scan selected";
+      activeBeltTitle.title = "No scan selected";
+    }
     if (itemsScannedEl) itemsScannedEl.textContent = "0 items";
     if (itemsPurityEl) itemsPurityEl.textContent = "0%";
     const marketValueEl = document.getElementById("liveMarketValue");
@@ -2163,7 +2232,77 @@ function initResultPage() {
     if (canvas && ctx2d) {
       drawEmptyScanCanvas("No scan data");
     }
+    if (reviewCategorySelect) {
+      reviewCategorySelect.value = "";
+      reviewCategorySelect.disabled = true;
+    }
+    if (reviewVerifyButton) reviewVerifyButton.disabled = true;
+    if (reviewRejectButton) reviewRejectButton.disabled = true;
+    if (reviewWarning) reviewWarning.hidden = true;
+    if (reviewFeedback) reviewFeedback.textContent = "";
+    ["reviewMetaSource", "reviewMetaTime", "reviewMetaStatus"].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = "-";
+    });
   }
+
+  function setReviewWorkspaceControls(materials) {
+    if (!isReviewWorkspace || !reviewCategorySelect || !reviewVerifyButton || !reviewRejectButton) return;
+    const primaryMaterial = materials[0];
+    const primaryDecision = plEvaluateMaterial(primaryMaterial, activeScan);
+    const unresolved = materials.find(material => plEvaluateMaterial(material, activeScan).reviewRequired) || null;
+    activeReviewMaterial = unresolved;
+    const selectedCategory = plCategoryKey((unresolved || primaryMaterial)?.category);
+
+    reviewCategorySelect.value = Object.keys(PL_CATEGORY_CLASS_MAP).includes(selectedCategory) ? selectedCategory : "";
+    reviewCategorySelect.disabled = !unresolved || isReviewSaving;
+    reviewVerifyButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
+    reviewRejectButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
+    if (reviewWarning) {
+      reviewWarning.hidden = !unresolved;
+      reviewWarning.textContent = unresolved ? "Low-confidence result - human review required." : "";
+    }
+    if (reviewFeedback && !isReviewSaving) reviewFeedback.textContent = "";
+
+    const source = document.getElementById("reviewMetaSource");
+    const uploaded = document.getElementById("reviewMetaTime");
+    const status = document.getElementById("reviewMetaStatus");
+    if (source) source.textContent = activeScan?.source_name || activeScan?.id || "-";
+    if (uploaded) uploaded.textContent = activeScan?.created_at ? plFormatScanTime(activeScan) : "-";
+    if (status) status.textContent = primaryDecision.displayStatus || "-";
+  }
+
+  async function saveReviewFromWorkspace(outcome) {
+    if (!activeScan || !activeReviewMaterial || !reviewCategorySelect?.value || isReviewSaving) return;
+    isReviewSaving = true;
+    if (reviewFeedback) reviewFeedback.textContent = "";
+    if (reviewVerifyButton) reviewVerifyButton.disabled = true;
+    if (reviewRejectButton) reviewRejectButton.disabled = true;
+    if (reviewCategorySelect) reviewCategorySelect.disabled = true;
+    try {
+      await plSaveReview(activeScan, activeReviewMaterial, reviewCategorySelect.value, outcome);
+      activeScan = plGetScanResultById(activeScan.id) || activeScan;
+      showToast(outcome === "rejected" ? "Result rejected." : "Review saved.", "success");
+      renderFinderGrid();
+      loadActiveImage();
+      if (isReviewWorkspace && activeScan) {
+        window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
+      }
+    } catch (error) {
+      if (reviewFeedback) reviewFeedback.textContent = error.message || "Unable to save review.";
+    } finally {
+      isReviewSaving = false;
+      if (activeScan?.detected_materials) setReviewWorkspaceControls(activeScan.detected_materials);
+    }
+  }
+
+  reviewCategorySelect?.addEventListener("change", () => {
+    const enabled = Boolean(activeReviewMaterial && reviewCategorySelect.value && !isReviewSaving);
+    if (reviewVerifyButton) reviewVerifyButton.disabled = !enabled;
+    if (reviewRejectButton) reviewRejectButton.disabled = !enabled;
+  });
+  reviewVerifyButton?.addEventListener("click", () => saveReviewFromWorkspace("confirmed"));
+  reviewRejectButton?.addEventListener("click", () => saveReviewFromWorkspace("rejected"));
 
   function drawEmptyScanCanvas(label) {
     if (!canvas || !ctx2d) return;
@@ -2241,7 +2380,14 @@ function initResultPage() {
       if (reviewCount) {
         if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card review-required";
         if (actionBadge) actionBadge.textContent = "Awaiting human review";
-        actionHtml = `
+        actionHtml = isReviewWorkspace ? `
+          <div class="review-action-outcome is-review">
+            <span>Sorting decision</span>
+            <strong>Manual Audit Queue</strong>
+            <p>Choose a verified category before this item is routed.</p>
+          </div>
+          <dl class="action-status-sheet"><div><dt>AI status</dt><dd>Low confidence - review required</dd></div></dl>
+        ` : `
           <dl class="action-status-sheet">
             <div><dt>Status</dt><dd>Awaiting human review</dd></div>
             <div><dt>Next Step</dt><dd>Manual Audit Queue</dd></div>
@@ -2252,7 +2398,14 @@ function initResultPage() {
       } else {
         if (actionPanel) actionPanel.className = `mini-panel action-panel bbox-card ${primaryDecision.materialClass === "contaminant" ? "contaminant-confirmed" : "recovery-clear"}`;
         if (actionBadge) actionBadge.textContent = "Auto-confirmed";
-        actionHtml = `
+        actionHtml = isReviewWorkspace ? `
+          <div class="review-action-outcome">
+            <span>Sorting destination</span>
+            <strong>${primaryDecision.disposalRoute || "Route by material stream"}</strong>
+            <p>This result is ready for the indicated sorting stream.</p>
+          </div>
+          <dl class="action-status-sheet"><div><dt>AI status</dt><dd>${primaryDecision.displayStatus}</dd></div></dl>
+        ` : `
           <dl class="action-status-sheet">
             <div><dt>Status</dt><dd>${primaryDecision.displayStatus}</dd></div>
             <div><dt>Recommended route</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div>
@@ -2276,12 +2429,20 @@ function initResultPage() {
         paper: "fa-file-lines", cardboard: "fa-box", textile: "fa-shirt", food_organics: "fa-leaf", general_trash: "fa-trash-can"
       }[primaryDecision.category] || "fa-box";
       const summaryCard = document.createElement("section");
-      summaryCard.className = `material-summary-card ${primaryDecision.reviewRequired ? "is-review" : ""}`;
-      summaryCard.innerHTML = `
+      const materialClassLabel = primaryDecision.materialClass === "contaminant" ? "Contaminant" : "Recyclable";
+      summaryCard.className = `material-summary-card ${primaryDecision.reviewRequired ? "is-review" : ""} ${isReviewWorkspace ? "review-material-summary" : ""}`;
+      summaryCard.innerHTML = isReviewWorkspace ? `
+        <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
+        <div class="review-material-identity">
+          <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
+          <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel}</span>
+        </div>
+        <div class="material-confidence"><strong>${Math.round(primaryDecision.confidence)}%</strong><span>Confidence</span></div>
+      ` : `
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
         <div>
           <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
-          <span>${primaryDecision.materialClass === "contaminant" ? "Contaminant" : "Recyclable"} | ${primaryDecision.displayStatus} | Qty: 1</span>
+          <span>${materialClassLabel} | ${primaryDecision.displayStatus} | Qty: 1</span>
         </div>
         <div class="material-confidence"><strong>${Math.round(primaryDecision.confidence)}%</strong><span>Confidence</span></div>
       `;
@@ -2290,21 +2451,16 @@ function initResultPage() {
       const metrics = document.createElement("dl");
       metrics.className = "material-metrics";
       metrics.innerHTML = `
-        <div><dt>Estimated Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
+        <div><dt>Estimated Weight${isReviewWorkspace ? `<span class="metric-qty">Qty: 1</span>` : ""}</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
         <div><dt>Illustrative Recovery Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
-        <div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
+        ${isReviewWorkspace ? "" : `<div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>`}
       `;
       liveFeed.appendChild(metrics);
 
-      if (materials.length > 1) {
-        const count = document.createElement("p");
-        count.className = "material-selection-note";
-        count.textContent = `${materials.length} detections in this image. Summary shows the first detection.`;
-        liveFeed.appendChild(count);
-      }
-
       const unresolved = materials.find(material => plEvaluateMaterial(material).reviewRequired);
-      if (unresolved?.id) {
+      if (isReviewWorkspace) {
+        setReviewWorkspaceControls(materials);
+      } else if (unresolved?.id) {
         const reviewPanel = document.createElement("form");
         reviewPanel.className = "human-review-panel";
         reviewPanel.innerHTML = `
@@ -2532,10 +2688,12 @@ function initResultPage() {
  **************************************/
 function initReviewModal() {
   const modal = document.getElementById("reviewModal");
-  if (!modal) return;
-  if (modal.dataset.historyReady === "true") return;
-  modal.dataset.historyReady = "true";
   const tableBody = document.getElementById("ledgerTableBody");
+  const historyList = document.getElementById("reviewHistoryList");
+  const historyRoot = modal || historyList || tableBody;
+  if (!historyRoot) return;
+  if (historyRoot.dataset.historyReady === "true") return;
+  historyRoot.dataset.historyReady = "true";
   const searchInput = document.getElementById("historySearch");
   const dateInput = document.getElementById("historyDate");
   const statusInput = document.getElementById("historyStatus");
@@ -2610,10 +2768,13 @@ function initReviewModal() {
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
     const exactSummary = plScanHistoryMeta.summary || {};
-    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : "—");
-    setText("historyReviewCount", Number.isFinite(Number(exactSummary.needs_review)) ? exactSummary.needs_review : "—");
-    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : "—");
-    const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : "—";
+    const confirmedCount = statuses.filter(status => status === "confirmed").length;
+    const reviewScanCount = statuses.filter(status => status === "review_needed").length;
+    const rejectedCount = statuses.filter(status => status === "rejected").length;
+    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : confirmedCount);
+    setText("historyReviewCount", Number.isFinite(Number(exactSummary.needs_review)) ? exactSummary.needs_review : reviewScanCount);
+    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : rejectedCount);
+    const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : scans.length;
     setText("historyProcessedToday", totalUploads);
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
@@ -2640,7 +2801,38 @@ function initReviewModal() {
     });
   }
 
+  function sortedVisibleRows() {
+    return filteredRows(getAuditLedger()).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
+  }
+
+  function selectedRowIndex(rows) {
+    const selectedScanId = new URLSearchParams(window.location.search).get("scanId") || plGetLatestScanResult()?.id || "";
+    return rows.findIndex(row => row.scanId === selectedScanId);
+  }
+
+  function publishNavigationState(rows = sortedVisibleRows()) {
+    const selectedIndex = selectedRowIndex(rows);
+    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", {
+      detail: {
+        hasPrevious: selectedIndex > 0,
+        hasNext: selectedIndex >= 0 && selectedIndex < rows.length - 1
+      }
+    }));
+  }
+
+  window.plReviewNavigateScan = direction => {
+    const rows = sortedVisibleRows();
+    const selectedIndex = selectedRowIndex(rows);
+    const targetIndex = selectedIndex + direction;
+    if (selectedIndex < 0 || targetIndex < 0 || targetIndex >= rows.length) return false;
+    state.page = Math.floor(targetIndex / pageSize) + 1;
+    render();
+    window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: rows[targetIndex].scanId } }));
+    return true;
+  };
+
   function openReview(log, trigger) {
+    if (!modal) return;
     activeLog = log;
     lastTrigger = trigger || document.activeElement;
     if (reviewTitle) reviewTitle.textContent = `Review ${log.category}`;
@@ -2655,7 +2847,7 @@ function initReviewModal() {
   }
 
   function closeModal(force = false) {
-    if (!modal.classList.contains("active") || (isSaving && !force)) return;
+    if (!modal || !modal.classList.contains("active") || (isSaving && !force)) return;
     modal.classList.remove("active");
     modal.setAttribute("aria-hidden", "true");
     activeLog = null;
@@ -2664,7 +2856,7 @@ function initReviewModal() {
   }
 
   function onModalKeydown(event) {
-    if (!modal.classList.contains("active")) return;
+    if (!modal || !modal.classList.contains("active")) return;
     if (event.key === "Escape") {
       if (!isSaving) closeModal();
       return;
@@ -2681,10 +2873,9 @@ function initReviewModal() {
   }
 
   function render() {
-    if (!tableBody) return;
     const allRows = getAuditLedger();
     updateSummary(allRows);
-    const rows = filteredRows(allRows).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
+    const rows = sortedVisibleRows();
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     state.page = Math.min(state.page, totalPages);
     const visible = rows.slice((state.page - 1) * pageSize, state.page * pageSize);
@@ -2692,7 +2883,13 @@ function initReviewModal() {
     if (exportButton) exportButton.disabled = rows.length === 0;
     const reviewButton = document.getElementById("showReviewQueue");
     if (reviewButton) reviewButton.disabled = !rows.some(row => row.decisionStatus === "review_needed");
-    tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
+    if (tableBody) {
+      tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
+    }
+    if (historyList) {
+      const selectedScanId = new URLSearchParams(window.location.search).get("scanId") || plGetLatestScanResult()?.id || "";
+      historyList.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.scanId === selectedScanId ? "is-selected" : ""}" data-select-scan="${escape(row.scanId)}" aria-pressed="${row.scanId === selectedScanId}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${escape(row.confidenceText)} confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+    }
     const start = rows.length ? (state.page - 1) * pageSize + 1 : 0;
     const resultTotal = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows.length;
     if (range) range.textContent = `Showing ${start} to ${Math.min(state.page * pageSize, rows.length)} loaded results of ${resultTotal} total`;
@@ -2705,24 +2902,31 @@ function initReviewModal() {
       });
       pageButtons.innerHTML = `<button type="button" class="history-page-prev" data-page="${Math.max(1, state.page - 1)}" aria-label="Previous page" ${state.page === 1 ? "disabled" : ""}>‹</button>${pageItems.join("")}<button type="button" class="history-page-next" data-page="${Math.min(totalPages, state.page + 1)}" aria-label="Next page" ${state.page === totalPages ? "disabled" : ""}>›</button>`;
     }
-    tableBody.querySelectorAll("[data-review]").forEach(button => button.addEventListener("click", () => openReview(allRows.find(row => row.id === button.dataset.review), button)));
+    tableBody?.querySelectorAll("[data-review]").forEach(button => button.addEventListener("click", () => openReview(allRows.find(row => row.id === button.dataset.review), button)));
+    historyList?.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: button.dataset.selectScan } }));
+    }));
     pageButtons?.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => { state.page = Number(button.dataset.page); render(); }));
+    publishNavigationState(rows);
   }
 
   [searchInput, dateInput, statusInput].forEach(input => input?.addEventListener("input", () => { state.page = 1; render(); }));
   statusInput?.addEventListener("change", () => { state.page = 1; render(); });
-  document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort; state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".history-sort").forEach(item => item.setAttribute("aria-sort", item === button ? (state.direction === 1 ? "ascending" : "descending") : "none")); render(); }));
+  document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort; state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".history-sort").forEach(item => { item.setAttribute("aria-sort", item === button ? (state.direction === 1 ? "ascending" : "descending") : "none"); item.classList.toggle("active", item === button); }); render(); }));
   document.getElementById("showReviewQueue")?.addEventListener("click", () => { if (statusInput) statusInput.value = "Review Needed"; state.page = 1; render(); document.querySelector(".ledger-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
   document.getElementById("showAllHistory")?.addEventListener("click", () => { if (statusInput) statusInput.value = ""; state.page = 1; render(); });
   document.getElementById("exportHistory")?.addEventListener("click", () => { const headers = ["Timestamp", "Source", "Category", "Class", "Weight (kg)", "AI Confidence", "Status"]; const records = filteredRows(getAuditLedger()).map(row => [row.time, row.source, row.category, row.materialClass, row.weight, row.confidenceText, row.status]); const csv = [headers, ...records].map(record => record.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = "purityloop-scan-history.csv"; link.click(); URL.revokeObjectURL(url); });
   document.getElementById("closeReviewModal")?.addEventListener("click", closeModal);
-  modal.addEventListener("click", event => { if (!isSaving && event.target === modal) closeModal(); });
-  document.addEventListener("keydown", onModalKeydown);
+  modal?.addEventListener("click", event => { if (!isSaving && event.target === modal) closeModal(); });
+  if (modal) document.addEventListener("keydown", onModalKeydown);
   window.addEventListener("purityloop:scan-history-refreshed", render);
+  window.addEventListener("purityloop:review-scan-selected", render);
   window.addEventListener("purityloop:page-cleanup", () => {
     unlockPageScroll();
-    document.removeEventListener("keydown", onModalKeydown);
+    if (modal) document.removeEventListener("keydown", onModalKeydown);
     window.removeEventListener("purityloop:scan-history-refreshed", render);
+    window.removeEventListener("purityloop:review-scan-selected", render);
+    if (window.plReviewNavigateScan) delete window.plReviewNavigateScan;
   }, { once: true });
   async function saveReview(outcome, message) {
     if (!activeLog || isSaving) return;

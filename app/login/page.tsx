@@ -1,6 +1,6 @@
 import PageHtml from "@/components/PageHtml";
 
-export const metadata = { title: "PurityLoop AI | Public Demo Login" };
+export const metadata = { title: "PurityLoop AI | Sign In" };
 
 const html = `
 <div class="login-split">
@@ -104,8 +104,8 @@ const html = `
           style="display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:0.8125rem;font-weight:600;margin-bottom:28px;text-decoration:none;">
           <i class="fa-solid fa-arrow-left"></i> Back to Home
         </a>
-        <h2>Enter the Public Demo</h2>
-        <p>Use any non-empty email and password. No real account is created.</p>
+        <h2>Sign in to PurityLoop AI</h2>
+        <p>Enter your email and password to continue.</p>
       </div>
 
       <!-- Login Form -->
@@ -130,27 +130,27 @@ const html = `
 
         <button type="submit" class="btn btn-full btn-lg" id="loginBtn">
           <i class="fa-solid fa-sign-in-alt"></i>
-          Continue to Demo
+          Continue
         </button>
 
       </form>
 
       <div class="create-account-panel">
         <div>
-          <span>Planning future account access?</span>
-          <strong>Create an account when authentication is enabled</strong>
+          <span>Need an account?</span>
+          <strong>Create an account to manage your workspace</strong>
         </div>
         <a href="/create-account" class="create-account-link">Create Account</a>
       </div>
 
       <!-- Trust indicators -->
       <div class="login-trust-row">
-        <span class="trust-badge"><i class="fa-solid fa-flask"></i> Public Demo</span>
+        <span class="trust-badge"><i class="fa-solid fa-shield-halved"></i> Secure Workspace</span>
         <span class="trust-badge"><i class="fa-solid fa-certificate"></i> Capstone 2026</span>
       </div>
 
       <div class="small-note" style="margin-top:24px;">
-        Demo mode accepts any non-empty email and password. Credentials are not used to create an account.
+        Your credentials are used only to establish your current workspace session.
       </div>
     </div>
 

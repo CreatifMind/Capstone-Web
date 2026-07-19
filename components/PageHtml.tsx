@@ -1,12 +1,13 @@
 "use client";
 
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { unzip } from "fflate";
 
 type PageHtmlProps = {
   bodyClass: string;
   dataPage?: string;
-  html: string;
+  html?: string;
+  children?: ReactNode;
 };
 
 type PageLifecycleState = {
@@ -18,7 +19,7 @@ type PageWindow = Window & {
   __PURITYLOOP_PAGE_LIFECYCLE__?: PageLifecycleState;
 };
 
-export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
+export default function PageHtml({ bodyClass, dataPage, html, children }: PageHtmlProps) {
   const pageKey = `${dataPage || "root"}:${bodyClass}`;
   const pageStateScript = `document.body.className=${JSON.stringify(bodyClass)};${dataPage ? `document.body.setAttribute("data-page",${JSON.stringify(dataPage)});` : 'document.body.removeAttribute("data-page");'}`;
 
@@ -89,8 +90,10 @@ export default function PageHtml({ bodyClass, dataPage, html }: PageHtmlProps) {
       <div
         className={bodyClass}
         data-page={dataPage}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+        {...(children ? {} : { dangerouslySetInnerHTML: { __html: html || "" } })}
+      >
+        {children}
+      </div>
     </>
   );
 }
