@@ -1,0 +1,17 @@
+{
+  "nc": 9,
+  "imgsz": 640,
+  "source": "baseline_45k_dataset_v2/data.yaml",
+  "note": "Frozen contract. IDs are fixed by the training data - do not reorder. food_organic is food waste only; leaves and plant matter are general_trash.",
+  "names": {
+    "0": "plastic",
+    "1": "paper",
+    "2": "cardboard",
+    "3": "metal",
+    "4": "glass",
+    "5": "textile",
+    "6": "food_organic",
+    "7": "battery",
+    "8": "general_trash"
+  }
+}
