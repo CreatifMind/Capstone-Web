@@ -9,6 +9,7 @@
 .primaryButton { border: 1px solid #35f08b; background: #35f08b; color: #062012; }
 .primaryButton input { display: none; }
 .primaryButton:disabled, .secondaryButton:disabled { cursor: not-allowed; opacity: .55; }
+.disabled { cursor: not-allowed; opacity: .55; }
 .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .status, .error { margin: 0 0 16px; padding: 11px 13px; border-radius: 8px; background: color-mix(in srgb, var(--surface, #10231a) 88%, transparent); }
 .error { border: 1px solid #d75a5a; color: #ffd0d0; }
@@ -18,7 +19,7 @@
 .empty { color: var(--muted, #a8c1b4); }
 .imageStage { position: relative; width: 100%; overflow: hidden; border-radius: 9px; background: #06110b; line-height: 0; }
 .imageStage img { display: block; width: 100%; height: auto; }
-.imageStage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.imageStage svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
 .box rect:first-child { fill: rgba(53, 240, 139, .08); stroke: #35f08b; stroke-width: 3; vector-effect: non-scaling-stroke; }
 .boxLabel { fill: #35f08b; stroke: none !important; }
 .box text { fill: #062012; font: 700 14px Arial, sans-serif; dominant-baseline: middle; }

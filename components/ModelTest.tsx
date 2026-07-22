@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { MODEL_CONFIG } from "@/lib/inference/model-config";
 import { runModel } from "@/lib/inference/onnx-session";
 import { postprocessOutput } from "@/lib/inference/postprocess";
@@ -19,11 +19,13 @@ type DebugInfo = {
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-function loadImage(source: string) {
+function loadImage(source: string, filename: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Selected image could not be loaded."));
+    image.onload = () => image.naturalWidth && image.naturalHeight
+      ? resolve(image)
+      : reject(new Error(`"${filename}" has invalid image dimensions.`));
+    image.onerror = () => reject(new Error(`"${filename}" could not be decoded. The file may be corrupted or use an unsupported format.`));
     image.src = source;
   });
 }
@@ -34,39 +36,77 @@ function formatMs(value: number) {
 
 export default function ModelTest() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef("");
+  const selectionTokenRef = useRef(0);
+  const runningRef = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [status, setStatus] = useState("Choose one image to begin.");
   const [error, setError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
+  useEffect(() => () => {
+    selectionTokenRef.current += 1;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = "";
+  }, []);
+
+  const revokePreviewUrl = () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = "";
+  };
+
   const selectImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = event.target.files?.[0];
+    const input = event.currentTarget;
+    const selected = input.files?.[0];
     if (!selected) return;
+    const selectionToken = ++selectionTokenRef.current;
+
+    revokePreviewUrl();
+    setFile(null);
+    setPreviewUrl("");
+    setImage(null);
+    setDebug(null);
+    setError("");
+
     if (!supportedTypes.has(selected.type)) {
-      setError("Choose one JPG, JPEG, PNG, or WEBP image.");
+      input.value = "";
+      setError(`"${selected.name}" is not a supported image. Choose JPG, JPEG, PNG, or WEBP.`);
+      setStatus("Image rejected.");
       return;
     }
+    if (!selected.size) {
+      input.value = "";
+      setError(`"${selected.name}" is empty and cannot be decoded.`);
+      setStatus("Image rejected.");
+      return;
+    }
+
+    setStatus("Validating image…");
     const nextPreviewUrl = URL.createObjectURL(selected);
+    previewUrlRef.current = nextPreviewUrl;
     try {
-      const nextImage = await loadImage(nextPreviewUrl);
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const nextImage = await loadImage(nextPreviewUrl, selected.name);
+      if (selectionToken !== selectionTokenRef.current) return;
       setFile(selected);
       setPreviewUrl(nextPreviewUrl);
       setImage(nextImage);
-      setDebug(null);
-      setError("");
       setStatus("Image ready. Run detection when ready.");
     } catch (nextError) {
-      URL.revokeObjectURL(nextPreviewUrl);
+      if (selectionToken !== selectionTokenRef.current) return;
+      revokePreviewUrl();
+      input.value = "";
       setError(nextError instanceof Error ? nextError.message : "Unable to read image.");
+      setStatus("Image rejected.");
     }
   };
 
   const runDetection = async () => {
-    if (!file || !image) return;
+    if (!file || !image || runningRef.current) return;
+    runningRef.current = true;
     setIsRunning(true);
     setError("");
     setStatus("Loading ONNX model and running browser inference…");
@@ -74,6 +114,7 @@ export default function ModelTest() {
       const preprocessed = preprocessImage(image);
       const result = await runModel(preprocessed.data);
       const output = postprocessOutput(result.output, preprocessed.letterbox);
+      setSessionLoaded(true);
       setDebug({
         filename: file.name,
         letterbox: preprocessed.letterbox,
@@ -82,17 +123,22 @@ export default function ModelTest() {
         executionProvider: result.sessionInfo.executionProvider,
         output
       });
-      setStatus(`Detection complete: ${output.detections.length} bounding box${output.detections.length === 1 ? "" : "es"}.`);
+      setStatus(output.detections.length
+        ? `Detection complete: ${output.detections.length} bounding box${output.detections.length === 1 ? "" : "es"}.`
+        : `Detection complete: no detections met confidence ${MODEL_CONFIG.confidenceThreshold}.`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "ONNX inference failed.");
       setStatus("Detection failed.");
     } finally {
+      runningRef.current = false;
       setIsRunning(false);
     }
   };
 
   const reset = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (runningRef.current) return;
+    selectionTokenRef.current += 1;
+    revokePreviewUrl();
     if (inputRef.current) inputRef.current.value = "";
     setFile(null);
     setPreviewUrl("");
@@ -100,6 +146,41 @@ export default function ModelTest() {
     setDebug(null);
     setError("");
     setStatus("Choose one image to begin.");
+  };
+
+  const exportDebugJson = () => {
+    if (!debug) return;
+    const { letterbox, output } = debug;
+    const payload = {
+      filename: debug.filename,
+      originalWidth: letterbox.originalWidth,
+      originalHeight: letterbox.originalHeight,
+      resizedWidth: letterbox.resizedWidth,
+      resizedHeight: letterbox.resizedHeight,
+      letterboxScale: letterbox.scale,
+      padX: letterbox.padX,
+      padY: letterbox.padY,
+      modelLoadTimeMs: debug.modelLoadTimeMs,
+      inferenceTimeMs: debug.inferenceTimeMs,
+      confidenceThreshold: MODEL_CONFIG.confidenceThreshold,
+      nmsIouThreshold: MODEL_CONFIG.nmsIouThreshold,
+      nmsMode: "class-aware",
+      executionProvider: debug.executionProvider,
+      rawCandidateCount: output.rawCandidates,
+      confidenceCandidateCount: output.confidenceCandidates,
+      finalDetectionCount: output.detections.length,
+      detections: output.detections.map(({ classId, className, confidence, x1, y1, x2, y2 }) => ({
+        classId, className, confidence, x1, y1, x2, y2
+      }))
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${debug.filename.replace(/\.[^.]+$/, "") || "model-test"}-debug.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -115,14 +196,15 @@ export default function ModelTest() {
         </header>
 
         <section className={styles.controls} aria-label="Model test controls">
-          <label className={styles.primaryButton}>
+          <label className={`${styles.primaryButton} ${isRunning ? styles.disabled : ""}`} aria-disabled={isRunning}>
             Select image
-            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={selectImage} />
+            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={selectImage} disabled={isRunning} />
           </label>
           <button type="button" className={styles.primaryButton} onClick={runDetection} disabled={!image || isRunning}>
             {isRunning ? "Running…" : "Run detection"}
           </button>
           <button type="button" className={styles.secondaryButton} onClick={reset} disabled={isRunning}>Reset</button>
+          <button type="button" className={styles.secondaryButton} onClick={exportDebugJson} disabled={!debug || isRunning}>Export Debug JSON</button>
         </section>
 
         <p className={styles.status} role="status">{status}</p>
@@ -134,7 +216,7 @@ export default function ModelTest() {
             {previewUrl && image ? (
               <div className={styles.imageStage}>
                 <img src={previewUrl} alt={file?.name || "Selected upload"} />
-                <svg viewBox={`0 0 ${image.naturalWidth} ${image.naturalHeight}`} aria-label="Detection boxes" role="img">
+                <svg viewBox={`0 0 ${image.naturalWidth} ${image.naturalHeight}`} preserveAspectRatio="none" aria-label="Detection boxes" role="img">
                   {debug?.output.detections.map(detection => <DetectionBox key={`${detection.classId}-${detection.x1}-${detection.y1}`} detection={detection} />)}
                 </svg>
               </div>
@@ -160,7 +242,7 @@ export default function ModelTest() {
         <section className={styles.card}>
           <h2>Debug information</h2>
           <dl className={styles.debugGrid}>
-            <DebugRow label="Model status" value={isRunning ? "Running" : error ? "Error" : debug ? "Loaded" : "Not loaded"} />
+            <DebugRow label="Model status" value={isRunning ? "Running" : error ? "Error" : sessionLoaded ? "Loaded (cached)" : "Not loaded"} />
             <DebugRow label="Selected filename" value={file?.name || "—"} />
             <DebugRow label="Original dimensions" value={debug ? `${debug.letterbox.originalWidth} × ${debug.letterbox.originalHeight}` : "—"} />
             <DebugRow label="Letterbox scale" value={debug ? debug.letterbox.scale.toFixed(6) : "—"} />
