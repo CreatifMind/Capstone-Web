@@ -23,15 +23,16 @@ function NavItem({ href, icon, label, active = false }: { href: string; icon: st
   );
 }
 
-function SummaryCard({ label, valueId, detail, tone, icon }: { label: string; valueId: string; detail: string; tone: string; icon: string }) {
+function SummaryCard({ label, valueId, detail, tone, icon, kpiFilter, chartId }: { label: string; valueId: string; detail: string; tone: string; icon: string; kpiFilter: string; chartId?: string }) {
   return (
-    <article className={"review-summary-card " + tone}>
+    <article className={"review-summary-card " + tone} data-kpi-filter={kpiFilter} role="button" tabIndex={0}>
       <span className="review-summary-icon"><i className={"fa-solid " + icon} aria-hidden="true" /></span>
       <div>
         <span>{label}</span>
         <strong id={valueId}>-</strong>
         <small>{detail}</small>
       </div>
+      {chartId && <canvas id={chartId} className="review-summary-chart" aria-hidden="true" />}
     </article>
   );
 }
@@ -76,10 +77,10 @@ export default function ReviewPage() {
 
           <div className="page-body review-page-body">
             <section className="review-summary-grid" aria-label="Scan verification summary">
-              <SummaryCard label="Total scans" valueId="historyProcessedToday" detail="Saved scans" tone="total" icon="fa-file-lines" />
-              <SummaryCard label="Confirmed" valueId="historyConfirmed" detail="Scans confirmed" tone="confirmed" icon="fa-circle-check" />
-              <SummaryCard label="Needs review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" />
-              <SummaryCard label="Rejected" valueId="historyRejected" detail="Rejected scans" tone="rejected" icon="fa-circle-xmark" />
+              <SummaryCard label="Total scans" valueId="historyProcessedToday" detail="Saved scans" tone="total" icon="fa-file-lines" kpiFilter="total" />
+              <SummaryCard label="Confirmed" valueId="historyConfirmed" detail="Scans confirmed" tone="confirmed" icon="fa-circle-check" kpiFilter="confirmed" />
+              <SummaryCard label="Needs review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" kpiFilter="review_needed" chartId="historyReviewMixChart" />
+              <SummaryCard label="Rejected" valueId="historyRejected" detail="Rejected scans" tone="rejected" icon="fa-circle-xmark" kpiFilter="rejected" />
             </section>
 
             <section className="review-filter-toolbar" aria-label="Review filters">
@@ -94,13 +95,18 @@ export default function ReviewPage() {
             </section>
 
             <section className="review-workspace" aria-label="Review workspace">
-              <section className="panel bbox-card review-history-panel" aria-labelledby="reviewHistoryTitle">
+              <div className="review-tabbar" role="tablist" aria-label="Review panels">
+                <button type="button" className="review-tab" data-tab="history" role="tab" id="reviewTabHistory" aria-selected="false" aria-controls="reviewHistoryPanel">History</button>
+                <button type="button" className="review-tab active" data-tab="selected" role="tab" id="reviewTabSelected" aria-selected="true" aria-controls="reviewSelectedPanel">Selected Scan</button>
+              </div>
+
+              <section id="reviewHistoryPanel" className="panel bbox-card review-history-panel" aria-labelledby="reviewHistoryTitle">
                 <header className="review-panel-header"><div><h2 id="reviewHistoryTitle">Scan History</h2><p id="historyRange" aria-live="polite">Loading scans</p></div></header>
                 <div id="reviewHistoryList" className="review-history-list" aria-live="polite"><div className="review-list-skeleton"><span /><span /><span /></div></div>
                 <div id="historyPageButtons" className="history-pagination review-pagination" aria-label="Scan history pagination" />
               </section>
 
-              <section className="panel bbox-card review-selected-panel" aria-labelledby="liveStreamTitle">
+              <section id="reviewSelectedPanel" className="panel bbox-card review-selected-panel is-active-tab" aria-labelledby="liveStreamTitle">
                 <header className="review-panel-header review-selected-header"><h2 id="liveStreamTitle" title="No scan selected">No scan selected</h2><span id="resultSourceState">No saved result</span></header>
                 <div className="review-selected-content">
                   <section className="stream-panel review-stream-panel" aria-label="Selected scan image">

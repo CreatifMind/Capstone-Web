@@ -2699,7 +2699,7 @@ function initReviewModal() {
   const statusInput = document.getElementById("historyStatus");
   const pageButtons = document.getElementById("historyPageButtons");
   const range = document.getElementById("historyRange");
-  const state = { page: 1, sort: "timestamp", direction: -1 };
+  const state = { page: 1, sort: "timestamp", direction: -1, kpiBucket: "" };
   const pageSize = 10;
   let activeLog = null;
   let isSaving = false;
@@ -2771,11 +2771,24 @@ function initReviewModal() {
     const confirmedCount = statuses.filter(status => status === "confirmed").length;
     const reviewScanCount = statuses.filter(status => status === "review_needed").length;
     const rejectedCount = statuses.filter(status => status === "rejected").length;
-    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : confirmedCount);
-    setText("historyReviewCount", Number.isFinite(Number(exactSummary.needs_review)) ? exactSummary.needs_review : reviewScanCount);
-    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : rejectedCount);
     const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : scans.length;
+    const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review)) ? Number(exactSummary.needs_review) : reviewScanCount;
+    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : confirmedCount);
+    setText("historyReviewCount", resolvedReviewCount);
+    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : rejectedCount);
     setText("historyProcessedToday", totalUploads);
+    const chartStyles = getComputedStyle(document.documentElement);
+    const warnColor = chartStyles.getPropertyValue("--status-warning").trim() || "#c9743f";
+    const trackColor = chartStyles.getPropertyValue("--border").trim() || "#d8e4dc";
+    const otherCount = Math.max(0, totalUploads - resolvedReviewCount);
+    plOverviewChart("historyReviewMixChart", {
+      type: "doughnut",
+      data: {
+        labels: ["Needs review", "Other scans"],
+        datasets: [{ data: totalUploads ? [resolvedReviewCount, otherCount] : [1], backgroundColor: totalUploads ? [warnColor, trackColor] : [trackColor], borderWidth: 0 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, cutout: "72%", plugins: { legend: { display: false }, tooltip: { enabled: totalUploads > 0 } } }
+    });
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
     setText("historyAverageConfidence", rows.length ? `${Math.round(average)}%` : "No data");
@@ -2790,6 +2803,12 @@ function initReviewModal() {
     if (badge) badge.textContent = `${reviewCount} review needed`;
   }
 
+  function matchesKpiBucket(row, bucket) {
+    if (!bucket || bucket === "total") return true;
+    if (bucket === "confirmed") return row.decisionStatus !== "rejected" && row.decisionStatus !== "review_needed";
+    return row.decisionStatus === bucket;
+  }
+
   function filteredRows(rows) {
     const query = String(searchInput?.value || "").trim().toLowerCase();
     const date = String(dateInput?.value || "");
@@ -2797,7 +2816,7 @@ function initReviewModal() {
     return rows.filter(row => {
       const localDate = new Date(row.timestamp);
       const rowDate = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, "0")}-${String(localDate.getDate()).padStart(2, "0")}`;
-      return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!date || rowDate === date) && (!status || row.status === status);
+      return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!date || rowDate === date) && (!status || row.status === status) && matchesKpiBucket(row, state.kpiBucket);
     });
   }
 
@@ -2875,6 +2894,7 @@ function initReviewModal() {
   function render() {
     const allRows = getAuditLedger();
     updateSummary(allRows);
+    document.body.classList.toggle("review-drilled", !!state.kpiBucket);
     const rows = sortedVisibleRows();
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     state.page = Math.min(state.page, totalPages);
@@ -2910,8 +2930,31 @@ function initReviewModal() {
     publishNavigationState(rows);
   }
 
+  function activateTab(name) {
+    document.getElementById("reviewHistoryPanel")?.classList.toggle("is-active-tab", name === "history");
+    document.getElementById("reviewSelectedPanel")?.classList.toggle("is-active-tab", name === "selected");
+    document.getElementById("reviewTabHistory")?.classList.toggle("active", name === "history");
+    document.getElementById("reviewTabSelected")?.classList.toggle("active", name === "selected");
+    document.getElementById("reviewTabHistory")?.setAttribute("aria-selected", String(name === "history"));
+    document.getElementById("reviewTabSelected")?.setAttribute("aria-selected", String(name === "selected"));
+  }
+  document.querySelectorAll(".review-tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
+  document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
+    const bucket = card.dataset.kpiFilter;
+    const activateKpiDrilldown = () => {
+      state.kpiBucket = bucket;
+      if (statusInput) statusInput.value = bucket === "review_needed" ? "Review Needed" : bucket === "rejected" ? "Rejected" : "";
+      activateTab("history");
+      state.page = 1;
+      render();
+      document.querySelector(".review-history-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    card.addEventListener("click", activateKpiDrilldown);
+    card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateKpiDrilldown(); } });
+  });
+
   [searchInput, dateInput, statusInput].forEach(input => input?.addEventListener("input", () => { state.page = 1; render(); }));
-  statusInput?.addEventListener("change", () => { state.page = 1; render(); });
+  statusInput?.addEventListener("change", () => { state.kpiBucket = ""; state.page = 1; render(); });
   document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort; state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".history-sort").forEach(item => { item.setAttribute("aria-sort", item === button ? (state.direction === 1 ? "ascending" : "descending") : "none"); item.classList.toggle("active", item === button); }); render(); }));
   document.getElementById("showReviewQueue")?.addEventListener("click", () => { if (statusInput) statusInput.value = "Review Needed"; state.page = 1; render(); document.querySelector(".ledger-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
   document.getElementById("showAllHistory")?.addEventListener("click", () => { if (statusInput) statusInput.value = ""; state.page = 1; render(); });
@@ -2923,6 +2966,7 @@ function initReviewModal() {
   window.addEventListener("purityloop:review-scan-selected", render);
   window.addEventListener("purityloop:page-cleanup", () => {
     unlockPageScroll();
+    document.body.classList.remove("review-drilled");
     if (modal) document.removeEventListener("keydown", onModalKeydown);
     window.removeEventListener("purityloop:scan-history-refreshed", render);
     window.removeEventListener("purityloop:review-scan-selected", render);
