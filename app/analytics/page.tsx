@@ -24,13 +24,9 @@ const html = `
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
           <span class="nav-item-label">Upload</span>
         </a>
-        <a href="/result" class="nav-item" data-tooltip="Result">
-          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
-          <span class="nav-item-label">Result</span>
-        </a>
-        <a href="/log" class="nav-item" data-tooltip="History">
-          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">History</span>
+        <a href="/review" class="nav-item" data-tooltip="Review">
+          <i class="nav-item-icon fa-solid fa-magnifying-glass"></i>
+          <span class="nav-item-label">Review</span>
         </a>
         <a href="/analytics" class="nav-item active" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
@@ -78,6 +74,7 @@ const html = `
             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
             <input id="analyticsDate" type="date" aria-label="Date selector" />
           </label>
+          <button id="analyticsClearDate" class="secondary-btn" type="button" disabled>All History</button>
           <div class="date-pill">
             <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
             <span id="liveClock">00:00:00 AM</span>
@@ -101,7 +98,7 @@ const html = `
           <p class="analytics-last-updated">Last updated: <time id="analyticsLastUpdated">—</time></p>
           <section class="analytics-kpi-grid" aria-label="Analytics key performance indicators">
             <article class="analytics-kpi analytics-kpi-review"><span class="analytics-kpi-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span><span>Items Needing Review</span><strong data-overview="needs-review">-</strong><p data-overview="needs-review-note">Loading analytics...</p><small data-overview="needs-review-compare" hidden></small></article>
-            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span>Confirmed Today</span><strong data-overview="confirmed-today">-</strong><p>Confirmed detections</p><small data-overview="confirmed-today-compare" hidden></small></article>
+            <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span><span id="analyticsConfirmedLabel">Confirmed Scans</span><strong data-overview="confirmed-today">-</strong><p>Confirmed detections</p><small data-overview="confirmed-today-compare" hidden></small></article>
             <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-sack-dollar" aria-hidden="true"></i></span><span>Estimated Recovery Value</span><strong data-overview="recoverable-value">-</strong><p>Illustrative category estimate</p><small data-overview="recoverable-value-compare" hidden></small></article>
             <article class="analytics-kpi"><span class="analytics-kpi-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span>Average Detection Confidence</span><strong data-overview="average-confidence">-</strong><p>Across detected items</p><small data-overview="average-confidence-compare" hidden></small></article>
           </section>
@@ -109,7 +106,7 @@ const html = `
           <section class="analytics-attention-banner" data-overview="attention-banner">
             <span class="analytics-banner-icon"><i class="fa-solid fa-circle-exclamation"></i></span>
             <div><h2 data-overview="attention-title">Loading analytics...</h2><p data-overview="attention-copy"></p></div>
-            <div class="analytics-banner-actions"><a data-overview="review-link" class="primary-btn" href="/log">Open Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="secondary-btn" href="/log">View History</a></div>
+            <div class="analytics-banner-actions"><a data-overview="review-link" class="primary-btn" href="/review">Open Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="secondary-btn" href="/review">Open Review Workspace</a></div>
           </section>
 
           <section class="analytics-insights" aria-labelledby="analyticsInsightsHeading">
@@ -127,10 +124,10 @@ const html = `
             <article class="analytics-overview-card analytics-material-mix"><header><div><h2>Material Mix</h2><p data-overview="mix-subtitle">By weight</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewMaterialMix"></canvas><div class="analytics-donut-center" data-overview="mix-center" hidden><strong data-overview="mix-total">0</strong><span data-overview="mix-total-label">Total items</span></div></div><p class="analytics-chart-summary" data-overview="mix-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-composition">View full breakdown <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
             <article class="analytics-overview-card analytics-value-card"><header><div><h2>Recoverable Value by Category</h2><p>Estimated value (RM)</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewValueByCategory"></canvas></div><p class="analytics-chart-summary" data-overview="value-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-resale">View value details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
             <article class="analytics-overview-card analytics-trend-card"><header><div><h2>Daily Scan Trend</h2><p>Scans over time</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewDailyTrend"></canvas></div><p class="analytics-chart-summary" data-overview="trend-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-yield">View trend analysis <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
-            <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/log">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
+            <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/review">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
           </section>
 
-          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><div><h2 id="analyticsRecentLogHeading">Recent Verification History</h2><p class="analytics-data-note">Recent saved records from the shared scan history.</p></div><a href="/log">View audit history <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
+          <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><div><h2 id="analyticsRecentLogHeading">Recent Verification History</h2><p class="analytics-data-note">Recent saved records from the shared scan history.</p></div><a href="/review">Open Review Workspace <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
         </section>
 
         <!-- DETAIL DOCK -->
@@ -261,7 +258,7 @@ const html = `
                 <p class="eyebrow">Ledger Detail</p>
                 <h2>Recent Scan Verification Ledger</h2>
               </div>
-              <a href="/log" class="secondary-btn">Open Audit History</a>
+              <a href="/review" class="secondary-btn">Open Review Workspace</a>
             </div>
             <div class="table-wrap">
               <table class="ledger-table">

@@ -23,7 +23,7 @@ function NavItem({ href, icon, label, active = false }: { href: string; icon: st
   );
 }
 
-function SummaryCard({ label, valueId, detail, tone, icon, kpiFilter, chartId }: { label: string; valueId: string; detail: string; tone: string; icon: string; kpiFilter: string; chartId?: string }) {
+function SummaryCard({ label, valueId, detail, tone, icon, kpiFilter }: { label: string; valueId: string; detail: string; tone: string; icon: string; kpiFilter: string }) {
   return (
     <article className={"review-summary-card " + tone} data-kpi-filter={kpiFilter} role="button" tabIndex={0}>
       <span className="review-summary-icon"><i className={"fa-solid " + icon} aria-hidden="true" /></span>
@@ -32,7 +32,6 @@ function SummaryCard({ label, valueId, detail, tone, icon, kpiFilter, chartId }:
         <strong id={valueId}>-</strong>
         <small>{detail}</small>
       </div>
-      {chartId && <canvas id={chartId} className="review-summary-chart" aria-hidden="true" />}
     </article>
   );
 }
@@ -71,7 +70,6 @@ export default function ReviewPage() {
               <div data-theme-slot="app" />
               <div className="date-pill"><i className="fa-solid fa-clock" aria-hidden="true" /><span id="liveClock">00:00:00 AM</span></div>
               <button className="topbar-icon-btn" aria-label="Notifications"><i className="fa-solid fa-bell" /><span className="notif-dot" /></button>
-              <div className="user-badge review-badge"><div className="user-badge-avatar">QA</div><span>0 review needed</span></div>
             </div>
           </header>
 
@@ -79,7 +77,7 @@ export default function ReviewPage() {
             <section className="review-summary-grid" aria-label="Scan verification summary">
               <SummaryCard label="Total scans" valueId="historyProcessedToday" detail="Saved scans" tone="total" icon="fa-file-lines" kpiFilter="total" />
               <SummaryCard label="Confirmed" valueId="historyConfirmed" detail="Scans confirmed" tone="confirmed" icon="fa-circle-check" kpiFilter="confirmed" />
-              <SummaryCard label="Needs review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" kpiFilter="review_needed" chartId="historyReviewMixChart" />
+              <SummaryCard label="Needs Review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" kpiFilter="review_needed" />
               <SummaryCard label="Rejected" valueId="historyRejected" detail="Rejected scans" tone="rejected" icon="fa-circle-xmark" kpiFilter="rejected" />
             </section>
 
@@ -101,7 +99,7 @@ export default function ReviewPage() {
               </div>
 
               <section id="reviewHistoryPanel" className="panel bbox-card review-history-panel" aria-labelledby="reviewHistoryTitle">
-                <header className="review-panel-header"><div><h2 id="reviewHistoryTitle">Scan History</h2><p id="historyRange" aria-live="polite">Loading scans</p></div></header>
+                <header className="review-panel-header"><div><h2 id="reviewHistoryTitle">Scan History</h2><p id="historyRange" aria-live="polite">Loading scans</p></div><button id="openFullHistory" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-table-list" aria-hidden="true" />View Full History</button></header>
                 <div id="reviewHistoryList" className="review-history-list" aria-live="polite"><div className="review-list-skeleton"><span /><span /><span /></div></div>
                 <div id="historyPageButtons" className="history-pagination review-pagination" aria-label="Scan history pagination" />
               </section>
@@ -115,7 +113,6 @@ export default function ReviewPage() {
                   <aside className="review-inspector">
                     <section className="mini-panel detection-panel bbox-card"><h3>AI Prediction</h3><div id="liveFeed" className="live-feed"><div className="feed-empty">Select a scan to view detected materials.</div></div></section>
                     <section className="mini-panel action-panel bbox-card" id="liveActionPanel"><div className="panel-heading-row"><h3>Recommended Route</h3><span id="liveActionBadge">Waiting</span></div><div id="liveActionText" className="recommendation-detail"><strong>Waiting for scan result</strong><p>Select a scan to view the recommended route.</p></div></section>
-                    <p id="reviewWorkspaceWarning" className="review-workspace-warning" hidden role="status" />
                   </aside>
 
                   <div className="review-form-row">
@@ -139,6 +136,22 @@ export default function ReviewPage() {
             <div id="finderGrid" hidden aria-hidden="true" />
             <span id="finderCountText" hidden />
             <span id="liveScanned" hidden>0 items</span><span id="livePurity" hidden>0%</span><span id="liveMarketValue" hidden>RM 0.00</span><span id="liveReviewNeeded" hidden>No data</span>
+          </div>
+          <div id="reviewHistoryModal" className="modal-overlay review-history-modal" role="presentation" aria-hidden="true">
+            <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="reviewHistoryModalTitle" tabIndex={-1}>
+              <button type="button" className="modal-close" data-review-history-close aria-label="Close full history"><i className="fa-solid fa-xmark" /></button>
+              <header><h2 id="reviewHistoryModalTitle">Audit History</h2><p id="reviewHistoryModalRange" aria-live="polite">Loading scans</p></header>
+              <div className="review-history-modal-body">
+                <div className="review-history-modal-filters">
+                  <input id="fullHistorySearch" type="search" placeholder="Search scans" aria-label="Search full history" />
+                  <input id="fullHistoryDate" type="date" aria-label="Filter full history by date" />
+                  <select id="fullHistoryStatus" aria-label="Filter full history by status"><option value="">All statuses</option><option value="review_needed">Review Needed</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option></select>
+                  <button id="fullHistorySortTimestamp" className="history-sort active" type="button">Newest first</button><button id="fullHistorySortConfidence" className="history-sort" type="button">Confidence</button>
+                </div>
+                <div className="table-wrap"><table className="ledger-table"><thead><tr><th>Timestamp</th><th>Preview</th><th>Category</th><th>Class</th><th>Weight</th><th>AI Confidence</th><th>Status</th><th>Action</th></tr></thead><tbody id="fullHistoryTableBody" /></table></div>
+              </div>
+              <div id="fullHistoryPageButtons" className="history-pagination" aria-label="Full history pagination" />
+            </section>
           </div>
         </main>
       </div>

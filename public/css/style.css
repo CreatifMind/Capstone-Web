@@ -12006,7 +12006,6 @@ body[data-page="review-log"] .ledger-table { min-width: 900px; }
 .dark-landing #features .section-header.centered { max-width: 760px; margin-inline: auto; text-align: center; }
 .dark-landing #features .section-header.centered .section-sub { margin-inline: auto; }
 .dark-login .login-trust-row { justify-content: center; text-align: center; }
-body[data-page="upload"] #videoUpload { display: none; }
 body[data-page="upload"] .upload-source-actions { margin-bottom: 16px; }
 body[data-page="upload"] .upload-box { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 body[data-page="upload"] .batch-processing-status { display: grid; min-height: 42px; margin: 8px 0 12px; place-items: center; text-align: center; }
@@ -12491,8 +12490,7 @@ body[data-page="upload"] .upload-zip-label { border: 1px solid var(--border); ba
 body[data-page="upload"] :is(.upload-label, .upload-zip-label, .upload-batch-actions button):active { transform: translateY(1px); }
 body[data-page="upload"] :is(.upload-label, .upload-zip-label, .upload-batch-actions button):focus-visible,
 body[data-page="upload"] .upload-queue-remove:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; }
-body[data-page="upload"] #fileUpload,
-body[data-page="upload"] #zipUpload { display: none; }
+body[data-page="upload"] #fileUpload { display: none; }
 body[data-page="upload"] .upload-file-policy { max-width: 620px; margin: 12px auto 0 !important; font-size: .75rem !important; line-height: 1.45; }
 body[data-page="upload"] .upload-utility-actions:empty { display: none; }
 body[data-page="upload"] .upload-utility-actions .secondary-btn { margin-top: 10px; font-size: .78rem; }
@@ -12585,36 +12583,33 @@ html[data-theme="dark"] body[data-page="upload"] .upload-zip-label { background:
   body[data-page="upload"] .batch-summary { align-items: start; flex-direction: column; }
 }
 
-/* Balanced two-row upload grid. Keep processing feedback in its queue context. */
+/* Compact single-column upload workflow. */
 body[data-page="upload"] .upload-workspace {
-  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);
-  grid-template-areas:
-    "upload tips"
-    "queue summary";
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "upload" "queue";
+  width: 100%;
+  margin: 0 auto;
+  gap: 14px;
 }
+body[data-page="upload"] .main-content,
+body[data-page="upload"] .upload-page-body,
+body[data-page="upload"] .upload-workspace,
+body[data-page="upload"] :is(.upload-card, .upload-queue-card) { min-width: 0; max-width: 100%; }
 body[data-page="upload"] .upload-card { grid-area: upload; }
-body[data-page="upload"] .upload-tips-card { grid-area: tips; }
 body[data-page="upload"] .upload-queue-card { grid-area: queue; }
-body[data-page="upload"] .batch-summary-card { grid-area: summary; }
 body[data-page="upload"] .upload-box {
-  min-height: clamp(250px, 26vh, 300px);
-  padding: 22px 20px 16px !important;
+  min-height: clamp(208px, 23vh, 252px);
+  padding: 18px 20px 14px !important;
 }
 body[data-page="upload"] .upload-icon { margin-bottom: 8px; }
 body[data-page="upload"] .upload-box > p { margin-bottom: 10px; }
 body[data-page="upload"] .upload-file-policy { margin-top: 10px !important; }
 body[data-page="upload"] .upload-workflow-strip { margin-top: 8px; padding-block: 9px; }
-body[data-page="upload"] .upload-tips-card { padding-bottom: 18px; }
-body[data-page="upload"] .upload-tips-list { gap: 15px; margin-top: 18px; }
-body[data-page="upload"] .upload-tips-list li { grid-template-columns: 34px minmax(0, 1fr); gap: 10px; }
-body[data-page="upload"] .upload-tips-list > li > i { width: 34px; height: 34px; }
 body[data-page="upload"] .upload-queue { max-height: clamp(300px, 38vh, 440px); }
 body[data-page="upload"] .upload-queue-card .batch-summary {
   margin-top: 14px;
   border-top: 1px solid color-mix(in srgb, var(--status-success) 34%, var(--border));
 }
-body[data-page="upload"] .batch-summary-card { align-self: start; }
 body[data-page="upload"] .upload-messages {
     display: grid;
     width: 100%;
@@ -12636,15 +12631,40 @@ body[data-page="upload"] .batch-summary {
   text-align: center;
 }
 body[data-page="upload"] .batch-summary-copy { justify-items: center; text-align: center; }
-@media (max-width: 1180px) {
-  body[data-page="upload"] .upload-workspace {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "upload"
-      "tips"
-      "queue"
-      "summary";
-  }
+body[data-page="upload"] .upload-section-header,
+body[data-page="upload"] .upload-queue-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+body[data-page="upload"] .upload-section-header { justify-content: space-between; }
+body[data-page="upload"] .upload-queue-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+body[data-page="upload"] .upload-batch-summary-trigger { justify-self: center; }
+body[data-page="upload"] .upload-queue-counts { justify-self: end; }
+body[data-page="upload"] .upload-utility-btn { min-height: 34px; padding: 0 11px; border-color: var(--border); background: var(--surface-elevated); color: var(--text); font-size: .76rem; font-weight: 700; white-space: nowrap; }
+body[data-page="upload"] .upload-utility-btn i { color: var(--primary); }
+body[data-page="upload"] .upload-utility-btn:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); color: var(--primary); }
+body[data-page="upload"] .upload-info-modal { z-index: 1100; padding: 20px; overscroll-behavior: contain; }
+body[data-page="upload"] .upload-info-modal .modal-card { display: grid; width: min(640px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); padding: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+body[data-page="upload"] .upload-info-modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 24px; }
+body[data-page="upload"] .upload-info-modal h2 { margin: 0; padding-right: 34px; color: var(--text); font-size: 1.08rem; }
+body[data-page="upload"] .upload-info-modal h2 i { margin-right: 9px; color: var(--primary); }
+body[data-page="upload"] .upload-info-modal .upload-tips-list { gap: 15px; margin: 20px 0 0; }
+body[data-page="upload"] .upload-info-modal .upload-tips-list li { grid-template-columns: 34px minmax(0, 1fr); gap: 10px; }
+body[data-page="upload"] .upload-info-modal .upload-tips-list > li > i { width: 34px; height: 34px; }
+body.upload-modal-open { overflow: hidden; }
+html[data-theme="dark"] body[data-page="upload"] .upload-utility-btn { background: var(--surface); color: var(--text-primary); }
+@media (max-width: 700px) {
+  body[data-page="upload"] .upload-section-header,
+  body[data-page="upload"] .upload-queue-header { align-items: flex-start; }
+  body[data-page="upload"] .upload-queue-header { grid-template-columns: 1fr; justify-items: start; }
+  body[data-page="upload"] .upload-batch-summary-trigger,
+  body[data-page="upload"] .upload-queue-counts { justify-self: start; }
+  body[data-page="upload"] .upload-section-header { justify-content: flex-start; }
+  body[data-page="upload"] .upload-utility-btn { min-height: 36px; }
+  body[data-page="upload"] .upload-info-modal { padding: 12px; }
+  body[data-page="upload"] .upload-info-modal .modal-card { width: min(100%, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+  body[data-page="upload"] .upload-info-modal-body { padding: 20px 18px; }
 }
 
 /* Review workspace: compact master-detail composition using shared semantic tokens. */
@@ -12684,7 +12704,6 @@ body[data-page="review"] .review-tab {
   cursor: pointer;
 }
 body[data-page="review"] .review-tab.active { background: var(--primary-soft); color: var(--primary); }
-body[data-page="review"] .review-summary-chart { flex: 0 0 40px; width: 40px; height: 40px; }
 
 body[data-page="review"] .review-summary-grid {
   display: grid;
@@ -12797,6 +12816,7 @@ body[data-page="review"] .review-panel-header {
 }
 body[data-page="review"] .review-panel-header h2 { margin: 0; font-size: 1.25rem; }
 body[data-page="review"] .review-panel-header p { margin: 3px 0 0; color: var(--text-secondary); font-size: .79rem; }
+body[data-page="review"] .review-history-trigger { flex: 0 0 auto; min-height: 34px; padding: 0 10px; font-size: .74rem; white-space: nowrap; }
 body[data-page="review"] .review-selected-header { align-items: center; }
 body[data-page="review"] .review-selected-header h2 {
   min-width: 0;
@@ -12974,9 +12994,7 @@ body[data-page="review"] .review-selected-meta {
 body[data-page="review"] .review-selected-meta div { min-width: 0; }
 body[data-page="review"] .review-selected-meta dt { color: var(--text-muted); font-size: .7rem; }
 body[data-page="review"] .review-selected-meta dd { overflow: hidden; margin: 3px 0 0; color: var(--text-primary); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
-body[data-page="review"] .review-workspace-warning,
 body[data-page="review"] .review-action-feedback { margin: 0; font-size: .82rem; }
-body[data-page="review"] .review-workspace-warning { padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--status-warning) 52%, var(--border)); border-radius: 6px; background: color-mix(in srgb, var(--status-warning) 10%, var(--surface)); color: var(--status-warning); font-weight: 500; line-height: 1.35; }
 body[data-page="review"] .review-action-feedback { min-height: 0; color: var(--status-danger); }
 body[data-page="review"] .review-action-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 body[data-page="review"] .review-action-bar button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 50px; font-size: .9rem; font-weight: 700; }
@@ -13024,6 +13042,11 @@ body[data-page="review"] .review-action-bar button:disabled { opacity: .48; curs
   body[data-page="review"] #reviewRejectButton { order: 4; }
   body[data-page="review"] .review-history-row { grid-template-columns: 42px minmax(0, 1fr) 12px; }
   body[data-page="review"] .review-history-row .status-pill { display: none; }
+  body[data-page="review"] .review-panel-header { flex-wrap: wrap; }
+  body[data-page="review"] .review-history-modal { padding: 12px; }
+  body[data-page="review"] .review-history-modal .modal-card { width: min(100%, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 18px; }
+  body[data-page="review"] .review-history-modal-filters { grid-template-columns: 1fr 1fr; }
+  body[data-page="review"] .review-history-modal-filters input { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -13129,57 +13152,16 @@ body[data-page="review"] .review-action-bar button:disabled { opacity: .48; curs
   body[data-page="review"] .review-material-identity { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 }
 
-/* Drill-down state: clicking a KPI card expands the workspace to full-height, scrollable content. */
-body[data-page="review"].review-drilled .review-page-body {
-  height: auto;
-  max-height: none;
-  grid-template-rows: auto;
-  overflow: visible;
-}
-body[data-page="review"].review-drilled .app-layout,
-body[data-page="review"].review-drilled .main-content {
-  height: auto;
-  min-height: 100dvh;
-  overflow: visible;
-}
-body[data-page="review"].review-drilled .review-workspace {
-  height: auto;
-  overflow: visible;
-  align-items: start;
-}
-body[data-page="review"].review-drilled .review-tabbar { display: none; }
-body[data-page="review"].review-drilled .review-history-panel,
-body[data-page="review"].review-drilled .review-selected-panel {
-  display: grid;
-  height: auto;
-  overflow: visible;
-}
-body[data-page="review"].review-drilled .review-history-list {
-  max-height: min(52vh, 560px);
-  overflow: auto;
-}
-body[data-page="review"].review-drilled .review-selected-panel {
-  grid-template-rows: auto;
-  align-content: start;
-}
-body[data-page="review"].review-drilled .review-selected-content {
-  height: auto;
-  grid-template-rows: auto auto;
-  align-items: start;
-  overflow: visible;
-}
-body[data-page="review"].review-drilled .review-stream-panel,
-body[data-page="review"].review-drilled .review-stream-panel .stream-canvas-wrap {
-  height: auto;
-}
-body[data-page="review"].review-drilled .review-stream-panel .stream-canvas-wrap {
-  aspect-ratio: 16 / 9;
-}
-body[data-page="review"].review-drilled .review-inspector {
-  height: auto;
-  grid-template-rows: auto auto auto;
-  align-content: start;
-}
+body[data-page="review"] .review-history-modal { z-index: 1100; padding: 20px; overscroll-behavior: contain; }
+body[data-page="review"] .review-history-modal .modal-card { display: grid; width: min(1280px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+body[data-page="review"] .review-history-modal header { padding-right: 36px; }
+body[data-page="review"] .review-history-modal h2 { margin: 0; color: var(--text-primary); }
+body[data-page="review"] .review-history-modal header p { margin: 4px 0 0; color: var(--text-secondary); }
+body[data-page="review"] .review-history-modal-body { min-height: 0; overflow: auto; padding: 18px 0; }
+body[data-page="review"] .review-history-modal-filters { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto auto; gap: 8px; margin-bottom: 12px; }
+body[data-page="review"] .review-history-modal-filters :is(input, select, button) { min-height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-primary); font: inherit; }
+body[data-page="review"] .review-history-modal .history-pagination { display: flex; justify-content: end; gap: 6px; }
+body.review-history-modal-open { overflow: hidden; }
 
 /* Short-viewport fallback (e.g. phones in landscape): the fixed chrome budget
    no longer leaves room for the workspace, so fall back to normal page scroll

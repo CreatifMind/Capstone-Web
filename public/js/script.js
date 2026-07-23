@@ -50,6 +50,8 @@ let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), 
 });
 let plScanHistoryRefreshPromise = null;
 let plAnalyticsDateData = null;
+let plAnalyticsSelectedDate = null;
+let plAnalyticsRequestId = 0;
 let plSelectedUploadFiles = [];
 
 function plConfig() {
@@ -514,23 +516,28 @@ function plAnalyticsDayStart(value = new Date()) {
   return date;
 }
 
+function plAnalyticsDateBounds(date) {
+  const start = new Date(`${date}T00:00:00+08:00`);
+  return { start, end: new Date(start.getTime() + 86400000) };
+}
+
 function plGetAnalyticsSummary(options = {}) {
   const now = options.now ? new Date(options.now) : new Date();
   const selectedDate = options.date ? String(options.date) : "";
   const requestedDays = Number(options.days);
   const hasRange = Boolean(selectedDate || options.rangeStart || options.rangeEnd || (Number.isFinite(requestedDays) && requestedDays > 0));
   const days = Math.max(1, requestedDays || 1);
-  const rangeStart = selectedDate ? new Date(`${selectedDate}T00:00:00`) : options.rangeStart ? new Date(options.rangeStart) : hasRange ? (() => {
+  const selectedBounds = selectedDate ? plAnalyticsDateBounds(selectedDate) : null;
+  const rangeStart = selectedBounds ? selectedBounds.start : options.rangeStart ? new Date(options.rangeStart) : hasRange ? (() => {
     const start = plAnalyticsDayStart(now);
     start.setDate(start.getDate() - (days - 1));
     return start;
   })() : new Date(0);
-  const rangeEnd = selectedDate ? new Date(`${selectedDate}T00:00:00`) : options.rangeEnd ? new Date(options.rangeEnd) : hasRange ? now : new Date(8640000000000000);
-  if (selectedDate) rangeEnd.setDate(rangeEnd.getDate() + 1);
+  const rangeEnd = selectedBounds ? selectedBounds.end : options.rangeEnd ? new Date(options.rangeEnd) : hasRange ? now : new Date(8640000000000000);
   const allScans = plSafeArray(options.scans || plGetScanResults());
   const scans = allScans.filter(scan => {
     const createdAt = new Date(scan?.created_at || 0);
-    return Number.isFinite(createdAt.getTime()) && createdAt >= rangeStart && createdAt <= rangeEnd;
+    return Number.isFinite(createdAt.getTime()) && createdAt >= rangeStart && createdAt < rangeEnd;
   });
   const materialRows = scans.flatMap(scan => plSafeArray(scan.detected_materials).map(material => ({ scan, material, decision: plEvaluateMaterial(material) })));
   const materials = materialRows.map(row => row.material);
@@ -596,6 +603,7 @@ function plGetAnalyticsSummary(options = {}) {
     const createdAt = new Date(scan.created_at || 0);
     return createdAt >= todayStart && createdAt < tomorrowStart;
   }).length;
+  const confirmedScanCount = scans.filter(scan => !plScanNeedsReview(scan) && !["rejected", "quarantined"].includes(plNormalizeStatus(scan.overall_status))).length;
   const topBy = rows => rows.length ? rows.reduce((top, row) => row[1] > top[1] ? row : top) : null;
   const recyclableTop = topBy(recyclableRows);
   const contaminantTop = topBy(contaminatedRows);
@@ -620,7 +628,7 @@ function plGetAnalyticsSummary(options = {}) {
       ? plAnalyticsDayStart(Math.min(...scanDates.map(date => date.getTime())))
       : plAnalyticsDayStart(now);
   const trendRangeEnd = hasRange
-    ? rangeEnd
+    ? selectedBounds ? new Date(rangeEnd.getTime() - 1) : rangeEnd
     : scanDates.length
       ? plAnalyticsDayStart(Math.max(...scanDates.map(date => date.getTime())))
       : plAnalyticsDayStart(now);
@@ -666,7 +674,7 @@ function plGetAnalyticsSummary(options = {}) {
     materialRows,
     rangeStart,
     rangeEnd,
-    savedScansCount: Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : null,
+    savedScansCount: scans.length,
     detectedMaterialsCount: materials.length,
     categoryLabels: categoryRows.map(row => row[0]),
     categoryValues: categoryRows.map(row => row[1]),
@@ -687,6 +695,7 @@ function plGetAnalyticsSummary(options = {}) {
     clearedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "accepted").length,
     quarantinedCount: scans.filter(scan => plNormalizeStatus(scan.overall_status) === "quarantined").length,
     avgConfidence,
+    confirmedScanCount,
     confirmedTodayCount,
     recyclableTop,
     contaminantTop,
@@ -1079,8 +1088,6 @@ async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) 
  *****************************************/
 function initUploadPage() {
   const fileUpload = document.getElementById("fileUpload");
-  const videoUpload = document.getElementById("videoUpload");
-  const zipUpload = document.getElementById("zipUpload");
   if (!fileUpload) return; // Not on upload page
   if (fileUpload.dataset.uploadReady === "true") return;
   fileUpload.dataset.uploadReady = "true";
@@ -1174,26 +1181,20 @@ function initUploadPage() {
     });
   }
 
-  fileUpload.addEventListener("change", function () {
-    if (fileUpload.files.length > 0) {
-      processSelectedFiles(fileUpload.files);
-    }
-  });
-  if (zipUpload) {
-    zipUpload.addEventListener("change", function () {
-      const archives = plSafeFiles(zipUpload.files);
-      if (archives.length) processZipUploads(archives);
-    });
-  }
-  if (videoUpload) videoUpload.addEventListener("change", () => {
-    const videos = plSafeFiles(videoUpload.files);
+  fileUpload.addEventListener("change", () => {
+    const selected = plSafeFiles(fileUpload.files);
+    fileUpload.value = "";
+    const videos = selected.filter(file => /^video\/mp4$/i.test(String(file.type || "")) || /\.mp4$/i.test(file.name || ""));
+    const archives = selected.filter(file => /\.zip$/i.test(file.name || ""));
+    const images = selected.filter(file => !videos.includes(file) && !archives.includes(file));
     if (videos.length) processVideoUploads(videos);
-    videoUpload.value = "";
+    if (archives.length) processZipUploads(archives);
+    if (images.length) processSelectedFiles(images);
   });
 
   if (clearUploadBtn) clearUploadBtn.addEventListener("click", clearQueue);
   if (scanImageBtn) scanImageBtn.addEventListener("click", () => runBatch(queue.filter(item => item.status === "ready")));
-  addBrowserQueueControls();
+  initUploadInfoModals();
 
   function addBrowserQueueControls() {
     const actions = document.querySelector(".upload-batch-actions");
@@ -1231,6 +1232,63 @@ function initUploadPage() {
     });
     makeButton("saveAllBrowserVerifiedBtn", "Save All Verified", () => saveAllBrowserVerified());
     makeButton("clearCompletedBtn", "Clear Completed", clearCompletedItems);
+  }
+
+  function initUploadInfoModals() {
+    const modals = [
+      { opener: document.getElementById("openUploadTips"), modal: document.getElementById("uploadTipsModal") },
+      { opener: document.getElementById("openBatchSummary"), modal: document.getElementById("uploadBatchSummaryModal") }
+    ].filter(({ opener, modal }) => opener && modal);
+    let activeModal = null;
+    let activeOpener = null;
+
+    const closeModal = () => {
+      if (!activeModal) return;
+      activeModal.classList.remove("active");
+      activeModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("upload-modal-open");
+      const opener = activeOpener;
+      activeModal = null;
+      activeOpener = null;
+      if (opener?.isConnected) opener.focus();
+    };
+    const onKeydown = event => {
+      if (!activeModal) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...activeModal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(element => element.offsetParent !== null);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      const atStart = document.activeElement === first || (event.shiftKey && document.activeElement === activeModal.querySelector('[role="dialog"]'));
+      if (event.shiftKey ? atStart : document.activeElement === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
+
+    modals.forEach(({ opener, modal }) => {
+      const dialog = modal.querySelector('[role="dialog"]');
+      opener.addEventListener("click", () => {
+        activeModal = modal;
+        activeOpener = opener;
+        modal.classList.add("active");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("upload-modal-open");
+        window.requestAnimationFrame(() => dialog?.focus());
+      });
+      modal.querySelector("[data-upload-modal-close]")?.addEventListener("click", closeModal);
+      modal.addEventListener("click", event => { if (event.target === modal) closeModal(); });
+    });
+    document.addEventListener("keydown", onKeydown);
+    window.addEventListener("purityloop:page-cleanup", () => {
+      closeModal();
+      document.removeEventListener("keydown", onKeydown);
+    }, { once: true });
   }
 
   // Open Webcam Modal
@@ -1327,7 +1385,7 @@ function initUploadPage() {
         } else {
           const scan = await plRunBackendPrediction(file);
           stopWebcam();
-          window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
+          window.location.href = `/review?scanId=${encodeURIComponent(scan.id)}`;
         }
       } catch (error) {
         showToast(error.message || "AI scan failed. Check backend and try again.", "error");
@@ -1467,8 +1525,8 @@ function initUploadPage() {
     const uploadZip = document.createElement("button");
     uploadZip.type = "button";
     uploadZip.className = "secondary-btn";
-    uploadZip.textContent = "Upload ZIP";
-    uploadZip.addEventListener("click", () => zipUpload?.click());
+    uploadZip.textContent = "Choose ZIP";
+    uploadZip.addEventListener("click", () => fileUpload?.click());
     const chooseFewer = document.createElement("button");
     chooseFewer.type = "button";
     chooseFewer.className = "text-btn";
@@ -1481,14 +1539,12 @@ function initUploadPage() {
   async function processZipUploads(archives) {
     if (isProcessing) return;
     for (const archive of archives) await processZipUpload(archive);
-    if (zipUpload) zipUpload.value = "";
   }
 
   async function processZipUpload(archive) {
     if (isProcessing) return;
     if (!archive || !/\.zip$/i.test(archive.name)) {
       setMessages("ZIP upload failed. Choose a ZIP file.");
-      if (zipUpload) zipUpload.value = "";
       return;
     }
 
@@ -1556,8 +1612,6 @@ function initUploadPage() {
       renderQueue();
     } catch (error) {
       setMessages(error?.message || "ZIP upload failed. Check the archive and try again.");
-    } finally {
-      if (zipUpload) zipUpload.value = "";
     }
   }
 
@@ -1889,11 +1943,9 @@ function initUploadPage() {
     item.browserFailurePhase = "";
     item.browserDetections = [];
     renderQueue();
-    if (activeBrowserVerificationItemId === item.localId) renderBrowserVerification(item);
     await new Promise(resolve => window.requestAnimationFrame(resolve));
     item.browserState = "loading-model";
     renderQueue();
-    if (activeBrowserVerificationItemId === item.localId) renderBrowserVerification(item);
     try {
       const bridge = window.__PURITYLOOP_BROWSER_ONNX__;
       if (!bridge?.enabled) throw new Error("Browser ONNX bridge is unavailable. Reload the Upload page and retry.");
@@ -1911,13 +1963,8 @@ function initUploadPage() {
       const result = await bridge.detect(item.file);
       item.originalWidth = result.originalWidth;
       item.originalHeight = result.originalHeight;
-      item.browserDetections = result.detections.map(detection => ({
-        ...detection,
-        verifiedClass: detection.className,
-        humanConfirmed: false
-      }));
-      item.browserState = item.browserDetections.length ? "awaiting-verification" : "no-detections";
-      item.status = item.browserDetections.length ? "review_needed" : "completed";
+      item.browserDetections = result.detections;
+      await saveBrowserDetectedResult(item);
     } catch (error) {
       item.browserState = "failed";
       item.browserFailurePhase = "detect";
@@ -1927,7 +1974,63 @@ function initUploadPage() {
     } finally {
       item.browserDetecting = false;
       renderQueue();
-      showBrowserVerification(nextBrowserVerificationItem());
+    }
+  }
+
+  async function saveBrowserDetectedResult(item) {
+    if (item.browserSaving) return;
+    const apiBase = plApiBaseUrl();
+    if (!apiBase) throw new Error("Backend API URL is not configured.");
+    item.browserSaving = true;
+    item.browserState = "saving";
+    item.browserFailurePhase = "";
+    item.errorMessage = "";
+    renderQueue();
+    const detections = item.browserDetections.map((detection, index) => ({
+      detection_index: index,
+      class_id: detection.classId,
+      model_class_name: detection.className,
+      confidence: detection.confidence,
+      x1: detection.x1,
+      y1: detection.y1,
+      x2: detection.x2,
+      y2: detection.y2
+    }));
+    const formData = new FormData();
+    formData.append("file", item.file, item.file.name || "uploaded-image.jpg");
+    formData.append("submission_id", item.submissionId);
+    formData.append("original_width", String(item.originalWidth));
+    formData.append("original_height", String(item.originalHeight));
+    formData.append("model_name", "best.onnx");
+    formData.append("model_version", PL_BROWSER_MODEL_VERSION);
+    formData.append("inference_engine", "browser-onnx");
+    formData.append("confidence_threshold", String(PL_BROWSER_CONFIDENCE_THRESHOLD));
+    formData.append("nms_iou_threshold", String(PL_BROWSER_NMS_IOU_THRESHOLD));
+    formData.append("detections", JSON.stringify(detections));
+    try {
+      const response = await fetch(`${apiBase}/api/scans/browser-detected`, {
+        method: "POST",
+        headers: await plAuthHeaders(),
+        body: formData
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || `Detection save failed (${response.status}).`);
+      const scan = await plSavePredictionPayload(payload, item.file);
+      item.scanId = scan.id;
+      item.browserState = "saved";
+      item.persistenceState = "saved";
+      item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+      saveCompletedPreviewCache();
+    } catch (error) {
+      item.browserState = "failed";
+      item.browserFailurePhase = "save";
+      item.persistenceState = "failed";
+      item.status = "failed";
+      item.errorMessage = `Save failed: ${error?.message || "Detected result could not be saved."}`;
+      throw error;
+    } finally {
+      item.browserSaving = false;
+      renderQueue();
     }
   }
 
@@ -2017,7 +2120,6 @@ function initUploadPage() {
     if (!queue.length) batchId = "";
     renderQueue();
     renderBatchSummary();
-    showBrowserVerification(nextBrowserVerificationItem());
   }
 
   function renderQueue() {
@@ -2034,8 +2136,6 @@ function initUploadPage() {
         : `<i class="fa-solid fa-magnifying-glass-chart"></i> Detect ${readyCount} File${readyCount === 1 ? "" : "s"}`;
     }
     if (fileUpload) fileUpload.disabled = isProcessing;
-    if (videoUpload) videoUpload.disabled = isProcessing;
-    if (zipUpload) zipUpload.disabled = isProcessing;
     if (clearUploadBtn) clearUploadBtn.disabled = isProcessing || !hasSelection;
     if (cameraLauncher) cameraLauncher.disabled = isProcessing;
     if (!queueEl) return;
@@ -2188,8 +2288,6 @@ function initUploadPage() {
     plSelectedUploadFiles = [];
     plSetJson(PL_UPLOADS_KEY, []);
     if (fileUpload) fileUpload.value = "";
-    if (videoUpload) videoUpload.value = "";
-    if (zipUpload) zipUpload.value = "";
     if (batchSummaryEl) batchSummaryEl.hidden = true;
     browserResizeObserver?.disconnect();
     if (browserVerificationEl) browserVerificationEl.hidden = true;
@@ -2249,7 +2347,7 @@ function initUploadPage() {
         continue;
       }
       item.status = "processing";
-      if (processingStatusEl) processingStatusEl.textContent = `${retrying ? "Retrying" : "Processing"} ${index + 1} of ${items.length} images`;
+      if (processingStatusEl) processingStatusEl.textContent = `${retrying ? "Retrying" : "Processing"} ${index + 1} of ${items.length} file${items.length === 1 ? "" : "s"}`;
       renderQueue();
       try {
         if (item.mediaType === "video") {
@@ -2278,7 +2376,6 @@ function initUploadPage() {
     if (processingStatusEl) processingStatusEl.textContent = "";
     renderQueue();
     renderBatchSummary();
-    showBrowserVerification(nextBrowserVerificationItem());
   }
 
   function saveCompletedPreviewCache() {
@@ -2310,7 +2407,7 @@ function initUploadPage() {
       view.type = "button";
       view.className = "primary-btn";
       view.textContent = review ? "Review Results" : "View Results";
-      view.addEventListener("click", () => { window.location.href = `/result?scanId=${encodeURIComponent(firstScan)}`; });
+      view.addEventListener("click", () => { window.location.href = `/review?scanId=${encodeURIComponent(firstScan)}`; });
       batchSummaryEl.appendChild(view);
     }
     if (failed) {
@@ -2320,7 +2417,7 @@ function initUploadPage() {
       retry.textContent = failedBrowserSave ? "Retry Save" : failedBrowserDetection ? "Retry Browser Detection" : "Retry Failed Images";
       retry.addEventListener("click", () => {
         if (failedBrowserSave) {
-          saveBrowserVerifiedResult(failedBrowserSave);
+          saveBrowserDetectedResult(failedBrowserSave);
         } else {
           runBatch(queue.filter(item => item.status === "failed"));
         }
@@ -2329,34 +2426,10 @@ function initUploadPage() {
     }
   }
 
-  const onUploadBeforeUnload = event => {
-    const hasUnsavedVerifiedResult = queue.some(item => (
-      browserVerificationComplete(item) && item.browserState !== "saved"
-    ));
-    if (hasUnsavedVerifiedResult) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-  };
-  const onUploadNavigationClick = event => {
-    const anchor = event.target.closest?.("a[href]");
-    if (!anchor || anchor.target === "_blank") return;
-    const hasUnsavedVerifiedResult = queue.some(item => (
-      browserVerificationComplete(item) && item.browserState !== "saved"
-    ));
-    if (hasUnsavedVerifiedResult && !window.confirm("Leave this page? Your verified browser result has not been saved.")) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
-  window.addEventListener("beforeunload", onUploadBeforeUnload);
-  document.addEventListener("click", onUploadNavigationClick, true);
   window.addEventListener("purityloop:page-cleanup", () => {
     browserResizeObserver?.disconnect();
     stopWebcam();
     queue.forEach(item => URL.revokeObjectURL(item.previewUrl));
-    window.removeEventListener("beforeunload", onUploadBeforeUnload);
-    document.removeEventListener("click", onUploadNavigationClick, true);
   }, { once: true });
 
   function createWebcamModalElements() {
@@ -2445,12 +2518,12 @@ function initResultPage() {
   const reviewCategorySelect = document.getElementById("reviewCategorySelect");
   const reviewVerifyButton = document.getElementById("reviewVerifyButton");
   const reviewRejectButton = document.getElementById("reviewRejectButton");
-  const reviewWarning = document.getElementById("reviewWorkspaceWarning");
   const reviewFeedback = document.getElementById("reviewActionFeedback");
   let activeReviewMaterial = null;
   let isReviewSaving = false;
   let isReviewNavigating = false;
   let reviewNavigationState = null;
+  let reviewSelectionCleared = false;
 
   const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
@@ -2528,8 +2601,8 @@ function initResultPage() {
       const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
       return { name: scan.source_name || scan.id, size: scan.source_size || 0, thumbnailSrc: previewUrl, dataUrl: hasScanImage ? "" : cachedPreview, assetPath: previewUrl, scanId: scan.id };
     });
-    const refreshedActive = activeScan ? plGetScanResultById(activeScan.id) : plGetLatestScanResult();
-    activeScan = refreshedActive || refreshedScans[0] || null;
+    const refreshedActive = activeScan ? plGetScanResultById(activeScan.id) : null;
+    activeScan = refreshedActive || (isReviewWorkspace && reviewSelectionCleared ? null : refreshedScans[0]) || null;
     activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === activeScan?.id));
     renderFinderGrid();
     if (activeScan) {
@@ -2537,7 +2610,7 @@ function initResultPage() {
       if (isReviewWorkspace) {
         window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
       }
-    }
+    } else renderEmptyResult();
   };
   const onResultThemeChange = () => {
     if (activeImageObj) drawCanvasFrame();
@@ -2545,8 +2618,19 @@ function initResultPage() {
   };
   const onReviewScanSelection = event => {
     const scanId = event?.detail?.scanId;
+    if (!scanId) {
+      reviewSelectionCleared = true;
+      activeScan = null;
+      activeIndex = -1;
+      renderFinderGrid();
+      renderEmptyResult();
+      return;
+    }
     const selectedIndex = uploads.findIndex(upload => upload.scanId === scanId);
-    if (selectedIndex >= 0) selectScan(selectedIndex);
+    if (selectedIndex >= 0) {
+      reviewSelectionCleared = false;
+      selectScan(selectedIndex);
+    }
   };
   const onReviewNavigationState = event => {
     reviewNavigationState = event?.detail || null;
@@ -2597,6 +2681,7 @@ function initResultPage() {
     if (index < 0 || index >= uploads.length) return;
     activeIndex = index;
     activeScan = plGetScanResultById(uploads[activeIndex].scanId);
+    reviewSelectionCleared = false;
     if (activeScan) window.history.replaceState(null, "", `${window.location.pathname}?scanId=${encodeURIComponent(activeScan.id)}`);
     renderFinderGrid();
     loadActiveImage();
@@ -2797,7 +2882,6 @@ function initResultPage() {
     }
     if (reviewVerifyButton) reviewVerifyButton.disabled = true;
     if (reviewRejectButton) reviewRejectButton.disabled = true;
-    if (reviewWarning) reviewWarning.hidden = true;
     if (reviewFeedback) reviewFeedback.textContent = "";
     ["reviewMetaSource", "reviewMetaTime", "reviewMetaStatus"].forEach(id => {
       const element = document.getElementById(id);
@@ -2817,10 +2901,6 @@ function initResultPage() {
     reviewCategorySelect.disabled = !unresolved || isReviewSaving;
     reviewVerifyButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
     reviewRejectButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
-    if (reviewWarning) {
-      reviewWarning.hidden = !unresolved;
-      reviewWarning.textContent = unresolved ? "Low-confidence result - human review required." : "";
-    }
     if (reviewFeedback && !isReviewSaving) reviewFeedback.textContent = "";
 
     const source = document.getElementById("reviewMetaSource");
@@ -3245,7 +3325,120 @@ function initResultPage() {
 /**************************************
  * 3. VERIFICATION LEDGER AUDIT PAGE  *
  **************************************/
+function initReviewWorkspace() {
+  const list = document.getElementById("reviewHistoryList");
+  const modal = document.getElementById("reviewHistoryModal");
+  if (!list || !modal || list.dataset.historyReady === "true") return;
+  list.dataset.historyReady = "true";
+  const search = document.getElementById("historySearch");
+  const date = document.getElementById("historyDate");
+  const status = document.getElementById("historyStatus");
+  const range = document.getElementById("historyRange");
+  const pager = document.getElementById("historyPageButtons");
+  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "" };
+  const pageSize = 10;
+  const escape = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+  const selectedId = () => state.selectedId;
+  const scanRow = scan => {
+    const material = scan.detected_materials?.[0] || {};
+    const decision = plEvaluateMaterial(material);
+    const rejected = ["rejected", "quarantined"].includes(plNormalizeStatus(scan.overall_status));
+    const needsReview = Boolean(scan.human_review_required);
+    const decisionStatus = rejected ? "rejected" : needsReview ? "review_needed" : "confirmed";
+    return { scan, id: scan.id, scanId: scan.id, source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(material.category || material.material_name || "Unknown"), materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus, status: rejected ? "Rejected" : needsReview ? "Review Needed" : scan.review_status || scan.overall_status === "verified" ? "Verified" : "Confirmed" };
+  };
+  const rows = () => plGetScanResults().map(scanRow);
+  const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
+  const matches = row => {
+    const query = String(search?.value || "").trim().toLowerCase();
+    const selectedStatus = String(status?.value || "");
+    const selectedDate = String(date?.value || "");
+    const day = new Date(row.timestamp);
+    const rowDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    const statusMatch = !selectedStatus || row.status === selectedStatus || (selectedStatus.startsWith("Confirmed") && row.decisionStatus === "confirmed");
+    return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!selectedDate || rowDate === selectedDate) && statusMatch && (!state.bucket || state.bucket === "total" || row.decisionStatus === state.bucket);
+  };
+  const sortedRows = () => rows().filter(matches).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
+  const clearSelection = () => {
+    if (!state.selectedId) return;
+    state.selectedId = "";
+    history.replaceState(null, "", location.pathname);
+    window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: null } }));
+  };
+  const select = id => {
+    state.selectedId = id;
+    window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: id } }));
+  };
+  const renderPager = (root, page, pages, onPage) => {
+    if (!root) return;
+    const choices = [...new Set([1, pages, page - 1, page, page + 1].filter(item => item >= 1 && item <= pages))].sort((a, b) => a - b);
+    root.innerHTML = `<button type="button" data-review-page="${Math.max(1, page - 1)}" ${page === 1 ? "disabled" : ""}>‹</button>${choices.map((item, index) => `${index && item - choices[index - 1] > 1 ? '<span aria-hidden="true">…</span>' : ""}<button type="button" data-review-page="${item}" ${item === page ? 'aria-current="page" class="active"' : ""}>${item}</button>`).join("")}<button type="button" data-review-page="${Math.min(pages, page + 1)}" ${page === pages ? "disabled" : ""}>›</button>`;
+    root.querySelectorAll("[data-review-page]").forEach(button => button.addEventListener("click", () => onPage(Number(button.dataset.reviewPage))));
+  };
+  const updateSummary = () => {
+    const summary = plScanHistoryMeta.summary || {};
+    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows().length;
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? rows().filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? rows().filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? rows().filter(row => row.decisionStatus === "rejected").length);
+  };
+  const render = () => {
+    updateSummary();
+    const all = sortedRows();
+    const pages = Math.max(1, Math.ceil(all.length / pageSize));
+    state.page = Math.min(state.page, pages);
+    const visible = all.slice((state.page - 1) * pageSize, state.page * pageSize);
+    if (state.selectedId && !visible.some(row => row.id === state.selectedId)) clearSelection();
+    list.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+    list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
+    const knownTotal = plScanHistoryMeta.total !== null && plScanHistoryMeta.total !== undefined && Number.isFinite(Number(plScanHistoryMeta.total));
+    if (range) range.textContent = `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, all.length)} loaded results of ${knownTotal ? plScanHistoryMeta.total : all.length} total`;
+    renderPager(pager, state.page, pages, page => { state.page = page; render(); });
+    const index = all.findIndex(row => row.id === selectedId());
+    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: index > 0, hasNext: index >= 0 && index < all.length - 1 } }));
+  };
+  window.plReviewNavigateScan = direction => {
+    const all = sortedRows(); const index = all.findIndex(row => row.id === selectedId()); const target = all[index + direction];
+    if (!target) return false;
+    state.page = Math.floor((index + direction) / pageSize) + 1; select(target.id); render(); return true;
+  };
+  const applyFilters = () => { state.page = 1; render(); };
+  [search, date].forEach(input => input?.addEventListener("input", () => { state.bucket = ""; applyFilters(); }));
+  status?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
+  document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
+    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); };
+    card.addEventListener("click", activate); card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
+  });
+  document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort || (button.id.includes("Confidence") ? "confidence" : "timestamp"); state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".review-filter-toolbar .history-sort").forEach(item => item.classList.toggle("active", item.dataset.sort === next)); applyFilters(); }));
+  let modalOpener = null; let modalState = { page: 1, sort: "timestamp", direction: "desc" }; let remote = { items: [], total: 0 };
+  const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
+  const closeFullHistory = () => { modal.classList.remove("active"); modal.setAttribute("aria-hidden", "true"); document.body.classList.remove("review-history-modal-open"); modalOpener?.focus(); };
+  const fetchFullHistory = async () => {
+    const params = new URLSearchParams({ limit: String(pageSize), offset: String((modalState.page - 1) * pageSize), sort: modalState.sort, direction: modalState.direction });
+    if (fullSearch?.value.trim()) params.set("search", fullSearch.value.trim());
+    if (fullStatus?.value) params.set("status", fullStatus.value);
+    if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
+    fullRange.textContent = "Loading scans";
+    try { const response = await fetch(`${plApiBaseUrl()}/api/scans?${params}`, { headers: await plAuthHeaders() }); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
+    catch (error) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); }
+    const historyRows = remote.items.map(scanRow);
+    fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>-</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-select="${escape(row.id)}">Review</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
+    fullBody.querySelectorAll("[data-full-history-select]").forEach(button => button.addEventListener("click", () => { const scan = remote.items.find(item => item.id === button.dataset.fullHistorySelect); if (scan) { plSaveScanResult(scan); select(scan.id); render(); } closeFullHistory(); }));
+    const pages = Math.max(1, Math.ceil(remote.total / pageSize)); if (fullRange) fullRange.textContent = `Showing ${remote.items.length ? (modalState.page - 1) * pageSize + 1 : 0} to ${Math.min(modalState.page * pageSize, remote.total)} of ${remote.total} total`;
+    renderPager(fullPager, modalState.page, pages, page => { modalState.page = page; fetchFullHistory(); });
+  };
+  const openFullHistory = event => { modalOpener = event.currentTarget; modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory(); };
+  document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
+  modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
+  [fullSearch, fullDate, fullStatus].forEach(input => input?.addEventListener(input === fullStatus ? "change" : "input", () => { modalState.page = 1; fetchFullHistory(); }));
+  document.getElementById("fullHistorySortTimestamp")?.addEventListener("click", () => { modalState.sort = "timestamp"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
+  document.getElementById("fullHistorySortConfidence")?.addEventListener("click", () => { modalState.sort = "confidence"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
+  document.addEventListener("keydown", event => { if (!modal.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeFullHistory(); return; } if (event.key !== "Tab") return; const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
+  window.addEventListener("purityloop:scan-history-refreshed", render); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open"); });
+  render();
+}
+
 function initReviewModal() {
+  if (document.body.dataset.page === "review") return initReviewWorkspace();
   const modal = document.getElementById("reviewModal");
   const tableBody = document.getElementById("ledgerTableBody");
   const historyList = document.getElementById("reviewHistoryList");
@@ -3336,18 +3529,6 @@ function initReviewModal() {
     setText("historyReviewCount", resolvedReviewCount);
     setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : rejectedCount);
     setText("historyProcessedToday", totalUploads);
-    const chartStyles = getComputedStyle(document.documentElement);
-    const warnColor = chartStyles.getPropertyValue("--status-warning").trim() || "#c9743f";
-    const trackColor = chartStyles.getPropertyValue("--border").trim() || "#d8e4dc";
-    const otherCount = Math.max(0, totalUploads - resolvedReviewCount);
-    plOverviewChart("historyReviewMixChart", {
-      type: "doughnut",
-      data: {
-        labels: ["Needs review", "Other scans"],
-        datasets: [{ data: totalUploads ? [resolvedReviewCount, otherCount] : [1], backgroundColor: totalUploads ? [warnColor, trackColor] : [trackColor], borderWidth: 0 }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, cutout: "72%", plugins: { legend: { display: false }, tooltip: { enabled: totalUploads > 0 } } }
-    });
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
     setText("historyAverageConfidence", rows.length ? `${Math.round(average)}%` : "No data");
@@ -3463,7 +3644,7 @@ function initReviewModal() {
     const reviewButton = document.getElementById("showReviewQueue");
     if (reviewButton) reviewButton.disabled = !rows.some(row => row.decisionStatus === "review_needed");
     if (tableBody) {
-      tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/result?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
+      tableBody.innerHTML = visible.length ? visible.map(row => `<tr class="history-row ${row.decisionStatus === "review_needed" ? "history-row-review" : ""}"><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<span class="history-preview-empty"><i class="fa-regular fa-image" aria-hidden="true"></i><span class="sr-only">No preview available</span></span>'}</td><td>${escape(row.category)}</td><td><span class="history-class ${escape(row.materialClass)}">${escape(row.materialClass)}</span></td><td>${escape(row.weight)}</td><td><div class="history-confidence"><strong>${escape(row.confidenceText)}</strong><span><i style="width:${Math.max(0, Math.min(100, row.confidence))}%"></i></span></div></td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span></td><td>${row.decisionStatus === "review_needed" ? `<button class="secondary-btn history-row-action" type="button" data-review="${escape(row.id)}">Review</button>` : `<a class="secondary-btn history-row-action" href="/review?scanId=${encodeURIComponent(row.scanId)}">View</a>`}</td></tr>`).join("") : '<tr><td colspan="8"><div class="feed-empty">No scan history matches these filters.</div></td></tr>';
     }
     if (historyList) {
       const selectedScanId = new URLSearchParams(window.location.search).get("scanId") || plGetLatestScanResult()?.id || "";
@@ -3587,6 +3768,45 @@ function plOverviewChart(canvasId, config) {
   return true;
 }
 
+function plAnalyticsSummaryForActiveScope() {
+  const payload = plAnalyticsDateData?.summary;
+  if (!payload) return plGetAnalyticsSummary({ date: plAnalyticsSelectedDate || "", scans: plAnalyticsDateData?.items });
+  const materialMixRows = plSafeArray(payload.material_mix);
+  const resaleRows = plSafeArray(payload.recoverable_value_by_category);
+  return {
+    scans: { length: Number(payload.total_scans) || 0 },
+    materials: { length: Number(payload.detected_materials_count) || 0 },
+    savedScansCount: Number(payload.total_scans) || 0,
+    detectedMaterialsCount: Number(payload.detected_materials_count) || 0,
+    categoryRows: materialMixRows.map(row => [row.label, Number(row.count) || 0]),
+    resaleRows,
+    materialMixRows,
+    totalEstimatedWeightKg: Number(payload.total_estimated_weight_kg) || 0,
+    totalEstimatedResaleValueRm: Number(payload.estimated_recovery_value) || 0,
+    recyclableRows: plSafeArray(payload.recyclable_rows),
+    contaminatedRows: plSafeArray(payload.contaminated_rows),
+    recyclableCount: plSafeArray(payload.recyclable_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
+    contaminationCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
+    reviewCount: Number(payload.review_count) || 0,
+    allLowConfidenceCount: 0,
+    avgConfidence: Number(payload.average_detection_confidence) || 0,
+    confirmedScanCount: Number(payload.confirmed_count) || 0,
+    recyclableTop: payload.top_recyclable_material ? [payload.top_recyclable_material.label, Number(payload.top_recyclable_material.count) || 0] : null,
+    contaminantTop: payload.top_contamination_source ? [payload.top_contamination_source.label, Number(payload.top_contamination_source.count) || 0] : null,
+    highestValue: payload.highest_value_category || null,
+    averageReviewTurnaroundMs: payload.average_review_turnaround_ms,
+    lastUpload: payload.last_upload || null,
+    lastUploadBatchCount: Number(payload.last_upload_batch_count) || 0,
+    trendRows: plSafeArray(payload.daily_scan_trend),
+    highRiskCount: Number(payload.high_risk_count) || 0,
+    recoveryOpportunityCount: Number(payload.recovery_opportunity_count) || 0,
+    recentEvents: plSafeArray(payload.recent_events),
+    clearedCount: Number(payload.confirmed_count) || 0,
+    quarantinedCount: Number(payload.rejected_count) || 0,
+    nonRecyclableCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0)
+  };
+}
+
 function renderAnalyticsOverview(dateValue = "", state = "ready") {
   const overview = document.querySelector(".analytics-overview");
   if (!overview) return;
@@ -3609,15 +3829,22 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   overview.classList.toggle("is-error", state === "error");
   showState(state === "loading" ? "Refreshing analytics..." : state === "error" ? "Analytics data could not be loaded." : "", state === "error");
 
+  if (state === "loading") {
+    ["needs-review", "confirmed-today", "recoverable-value", "average-confidence"].forEach(name => plOverviewSet(name, "—"));
+    Object.values(plOverviewCharts).forEach(chart => chart.destroy());
+    Object.keys(plOverviewCharts).forEach(key => delete plOverviewCharts[key]);
+    const actions = document.getElementById("analyticsManagerActions");
+    if (actions) actions.textContent = "Loading analytics...";
+    return;
+  }
   if (state === "error") {
     ["needs-review", "confirmed-today", "recoverable-value", "average-confidence"].forEach(name => plOverviewSet(name, "—"));
     return;
   }
 
-  const summary = plGetAnalyticsSummary({ date: dateValue, scans: plAnalyticsDateData?.items });
-  const exactSummary = plAnalyticsDateData?.summary || {};
-  const exactReviewCount = Number.isFinite(Number(exactSummary.needs_review)) ? Number(exactSummary.needs_review) : summary.reviewCount;
-  const exactConfirmedCount = Number.isFinite(Number(exactSummary.confirmed)) ? Number(exactSummary.confirmed) : summary.confirmedTodayCount;
+  const summary = plAnalyticsSummaryForActiveScope();
+  const exactReviewCount = summary.reviewCount;
+  const exactConfirmedCount = summary.confirmedScanCount;
   const updated = document.getElementById("analyticsLastUpdated");
   if (updated) {
     const now = new Date();
@@ -3628,13 +3855,15 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   plOverviewSet("needs-review", String(exactReviewCount));
   plOverviewSet("needs-review-note", exactReviewCount ? "Scans require attention" : "All scans are up to date");
   plOverviewSet("confirmed-today", String(exactConfirmedCount));
+  const confirmedLabel = document.getElementById("analyticsConfirmedLabel");
+  if (confirmedLabel) confirmedLabel.textContent = dateValue ? "Confirmed on Selected Date" : "Confirmed Scans";
   plOverviewSet("recoverable-value", plFormatRm(summary.totalEstimatedResaleValueRm));
   plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No data");
 
   const banner = overview.querySelector("[data-overview='attention-banner']");
   const hasReviews = exactReviewCount > 0;
   banner?.classList.toggle("is-clear", !hasReviews);
-  plOverviewSet("attention-title", hasReviews ? `${exactReviewCount} item${exactReviewCount === 1 ? "" : "s"} need attention on this date` : "All scans are up to date");
+  plOverviewSet("attention-title", hasReviews ? `${exactReviewCount} item${exactReviewCount === 1 ? "" : "s"} need attention ${dateValue ? "on this date" : "in all history"}` : "All scans are up to date");
   plOverviewSet("attention-copy", hasReviews ? "Review low-confidence items to keep reporting accurate and reduce contamination." : "No unresolved classifications require attention.");
   const reviewLink = overview.querySelector("[data-overview='review-link']");
   if (reviewLink) reviewLink.textContent = hasReviews ? "Open Review Queue" : "View History";
@@ -3705,35 +3934,63 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
 function initAnalyticsOverview() {
   const dateInput = document.getElementById("analyticsDate");
   if (!dateInput) return;
-  if (!dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
-  const render = state => renderAnalyticsOverview(dateInput.value, state);
-  const refreshDate = async () => {
-    const date = dateInput.value;
-    if (!date) return;
+  const clearDateButton = document.getElementById("analyticsClearDate");
+  if (dateInput.dataset.overviewBound === "true") return;
+  const render = state => renderAnalyticsOverview(plAnalyticsSelectedDate || "", state);
+  const refreshAnalytics = async () => {
+    const date = plAnalyticsSelectedDate;
+    const requestId = ++plAnalyticsRequestId;
+    plAnalyticsDateData = null;
     render("loading");
     try {
-      const startDate = new Date(`${date}T00:00:00`);
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?limit=${PL_SCAN_PAGE_SIZE}&offset=0&start_date=${encodeURIComponent(startDate.toISOString())}&end_date=${encodeURIComponent(endDate.toISOString())}`, { headers: await plAuthHeaders() });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || "Unable to load date summary");
-      plAnalyticsDateData = payload;
+      let url = `${plApiBaseUrl()}/api/analytics/summary`;
+      if (date) {
+        const { start, end } = plAnalyticsDateBounds(date);
+        url += `?start_date=${encodeURIComponent(start.toISOString())}&end_date=${encodeURIComponent(end.toISOString())}`;
+      }
+      let payload;
+      let lastError;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch(url, { headers: await plAuthHeaders() });
+          payload = await response.json();
+          if (response.ok) break;
+          if (response.status < 500 && response.status !== 429) {
+            const error = new Error(payload?.detail || "Unable to load analytics summary");
+            error.nonRetryable = true;
+            throw error;
+          }
+          lastError = new Error(payload?.detail || "Analytics service is temporarily unavailable");
+        } catch (error) {
+          if (error?.nonRetryable) throw error;
+          lastError = error;
+        }
+        if (requestId !== plAnalyticsRequestId || attempt === 2) throw lastError;
+        await new Promise(resolve => window.setTimeout(resolve, 300 * (attempt + 1)));
+      }
+      if (requestId !== plAnalyticsRequestId) return;
+      plAnalyticsDateData = { summary: payload };
       render();
-      updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date, scans: payload.items }));
+      updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
     } catch (error) {
+      if (requestId !== plAnalyticsRequestId) return;
       console.error("PurityLoop: date analytics refresh failed.", error);
       render("error");
     }
   };
-  refreshDate();
-  if (!dateInput.dataset.overviewBound) {
-    dateInput.addEventListener("change", refreshDate);
-    const onThemeChange = () => render();
-    window.addEventListener("purityloop:theme-change", onThemeChange);
-    window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", onThemeChange), { once: true });
-    dateInput.dataset.overviewBound = "true";
-  }
+  const syncSelection = value => {
+    plAnalyticsSelectedDate = value || null;
+    dateInput.value = plAnalyticsSelectedDate || "";
+    if (clearDateButton) clearDateButton.disabled = !plAnalyticsSelectedDate;
+    return refreshAnalytics();
+  };
+  dateInput.addEventListener("change", () => void syncSelection(dateInput.value));
+  clearDateButton?.addEventListener("click", () => void syncSelection(""));
+  const onThemeChange = () => render();
+  window.addEventListener("purityloop:theme-change", onThemeChange);
+  window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", onThemeChange), { once: true });
+  dateInput.dataset.overviewBound = "true";
+  void syncSelection("");
 }
 
 function initAnalyticsCharts() {
@@ -3741,16 +3998,9 @@ function initAnalyticsCharts() {
   if (!dateInput || dateInput.dataset.analyticsReady === "true") return;
   dateInput.dataset.analyticsReady = "true";
   initAnalyticsOverview();
-  updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date: dateInput.value, scans: plAnalyticsDateData?.items }));
-  const onHistoryRefresh = () => {
-    initAnalyticsOverview();
-    updateAnalyticsDetailPanels(plGetAnalyticsSummary({ date: dateInput.value, scans: plAnalyticsDateData?.items }));
-  };
-  window.addEventListener("purityloop:scan-history-refreshed", onHistoryRefresh);
   window.addEventListener("purityloop:page-cleanup", () => {
     Object.values(plOverviewCharts).forEach(chart => chart.destroy());
     Object.keys(plOverviewCharts).forEach(key => delete plOverviewCharts[key]);
-    window.removeEventListener("purityloop:scan-history-refreshed", onHistoryRefresh);
   }, { once: true });
 }
 
@@ -3917,10 +4167,12 @@ function updateAnalyticsDetailPanels(summary) {
   const ledgerPanel = document.getElementById("detail-ledger");
   const ledgerBody = ledgerPanel?.querySelector("tbody");
   if (ledgerBody) {
-    const ledger = getAuditLedger();
+    const ledger = plAnalyticsDateData?.summary
+      ? summary.recentEvents.map(event => ({ time: plFormatScanTime({ created_at: event.timestamp }), source: event.source, category: event.event, weight: "—", confidence: "—", status: event.status }))
+      : getAuditLedger();
     ledgerBody.innerHTML = ledger.length
       ? ledger.slice(0, 10).map(log => `
-          <tr onclick="window.location.href='/result?scanId=${encodeURIComponent(log.scanId || log.id)}'">
+          <tr${log.scanId || log.id ? ` onclick="window.location.href='/review?scanId=${encodeURIComponent(log.scanId || log.id)}'"` : ""}>
             <td>${log.time}</td>
             <td>${getLogSourceLabel(log)}</td>
             <td>${log.category}</td>
@@ -3941,15 +4193,18 @@ function renderMaterialDetail(materialName, options = {}) {
 
   const panel = document.getElementById("detail-material");
   if (!panel) return;
-  const summary = plGetAnalyticsSummary();
-  const materials = summary.materials.filter(material => normalizeMaterialCategory(material) === normalizedCategory);
-  const count = materials.length;
+  const summary = plAnalyticsSummaryForActiveScope();
+  const aggregateRow = plAnalyticsDateData?.summary
+    ? plSafeArray(plAnalyticsDateData.summary.material_mix).find(row => normalizeMaterialCategory(row.category || row.label) === normalizedCategory)
+    : null;
+  const materials = aggregateRow ? [] : summary.materials.filter(material => normalizeMaterialCategory(material) === normalizedCategory);
+  const count = aggregateRow ? Number(aggregateRow.count) || 0 : materials.length;
   const estimatedWeightKg = getEstimatedWeightKg(normName, count);
   const estimatedResaleValueRm = getEstimatedResaleValueRm(normName, count);
   const pricePerKgRm = plMaterialEstimate(normName).pricePerKgRm;
-  const contaminated = materials.filter(plIsContaminatedMaterial).length;
-  const recyclable = materials.filter(plIsRecyclable).length;
-  const avgConfidence = count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
+  const contaminated = aggregateRow ? Number(aggregateRow.contaminant_count) || 0 : materials.filter(plIsContaminatedMaterial).length;
+  const recyclable = aggregateRow ? Number(aggregateRow.recyclable_count) || 0 : materials.filter(plIsRecyclable).length;
+  const avgConfidence = aggregateRow ? Number(aggregateRow.averageConfidence) || 0 : count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
   const isContaminant = contaminated > 0 && recyclable === 0;
   const color = "#00F08A";
   const subtitle = count ? `${count} saved detection(s) from scan results.` : "No saved detections for this material yet.";
@@ -3967,7 +4222,7 @@ function renderMaterialDetail(materialName, options = {}) {
   panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = "Avg Confidence"; });
   panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = "Saved Scan Trend"; });
   panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = "Saved Material Status"; });
-  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, count ? materials.map(material => plConfidencePercent(material.confidence)) : [], color));
+  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, count ? aggregateRow ? [avgConfidence] : materials.map(material => plConfidencePercent(material.confidence)) : [], color));
   panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, zones, color, ""));
 
   if (activate) activateDetailPanel("detail-material");
@@ -3982,7 +4237,7 @@ function renderStationDetail(stationId, options = {}) {
   if (stationId === "BELT-C03" || stationId === "STATION-C03") normId = "ZIP-BATCH";
   if (stationId === "BELT-D04" || stationId === "STATION-D04") normId = "QUARANTINE-UPLOAD";
 
-  const summary = plGetAnalyticsSummary();
+  const summary = plAnalyticsSummaryForActiveScope();
   const data = {
     load: String(summary.scans.length),
     capacity: "Saved scans",
@@ -4221,8 +4476,10 @@ async function initPurityLoopApp() {
 
     await plRunAppInit("password toggle init", initPasswordToggle);
     await plRunAppInit("progress bar init", animateProgressBars);
-    // Render cached/page data first. Refresh one server page in the background.
-    void plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
+    // Analytics owns its request so selected-date data cannot mix with shared history data.
+    if (document.body.dataset.page !== "analytics") {
+      void plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
+    }
     if (plCurrentRouteKey() !== routeKey) return;
     await plRunAppInit("upload page init", initUploadPage);
     await plRunAppInit("result page init", initResultPage);

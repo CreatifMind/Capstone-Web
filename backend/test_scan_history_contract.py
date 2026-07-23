@@ -38,6 +38,10 @@ class FakeQuery:
         self.filters[field] = value
         return self
 
+    def ilike(self, field, value):
+        self.filters[field] = value
+        return self
+
     def execute(self):
         count = None
         if self.table == main.SCAN_RESULTS_TABLE and self.count == "exact":
@@ -67,6 +71,18 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(len(payload["items"]), 1)
         self.assertEqual(payload["summary"], {"confirmed": 320, "needs_review": 107, "rejected": 10})
         self.assertNotIn("scans", payload)
+
+    def test_scan_history_accepts_review_filters_and_confidence_sort(self):
+        with patch.object(main, "supabase", FakeSupabase()):
+            payload = main.get_scan_history(
+                limit=10, offset=10, search="bottle", status="review_needed", sort="confidence", direction="asc",
+                principal=main.require_principal(),
+            )
+
+        self.assertEqual(payload["search"], "bottle")
+        self.assertEqual(payload["status"], "review_needed")
+        self.assertEqual(payload["sort"], "confidence")
+        self.assertEqual(payload["direction"], "asc")
 
 
 if __name__ == "__main__":

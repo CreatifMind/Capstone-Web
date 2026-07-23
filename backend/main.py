@@ -8,7 +8,7 @@ import threading
 import time
 import random
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
@@ -80,6 +80,20 @@ OAUTH_DRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
 ]
 CONFIRMATION_THRESHOLD = 0.85
+ANALYTICS_PAGE_SIZE = 500
+ANALYTICS_CHILD_PAGE_SIZE = 500
+ANALYTICS_MALAYSIA_TZ = timezone(timedelta(hours=8))
+ANALYTICS_MATERIAL_ESTIMATES = {
+    "general trash": {"label": "General Trash", "average_weight_kg": 0.100, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
+    "food organic": {"label": "Food Organic", "average_weight_kg": 0.080, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
+    "metal": {"label": "Metal", "average_weight_kg": 0.020, "price_per_kg_rm": 1.20, "material_class": "recyclable"},
+    "plastic": {"label": "Plastic", "average_weight_kg": 0.032, "price_per_kg_rm": 0.50, "material_class": "recyclable"},
+    "glass": {"label": "Glass", "average_weight_kg": 0.300, "price_per_kg_rm": 0.10, "material_class": "recyclable"},
+    "textile": {"label": "Textile", "average_weight_kg": 0.150, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
+    "paper": {"label": "Paper", "average_weight_kg": 0.005, "price_per_kg_rm": 0.30, "material_class": "recyclable"},
+    "battery": {"label": "Battery", "average_weight_kg": 0.023, "price_per_kg_rm": 3.50, "material_class": "contaminant"},
+    "cardboard": {"label": "Cardboard", "average_weight_kg": 0.125, "price_per_kg_rm": 0.25, "material_class": "recyclable"},
+}
 BROWSER_CONFIDENCE_THRESHOLD = 0.32
 BROWSER_NMS_IOU_THRESHOLD = 0.70
 BROWSER_MODEL_NAME = "best.onnx"
@@ -959,6 +973,17 @@ class BrowserVerifiedDetection(BaseModel):
     verification_status: str
 
 
+class BrowserDetectedDetection(BaseModel):
+    detection_index: int
+    class_id: int
+    model_class_name: str
+    confidence: float
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
 def validate_browser_detections(
     raw_detections: Any,
     image_width: int,
@@ -1022,6 +1047,59 @@ def validate_browser_detections(
             "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
             **evaluate_material(category, detection.confidence),
         })
+    return sorted(validated, key=lambda item: item["_detection_index"])
+
+
+def validate_browser_detected_detections(raw_detections: Any, image_width: int, image_height: int) -> list[dict]:
+    if not isinstance(raw_detections, list):
+        raise HTTPException(status_code=400, detail="Detection JSON must be an array.")
+    validated = []
+    indexes = set()
+    for raw in raw_detections:
+        try:
+            detection = BrowserDetectedDetection(**raw)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Detection JSON is invalid.") from exc
+        if detection.detection_index < 0 or detection.detection_index in indexes:
+            raise HTTPException(status_code=400, detail="Detection indexes must be unique non-negative integers.")
+        indexes.add(detection.detection_index)
+        if detection.class_id < 0 or detection.class_id >= len(BROWSER_MODEL_CLASSES):
+            raise HTTPException(status_code=400, detail="Detection class ID is outside the fixed model contract.")
+        category_name = BROWSER_MODEL_CLASSES[detection.class_id]
+        if detection.model_class_name != category_name:
+            raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
+        if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
+            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+        coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
+        if not all(math.isfinite(value) for value in coordinates):
+            raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
+        x1, y1 = min(max(detection.x1, 0), image_width), min(max(detection.y1, 0), image_height)
+        x2, y2 = min(max(detection.x2, 0), image_width), min(max(detection.y2, 0), image_height)
+        if x2 <= x1 or y2 <= y1:
+            raise HTTPException(status_code=400, detail="Detection bounding box must have positive area.")
+        category = "food_organics" if category_name == "food_organic" else category_name
+        recyclable_status, contaminant_status = material_status(category)
+        material = {
+            "_detection_index": detection.detection_index,
+            "material_name": category_name,
+            "category": category,
+            "confidence": round(detection.confidence, 4),
+            "recyclable_status": recyclable_status,
+            "contaminant_status": contaminant_status,
+            "bbox_x": round((x1 / image_width) * 100, 4),
+            "bbox_y": round((y1 / image_height) * 100, 4),
+            "bbox_width": round(((x2 - x1) / image_width) * 100, 4),
+            "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
+            **evaluate_material(category, detection.confidence),
+        }
+        if category == "battery":
+            material.update({
+                "review_required": True,
+                "decision_status": "review_needed",
+                "display_status": "Review Needed",
+                "disposal_route": "Manual Audit Queue",
+            })
+        validated.append(material)
     return sorted(validated, key=lambda item: item["_detection_index"])
 
 
@@ -1378,6 +1456,221 @@ def analytics(days: int = 7, principal: Principal = Depends(require_scope("scan:
     }
 
 
+def analytics_category(value: Any) -> str:
+    key = re.sub(r"[_-]+", " ", str(value or "").strip().lower())
+    key = re.sub(r"\s+", " ", key)
+    if "food" in key or "organic" in key:
+        return "food organic"
+    if any(word in key for word in ("general", "trash", "landfill", "unknown")):
+        return "general trash"
+    return next((category for category in ANALYTICS_MATERIAL_ESTIMATES if category in key), "general trash")
+
+
+def analytics_timestamp(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def analytics_page_rows(database: SupabaseExecutor, table: str, principal: Principal, build_query: Callable[[Any], Any], page_size: int) -> list[dict]:
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        response = database.execute(lambda client: scoped_query(build_query(client), principal).range(offset, offset + page_size - 1).execute())
+        page = response.data or []
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows
+        offset += page_size
+
+
+def analytics_child_rows(database: SupabaseExecutor, table: str, scan_ids: list[str], principal: Principal) -> list[dict]:
+    rows: list[dict] = []
+    for index in range(0, len(scan_ids), 200):
+        ids = scan_ids[index:index + 200]
+        rows.extend(analytics_page_rows(database, table, principal, lambda client, ids=ids: client.table(table).select("*").in_("scan_result_id", ids), ANALYTICS_CHILD_PAGE_SIZE))
+    return rows
+
+
+@app.get("/api/analytics/summary")
+def analytics_summary(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    principal: Principal = Depends(require_scope("scan:read")),
+):
+    """Aggregate every matching scan server-side; never expose a paginated scan page as analytics."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    if bool(start_date) != bool(end_date):
+        raise HTTPException(status_code=400, detail="start_date and end_date must be supplied together.")
+    try:
+        database = SupabaseExecutor(supabase)
+
+        def build_scans(client):
+            query = client.table(SCAN_RESULTS_TABLE).select("id,source_name,source_type,batch_id,overall_status,human_review_required,overall_confidence,created_at,reviewed_at")
+            if start_date:
+                query = query.gte("created_at", start_date).lt("created_at", end_date)
+            return query.order("created_at", desc=True)
+
+        scans = analytics_page_rows(database, SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+        scan_ids = [str(scan["id"]) for scan in scans if scan.get("id")]
+        materials = analytics_child_rows(database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
+        decisions = analytics_child_rows(database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
+        latest_decisions: dict[str, dict] = {}
+        for decision in sorted(decisions, key=lambda item: str(item.get("created_at") or "")):
+            latest_decisions[str(decision.get("detected_material_id") or "")] = decision
+
+        scan_by_id = {str(scan["id"]): scan for scan in scans if scan.get("id")}
+        rejected_count = sum(str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} for scan in scans)
+        review_count = sum(bool(scan.get("human_review_required")) for scan in scans)
+        confirmed_count = max(0, len(scans) - rejected_count - review_count)
+        category_data: dict[str, dict] = {}
+        recyclable_counts: dict[str, int] = {}
+        contaminant_counts: dict[str, int] = {}
+        confidence_values: list[float] = []
+        review_durations: list[float] = []
+        high_risk_count = 0
+        recovery_opportunity_count = 0
+
+        for material in materials:
+            category = analytics_category(material.get("category") or material.get("material_name"))
+            estimate = ANALYTICS_MATERIAL_ESTIMATES[category]
+            row = category_data.setdefault(category, {"category": category, "label": estimate["label"], "count": 0, "estimatedWeightKg": 0.0, "pricePerKg": estimate["price_per_kg_rm"], "estimatedResaleValueRm": 0.0, "confidence_total": 0.0, "confidence_count": 0, "recyclable_count": 0, "contaminant_count": 0})
+            row["count"] += 1
+            row["estimatedWeightKg"] += estimate["average_weight_kg"]
+            row["estimatedResaleValueRm"] += estimate["average_weight_kg"] * estimate["price_per_kg_rm"]
+            confidence = float(material.get("confidence") or 0)
+            confidence = confidence * 100 if confidence <= 1 else confidence
+            if confidence > 0:
+                confidence_values.append(confidence)
+                row["confidence_total"] += confidence
+                row["confidence_count"] += 1
+            decision = latest_decisions.get(str(material.get("id") or ""))
+            material_class = str((decision or {}).get("disposition") or material.get("material_class") or estimate["material_class"]).lower()
+            if material_class == "recyclable":
+                recyclable_counts[estimate["label"]] = recyclable_counts.get(estimate["label"], 0) + 1
+                row["recyclable_count"] += 1
+                if estimate["price_per_kg_rm"] > 0:
+                    recovery_opportunity_count += 1
+            elif material_class == "contaminant":
+                contaminant_counts[estimate["label"]] = contaminant_counts.get(estimate["label"], 0) + 1
+                row["contaminant_count"] += 1
+                if category == "battery":
+                    high_risk_count += 1
+            scan = scan_by_id.get(str(material.get("scan_result_id") or ""))
+            if decision and scan:
+                created_at, reviewed_at = analytics_timestamp(scan.get("created_at")), analytics_timestamp(decision.get("created_at"))
+                if created_at and reviewed_at and reviewed_at >= created_at:
+                    review_durations.append((reviewed_at - created_at).total_seconds() * 1000)
+
+        trend: dict[str, dict] = {}
+        batch_counts: dict[str, int] = {}
+        for scan in scans:
+            created_at = analytics_timestamp(scan.get("created_at"))
+            if created_at:
+                local_day = created_at.astimezone(ANALYTICS_MALAYSIA_TZ)
+                key = local_day.strftime("%Y-%m-%d")
+                trend.setdefault(key, {"key": key, "label": local_day.strftime("%b %-d"), "value": 0})["value"] += 1
+            if scan.get("batch_id"):
+                batch_counts[str(scan["batch_id"])] = batch_counts.get(str(scan["batch_id"]), 0) + 1
+
+        resale_rows = sorted(category_data.values(), key=lambda row: (-row["estimatedResaleValueRm"], -row["count"]))
+        for row in resale_rows:
+            row["averageConfidence"] = row.pop("confidence_total") / row.pop("confidence_count") if row["confidence_count"] else 0
+        material_mix = sorted(resale_rows, key=lambda row: (-row["estimatedWeightKg"], -row["count"]))
+        top_recyclable = max(recyclable_counts.items(), key=lambda item: item[1], default=None)
+        top_contaminant = max(contaminant_counts.items(), key=lambda item: item[1], default=None)
+        latest_scan = scans[0] if scans else None
+        recent_events = [{"timestamp": scan.get("created_at"), "source": scan.get("source_name") or scan.get("source_type") or "Web Upload", "event": "Scan Rejected" if str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} else "Scan Verified", "status": "Rejected" if str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} else "Review Needed" if scan.get("human_review_required") else "Confirmed", "details": "Saved scan record"} for scan in scans[:5]]
+        return {
+            "scope": "selected_date" if start_date else "all_history",
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_scans": len(scans),
+            "confirmed_count": confirmed_count,
+            "review_count": review_count,
+            "rejected_count": rejected_count,
+            "detected_materials_count": len(materials),
+            "average_detection_confidence": sum(confidence_values) / len(confidence_values) if confidence_values else 0,
+            "estimated_recovery_value": sum(row["estimatedResaleValueRm"] for row in resale_rows),
+            "total_estimated_weight_kg": sum(row["estimatedWeightKg"] for row in material_mix),
+            "material_mix": material_mix,
+            "recoverable_value_by_category": resale_rows,
+            "daily_scan_trend": [trend[key] for key in sorted(trend)],
+            "recyclable_rows": sorted(recyclable_counts.items(), key=lambda item: -item[1]),
+            "contaminated_rows": sorted(contaminant_counts.items(), key=lambda item: -item[1]),
+            "top_contamination_source": {"label": top_contaminant[0], "count": top_contaminant[1]} if top_contaminant else None,
+            "top_recyclable_material": {"label": top_recyclable[0], "count": top_recyclable[1]} if top_recyclable else None,
+            "average_review_turnaround_ms": sum(review_durations) / len(review_durations) if review_durations else None,
+            "highest_value_category": resale_rows[0] if resale_rows and resale_rows[0]["estimatedResaleValueRm"] > 0 else None,
+            "last_upload": latest_scan,
+            "last_upload_batch_count": batch_counts.get(str(latest_scan.get("batch_id")), 1) if latest_scan else 0,
+            "high_risk_count": high_risk_count,
+            "recovery_opportunity_count": recovery_opportunity_count,
+            "recent_events": recent_events,
+        }
+    except SupabaseTemporarilyUnavailable:
+        return JSONResponse(status_code=503, content={"detail": "Analytics data is temporarily unavailable.", "retryable": True}, headers={"Retry-After": "2"})
+    except Exception as exc:
+        print(f"[analytics] summary failed: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="Unable to load analytics summary.") from exc
+
+
+@app.post("/api/scans/browser-detected")
+async def save_browser_detected_scan(
+    file: UploadFile = File(...),
+    submission_id: UUID = Form(...),
+    original_width: int = Form(...),
+    original_height: int = Form(...),
+    model_name: str = Form(...),
+    model_version: str = Form(...),
+    inference_engine: str = Form(...),
+    confidence_threshold: float = Form(...),
+    nms_iou_threshold: float = Form(...),
+    detections: str = Form(...),
+    principal: Principal = Depends(require_scope("scan:write")),
+):
+    if model_name != BROWSER_MODEL_NAME or model_version != BROWSER_MODEL_VERSION:
+        raise HTTPException(status_code=400, detail="Browser model identity does not match the fixed contract.")
+    if inference_engine != BROWSER_INFERENCE_ENGINE:
+        raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
+    if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
+        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+    if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
+        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+    file_bytes = await file.read()
+    if not file_bytes or len(file_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be non-empty and no larger than 10 MB.")
+    _, normalized_type = _image_content_type(file.filename, file.content_type)
+    try:
+        with Image.open(BytesIO(file_bytes)) as image:
+            actual_width, actual_height = image.size
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Uploaded image is invalid or corrupted.") from exc
+    if (original_width, original_height) != (actual_width, actual_height):
+        raise HTTPException(status_code=400, detail="Browser image dimensions do not match the uploaded image.")
+    try:
+        raw_detections = json.loads(detections)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Detection JSON is invalid.") from exc
+    materials = validate_browser_detected_detections(raw_detections, actual_width, actual_height)
+    return persist_scan(
+        file_bytes,
+        file.filename,
+        "image",
+        materials,
+        summarize(materials),
+        source_ref="browser-onnx:best.onnx",
+        principal=principal,
+        content_type=normalized_type,
+        scan_result_id=submission_id,
+        model_version=model_version,
+    )
+
+
 @app.post("/api/scans/browser-verified")
 async def save_browser_verified_scan(
     file: UploadFile = File(...),
@@ -1542,6 +1835,10 @@ def get_scan_history(
     offset: int = 0,
     start_date: str | None = None,
     end_date: str | None = None,
+    search: str | None = None,
+    status: str | None = None,
+    sort: str = "timestamp",
+    direction: str = "desc",
     principal: Principal = Depends(require_scope("scan:read")),
 ):
     if not supabase:
@@ -1554,8 +1851,19 @@ def get_scan_history(
             scan_query = scan_query.gte("created_at", start_date)
         if end_date:
             scan_query = scan_query.lt("created_at", end_date)
+        if search:
+            scan_query = scan_query.ilike("source_name", f"%{search.strip()}%")
+        normalized_status = str(status or "").lower()
+        if normalized_status == "review_needed":
+            scan_query = scan_query.eq("human_review_required", True)
+        elif normalized_status == "rejected":
+            scan_query = scan_query.in_("overall_status", ["rejected", "quarantined"])
+        elif normalized_status == "confirmed":
+            scan_query = scan_query.eq("human_review_required", False)
+        order_column = "overall_confidence" if sort == "confidence" else "created_at"
+        descending = str(direction).lower() != "asc"
         scan_response = scoped_query(
-            scan_query.order("created_at", desc=True).range(offset, offset + limit - 1), principal
+            scan_query.order(order_column, desc=descending).range(offset, offset + limit - 1), principal
         ).execute()
         scans = scan_response.data or []
         count_value = getattr(scan_response, "count", None)
@@ -1604,6 +1912,10 @@ def get_scan_history(
             "offset": offset,
             "start_date": start_date,
             "end_date": end_date,
+            "search": search,
+            "status": status,
+            "sort": "confidence" if sort == "confidence" else "timestamp",
+            "direction": "desc" if descending else "asc",
             "summary": {
                 "confirmed": confirmed,
                 "needs_review": needs_review,

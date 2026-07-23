@@ -94,6 +94,14 @@ def detection(**changes):
     return value
 
 
+def detected(**changes):
+    value = detection()
+    value.pop("verified_class")
+    value.pop("verification_status")
+    value.update(changes)
+    return value
+
+
 class BrowserVerifiedScanTests(unittest.TestCase):
     def test_validation_clamps_boxes_and_maps_food_at_persistence_boundary(self):
         materials = main.validate_browser_detections([
@@ -127,6 +135,19 @@ class BrowserVerifiedScanTests(unittest.TestCase):
     def test_zero_detections_are_rejected(self):
         with self.assertRaisesRegex(HTTPException, "At least one verified detection"):
             main.validate_browser_detections([], 640, 480)
+
+    def test_machine_detected_battery_and_empty_scans_require_review(self):
+        battery = main.validate_browser_detected_detections([
+            detected(class_id=7, model_class_name="battery")
+        ], 640, 480)
+        self.assertTrue(battery[0]["review_required"])
+        self.assertEqual(main.summarize(battery)["overall_status"], "review_required")
+        self.assertEqual(main.summarize([])["overall_status"], "review_required")
+
+    def test_machine_detected_high_confidence_non_battery_is_accepted(self):
+        materials = main.validate_browser_detected_detections([detected()], 640, 480)
+        self.assertFalse(materials[0]["review_required"])
+        self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
 
     def test_repeated_submission_reuses_scan_material_and_review_rows(self):
         client = FakeClient()

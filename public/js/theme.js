@@ -151,27 +151,6 @@ function initActiveNav() {
   });
 }
 
-function initReviewNavigation() {
-  document.querySelectorAll('.sidebar-nav').forEach(nav => {
-    const reviewLink = nav.querySelector('.nav-item[href="/review"]');
-    const resultLink = nav.querySelector('.nav-item[href="/result"]');
-    const historyLink = nav.querySelector('.nav-item[href="/log"]');
-    const link = reviewLink || resultLink || historyLink;
-    if (!link) return;
-
-    link.href = '/review';
-    link.dataset.tooltip = 'Review';
-    const icon = link.querySelector('.nav-item-icon');
-    if (icon) icon.className = 'nav-item-icon fa-solid fa-magnifying-glass';
-    const label = link.querySelector('.nav-item-label');
-    if (label) label.textContent = 'Review';
-
-    [resultLink, historyLink].forEach(item => {
-      if (item && item !== link) item.remove();
-    });
-  });
-}
-
 /* ── 4. TOPBAR ACCOUNT ACTIONS ── */
 function initTopbarAccountActions() {
   const topbarRight = document.querySelector('.topbar-right');
@@ -770,7 +749,6 @@ function initMetricCountUp() {
 
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
-  runThemeInit('review navigation init', initReviewNavigation);
   runThemeInit('sidebar init', initSidebar);
   runThemeInit('live clock init', initLiveClock);
   runThemeInit('active nav init', initActiveNav);

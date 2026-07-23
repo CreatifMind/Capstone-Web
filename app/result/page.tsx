@@ -22,13 +22,9 @@ const html = `
           <i class="nav-item-icon fa-solid fa-cloud-arrow-up"></i>
           <span class="nav-item-label">Upload</span>
         </a>
-        <a href="/result" class="nav-item active" data-tooltip="Result">
-          <i class="nav-item-icon fa-solid fa-wand-magic-sparkles"></i>
-          <span class="nav-item-label">Result</span>
-        </a>
-        <a href="/log" class="nav-item" data-tooltip="History">
-          <i class="nav-item-icon fa-solid fa-clipboard-check"></i>
-          <span class="nav-item-label">History</span>
+        <a href="/review" class="nav-item" data-tooltip="Review">
+          <i class="nav-item-icon fa-solid fa-magnifying-glass"></i>
+          <span class="nav-item-label">Review</span>
         </a>
         <a href="/analytics" class="nav-item" data-tooltip="Analytics">
           <i class="nav-item-icon fa-solid fa-chart-line"></i>
