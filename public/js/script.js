@@ -107,10 +107,24 @@ function plNormalizeStatus(value) {
 }
 
 const PL_CONFIRMATION_THRESHOLD = 85;
+const PL_BROWSER_MODEL_CLASSES = ["plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash"];
+const PL_BROWSER_MODEL_VERSION = "v3_ffremask_9cls";
+const PL_BROWSER_CONFIDENCE_THRESHOLD = 0.32;
+const PL_BROWSER_NMS_IOU_THRESHOLD = 0.70;
 const PL_CATEGORY_CLASS_MAP = {
   general_trash: "contaminant", food_organics: "contaminant", textile: "contaminant", battery: "contaminant",
   metal: "recyclable", plastic: "recyclable", glass: "recyclable", paper: "recyclable", cardboard: "recyclable"
 };
+
+function plBrowserClassLabel(value) {
+  if (value === "general_trash") return "Unsorted / Needs Review";
+  if (value === "food_organic") return "Food Organic";
+  return plNormalizeCategory(value);
+}
+
+function plLogInference(engine, modelName) {
+  console.info(`[PurityLoop inference]\nengine=${engine}\nmodel=${modelName}\nsource=upload-page`);
+}
 const PL_CATEGORY_ROUTES = {
   general_trash: "General-Waste Disposal", food_organics: "Organic Waste / Compost", textile: "Textile Recovery / Contaminant Route", battery: "Battery / E-Waste Collection",
   metal: "Metal Sorting Bin", plastic: "Plastic Sorting Bin", glass: "Glass Sorting Bin", paper: "Paper Sorting Bin", cardboard: "Cardboard Sorting Bin"
@@ -1000,11 +1014,35 @@ function getUploadSourceDisplayName(sourceKey) {
   return labels[sourceKey] || "Uploaded image";
 }
 
+async function plSavePredictionPayload(payload, file) {
+  const scan = plNormalizeScan({
+    id: payload.scan_result_id,
+    image_url: payload.image_url || "",
+    preview_image_url: payload.preview_image_url || "",
+    drive_file_id: payload.drive_file_id || "",
+    drive_web_url: payload.drive_web_url || "",
+    source_name: file.name || "Uploaded image",
+    source_size: Number(file.size || 0),
+    overall_status: payload.overall_status,
+    contamination_risk: payload.contamination_risk,
+    recommended_action: payload.recommended_action,
+    human_review_required: payload.human_review_required,
+    overall_confidence: payload.overall_confidence,
+    created_at: new Date().toISOString(),
+    detected_materials: payload.detected_materials
+  });
+  if (!scan) throw new Error("Backend did not return a scan id.");
+  plSaveScanResult(scan);
+  await plRefreshScanResultsFromSupabase();
+  return plGetScanResultById(scan.id) || scan;
+}
+
 async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) {
   const apiBaseUrl = plApiBaseUrl();
   if (!apiBaseUrl) throw new Error("Backend API URL is not configured.");
   if (!file || !String(file.type || "").startsWith("image/")) throw new Error("Upload one image file.");
 
+  plLogInference("backend-pytorch", "best.pt");
   const formData = new FormData();
   formData.append("file", file, file.name || "uploaded-image.jpg");
 
@@ -1033,27 +1071,7 @@ async function plRunBackendPrediction(file, { showUploadProgress = true } = {}) 
       request.send(formData);
     }).catch(reject);
   });
-
-  const scan = plNormalizeScan({
-    id: payload.scan_result_id,
-    image_url: payload.image_url || "",
-    preview_image_url: payload.preview_image_url || "",
-    drive_file_id: payload.drive_file_id || "",
-    drive_web_url: payload.drive_web_url || "",
-    source_name: file.name || "Uploaded image",
-    source_size: Number(file.size || 0),
-    overall_status: payload.overall_status,
-    contamination_risk: payload.contamination_risk,
-    recommended_action: payload.recommended_action,
-    human_review_required: payload.human_review_required,
-    overall_confidence: payload.overall_confidence,
-    created_at: new Date().toISOString(),
-    detected_materials: payload.detected_materials
-  });
-  if (!scan) throw new Error("Backend did not return a scan id.");
-  plSaveScanResult(scan);
-  await plRefreshScanResultsFromSupabase();
-  return plGetScanResultById(scan.id) || scan;
+  return plSavePredictionPayload(payload, file);
 }
 
 /*****************************************
@@ -1078,6 +1096,20 @@ function initUploadPage() {
   let rejectedItems = [];
   let isProcessing = false;
   let batchId = "";
+  let browserVerificationEl = null;
+  let browserResizeObserver = null;
+
+  function browserOnnxEnabled() {
+    return document.getElementById("browserOnnxFeatureFlag")?.dataset.enabled === "true";
+  }
+
+  function shouldUseBrowserOnnx(items) {
+    if (!browserOnnxEnabled() || queue.length + rejectedItems.length !== 1 || items.length !== 1) return false;
+    const item = items[0];
+    return item.source === "direct"
+      && item.mediaType === "image"
+      && /^image\/(jpeg|png|webp)$/i.test(String(item.file?.type || ""));
+  }
 
   // Set up webcam modal
   createWebcamModalElements();
@@ -1547,6 +1579,290 @@ function initUploadPage() {
     return canvas.toDataURL("image/jpeg", 0.7);
   }
 
+  function ensureBrowserVerificationEl() {
+    if (browserVerificationEl?.isConnected) return browserVerificationEl;
+    browserVerificationEl = document.createElement("section");
+    browserVerificationEl.className = "panel browser-onnx-verification";
+    browserVerificationEl.hidden = true;
+    (batchSummaryEl || queueEl)?.insertAdjacentElement("afterend", browserVerificationEl);
+    return browserVerificationEl;
+  }
+
+  function browserVerificationComplete(item) {
+    return Boolean(item?.browserDetections?.length)
+      && item.browserDetections.every(detection => detection.humanConfirmed);
+  }
+
+  function drawBrowserDetectionBoxes(item) {
+    const canvas = browserVerificationEl?.querySelector("canvas");
+    const image = browserVerificationEl?.querySelector(".browser-onnx-image");
+    if (!canvas || !image || !item?.originalWidth || !item?.originalHeight) return;
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    const context = canvas.getContext("2d");
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, rect.width, rect.height);
+    const scaleX = rect.width / item.originalWidth;
+    const scaleY = rect.height / item.originalHeight;
+    item.browserDetections.forEach(detection => {
+      const x = detection.x1 * scaleX;
+      const y = detection.y1 * scaleY;
+      const width = (detection.x2 - detection.x1) * scaleX;
+      const height = (detection.y2 - detection.y1) * scaleY;
+      context.strokeStyle = detection.verifiedClass === "battery" ? "#dc2626" : "#16a34a";
+      context.fillStyle = context.strokeStyle;
+      context.lineWidth = 2;
+      context.strokeRect(x, y, width, height);
+      const label = `${plBrowserClassLabel(detection.verifiedClass)} ${(detection.confidence * 100).toFixed(1)}%`;
+      context.font = "600 12px IBM Plex Sans, sans-serif";
+      const labelWidth = Math.min(rect.width - x, context.measureText(label).width + 10);
+      const labelY = Math.max(0, y - 22);
+      context.fillRect(x, labelY, labelWidth, 22);
+      context.fillStyle = "#fff";
+      context.fillText(label, x + 5, labelY + 15, Math.max(0, labelWidth - 10));
+    });
+  }
+
+  function renderBrowserVerification(item) {
+    const panel = ensureBrowserVerificationEl();
+    browserResizeObserver?.disconnect();
+    panel.innerHTML = "";
+    panel.hidden = !item || (!item.browserState && !item.browserDetections);
+    if (panel.hidden) return;
+
+    const header = document.createElement("header");
+    header.className = "browser-onnx-header";
+    const heading = document.createElement("div");
+    heading.innerHTML = "<p class=\"eyebrow\">Local human verification</p><h2>Detected in this photo:</h2>";
+    const badge = document.createElement("span");
+    badge.className = "browser-onnx-engine";
+    badge.textContent = item.inferenceLabel || "Browser ONNX — best.onnx";
+    header.append(heading, badge);
+    panel.appendChild(header);
+
+    const status = document.createElement("p");
+    status.className = `browser-onnx-status state-${item.browserState || "idle"}`;
+    status.setAttribute("role", "status");
+    status.textContent = ({
+      "loading-model": "Loading browser model…",
+      detecting: "Running browser detection…",
+      "awaiting-verification": item.browserDetections?.length
+        ? "Confirm or correct every detection before saving."
+        : `Nothing met the ${PL_BROWSER_CONFIDENCE_THRESHOLD} confidence threshold. No clean or contamination-free conclusion can be made.`,
+      saving: "Saving verified result…",
+      saved: "Verified result saved.",
+      failed: item.errorMessage || "Browser inference failed."
+    })[item.browserState] || "";
+    panel.appendChild(status);
+
+    if (item.browserDetections?.length) {
+      const imageWrap = document.createElement("div");
+      imageWrap.className = "browser-onnx-image-wrap";
+      const image = document.createElement("img");
+      image.className = "browser-onnx-image";
+      image.src = item.previewUrl;
+      image.alt = `Preview of ${item.file.name}`;
+      const canvas = document.createElement("canvas");
+      canvas.setAttribute("aria-label", "Browser ONNX bounding-box overlay");
+      imageWrap.append(image, canvas);
+      panel.appendChild(imageWrap);
+
+      const list = document.createElement("div");
+      list.className = "browser-onnx-detection-list";
+      item.browserDetections.forEach((detection, index) => {
+        const row = document.createElement("div");
+        row.className = "browser-onnx-detection-row";
+        const summary = document.createElement("strong");
+        summary.textContent = `Detection ${index + 1}: ${plBrowserClassLabel(detection.className)} · ${(detection.confidence * 100).toFixed(1)}%`;
+        const selectLabel = document.createElement("label");
+        selectLabel.textContent = "Verified category";
+        const select = document.createElement("select");
+        select.setAttribute("aria-label", `Verified category for detection ${index + 1}`);
+        PL_BROWSER_MODEL_CLASSES.forEach(className => {
+          const option = document.createElement("option");
+          option.value = className;
+          option.textContent = plBrowserClassLabel(className);
+          option.selected = className === detection.verifiedClass;
+          select.appendChild(option);
+        });
+        select.disabled = item.browserState === "saving" || item.browserState === "saved";
+        select.addEventListener("change", () => {
+          detection.verifiedClass = select.value;
+          detection.humanConfirmed = false;
+          renderBrowserVerification(item);
+        });
+        selectLabel.appendChild(select);
+
+        const confirmLabel = document.createElement("label");
+        confirmLabel.className = detection.className === "battery" || detection.verifiedClass === "battery"
+          ? "browser-onnx-confirm battery"
+          : "browser-onnx-confirm";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = Boolean(detection.humanConfirmed);
+        checkbox.disabled = item.browserState === "saving" || item.browserState === "saved";
+        const confirmText = document.createElement("span");
+        confirmText.textContent = detection.className === "battery" || detection.verifiedClass === "battery"
+          ? "Human confirms battery detection and hazardous handling is required."
+          : "Human confirms this detection.";
+        checkbox.addEventListener("change", () => {
+          detection.humanConfirmed = checkbox.checked;
+          renderBrowserVerification(item);
+        });
+        confirmLabel.append(checkbox, confirmText);
+        row.append(summary, selectLabel, confirmLabel);
+        list.appendChild(row);
+      });
+      panel.appendChild(list);
+
+      const actions = document.createElement("div");
+      actions.className = "browser-onnx-actions";
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "primary-btn";
+      save.textContent = item.browserFailurePhase === "save" ? "Retry Save" : "Save Verified Result";
+      save.disabled = !browserVerificationComplete(item) || item.browserState === "saving" || item.browserState === "saved";
+      save.addEventListener("click", () => saveBrowserVerifiedResult(item));
+      actions.appendChild(save);
+      panel.appendChild(actions);
+
+      image.addEventListener("load", () => drawBrowserDetectionBoxes(item), { once: true });
+      browserResizeObserver = new ResizeObserver(() => drawBrowserDetectionBoxes(item));
+      browserResizeObserver.observe(image);
+      window.requestAnimationFrame(() => drawBrowserDetectionBoxes(item));
+    } else if (item.browserState === "failed" || item.browserState === "awaiting-verification") {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "secondary-btn";
+      retry.textContent = "Retry Browser Detection";
+      retry.addEventListener("click", () => {
+        item.status = "ready";
+        item.browserState = "";
+        item.browserFailurePhase = "";
+        item.errorMessage = "";
+        runBatch([item]);
+      });
+      panel.appendChild(retry);
+    }
+  }
+
+  async function runBrowserDetection(item) {
+    if (item.browserDetecting) return;
+    item.browserDetecting = true;
+    item.submissionId ||= window.crypto?.randomUUID?.();
+    if (!item.submissionId) throw new Error("Browser cannot generate a stable submission UUID.");
+    item.inferenceLabel = "Browser ONNX — best.onnx";
+    item.browserState = "loading-model";
+    item.browserFailurePhase = "";
+    item.browserDetections = [];
+    renderQueue();
+    renderBrowserVerification(item);
+    await new Promise(resolve => window.requestAnimationFrame(resolve));
+    item.browserState = "detecting";
+    renderQueue();
+    renderBrowserVerification(item);
+    try {
+      const bridge = window.__PURITYLOOP_BROWSER_ONNX__;
+      if (!bridge?.enabled) throw new Error("Browser ONNX bridge is unavailable. Reload the Upload page and retry.");
+      plLogInference("browser-onnx", "best.onnx");
+      const result = await bridge.detect(item.file);
+      item.originalWidth = result.originalWidth;
+      item.originalHeight = result.originalHeight;
+      item.browserDetections = result.detections.map(detection => ({
+        ...detection,
+        verifiedClass: detection.className,
+        humanConfirmed: false
+      }));
+      item.browserState = "awaiting-verification";
+      item.status = "review_needed";
+    } catch (error) {
+      item.browserState = "failed";
+      item.browserFailurePhase = "detect";
+      item.status = "failed";
+      item.errorMessage = `Browser inference failed: ${error?.message || "Unknown browser inference error."}`;
+      throw error;
+    } finally {
+      item.browserDetecting = false;
+      renderQueue();
+      renderBrowserVerification(item);
+    }
+  }
+
+  async function saveBrowserVerifiedResult(item) {
+    if (item.browserSaving || !browserVerificationComplete(item)) return;
+    const apiBase = plApiBaseUrl();
+    if (!apiBase) {
+      item.browserState = "failed";
+      item.browserFailurePhase = "save";
+      item.errorMessage = "Backend API URL is not configured.";
+      renderBrowserVerification(item);
+      return;
+    }
+    item.browserSaving = true;
+    item.browserState = "saving";
+    item.browserFailurePhase = "";
+    item.errorMessage = "";
+    renderQueue();
+    renderBrowserVerification(item);
+
+    const verifiedDetections = item.browserDetections.map((detection, index) => ({
+      detection_index: index,
+      class_id: detection.classId,
+      model_class_name: detection.className,
+      verified_class: detection.verifiedClass,
+      confidence: detection.confidence,
+      x1: detection.x1,
+      y1: detection.y1,
+      x2: detection.x2,
+      y2: detection.y2,
+      verification_status: detection.className === "battery" || detection.verifiedClass === "battery"
+        ? "battery-confirmed"
+        : "verified"
+    }));
+    const formData = new FormData();
+    formData.append("file", item.file, item.file.name || "uploaded-image.jpg");
+    formData.append("submission_id", item.submissionId);
+    formData.append("original_width", String(item.originalWidth));
+    formData.append("original_height", String(item.originalHeight));
+    formData.append("model_name", "best.onnx");
+    formData.append("model_version", PL_BROWSER_MODEL_VERSION);
+    formData.append("inference_engine", "browser-onnx");
+    formData.append("confidence_threshold", String(PL_BROWSER_CONFIDENCE_THRESHOLD));
+    formData.append("nms_iou_threshold", String(PL_BROWSER_NMS_IOU_THRESHOLD));
+    formData.append("verified_detections", JSON.stringify(verifiedDetections));
+    formData.append("verification_outcome", "verified");
+
+    try {
+      const response = await fetch(`${apiBase}/api/scans/browser-verified`, {
+        method: "POST",
+        headers: await plAuthHeaders(),
+        body: formData
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || `Verified result save failed (${response.status}).`);
+      const scan = await plSavePredictionPayload(payload, item.file);
+      item.scanId = scan.id;
+      item.browserState = "saved";
+      item.status = "completed";
+      saveCompletedPreviewCache();
+      renderBatchSummary();
+    } catch (error) {
+      item.browserState = "failed";
+      item.browserFailurePhase = "save";
+      item.status = "failed";
+      item.errorMessage = `Save failed: ${error?.message || "Verified result could not be saved."}`;
+    } finally {
+      item.browserSaving = false;
+      renderQueue();
+      renderBrowserVerification(item);
+    }
+  }
+
   function renderQueue() {
     const hasItems = queue.length > 0;
     const hasSelection = hasItems || rejectedItems.length > 0;
@@ -1589,9 +1905,15 @@ function initUploadPage() {
       const meta = document.createElement("span");
       meta.textContent = formatFileSize(item.file.size);
       details.append(name, meta);
+      if (item.inferenceLabel) {
+        const engine = document.createElement("span");
+        engine.className = "upload-inference-engine";
+        engine.textContent = item.inferenceLabel;
+        details.appendChild(engine);
+      }
       const status = document.createElement("span");
       status.className = "upload-queue-status";
-      status.textContent = queueStatusLabel(item.status);
+      status.textContent = queueStatusLabel(item.status, item);
       if (item.errorMessage) status.title = item.errorMessage;
       const remove = document.createElement("button");
       remove.type = "button";
@@ -1644,8 +1966,15 @@ function initUploadPage() {
     setText("batchZipDetected", zipDetected ? "Yes" : "No");
   }
 
-  function queueStatusLabel(status) {
-    return ({ ready: "Ready", waiting: "Waiting", processing: "Analysing", completed: "Completed", review_needed: "Review Needed", failed: "Failed" })[status] || "Ready";
+  function queueStatusLabel(status, item) {
+    return ({
+      ready: "Ready",
+      waiting: "Waiting",
+      processing: "Analysing",
+      completed: "Completed",
+      review_needed: item?.browserState === "awaiting-verification" ? "Awaiting Verification" : "Review Needed",
+      failed: "Failed"
+    })[status] || "Ready";
   }
 
   function setMessages(message, rejected = []) {
@@ -1670,6 +1999,10 @@ function initUploadPage() {
     if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
     queue = queue.filter(entry => entry.localId !== localId);
     if (!queue.length) batchId = "";
+    if (!queue.length) {
+      browserResizeObserver?.disconnect();
+      if (browserVerificationEl) browserVerificationEl.hidden = true;
+    }
     renderQueue();
   }
 
@@ -1686,6 +2019,8 @@ function initUploadPage() {
     if (videoUpload) videoUpload.value = "";
     if (zipUpload) zipUpload.value = "";
     if (batchSummaryEl) batchSummaryEl.hidden = true;
+    browserResizeObserver?.disconnect();
+    if (browserVerificationEl) browserVerificationEl.hidden = true;
     if (processingStatusEl) processingStatusEl.textContent = "";
     setMessages("No files selected.");
     renderQueue();
@@ -1721,6 +2056,7 @@ function initUploadPage() {
   async function runBatch(items) {
     if (isProcessing || !items.length) return;
     const retrying = items.every(item => item.status === "failed");
+    const useBrowserOnnx = shouldUseBrowserOnnx(items);
     isProcessing = true;
     plHideUploadProgress();
     if (batchSummaryEl) batchSummaryEl.hidden = true;
@@ -1737,14 +2073,18 @@ function initUploadPage() {
         if (item.mediaType === "video") {
           await processVideoQueueItem(item);
           item.status = "completed";
+        } else if (useBrowserOnnx) {
+          await runBrowserDetection(item);
         } else {
+          item.inferenceLabel = "Backend PyTorch — best.pt";
+          renderQueue();
           const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
           item.scanId = scan.id;
           item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
         }
       } catch (error) {
         item.status = "failed";
-        item.errorMessage = error?.message || "The image could not be processed. Check the connection and try again.";
+        item.errorMessage ||= error?.message || "The image could not be processed. Check the connection and try again.";
       }
       saveCompletedPreviewCache();
       renderQueue();
@@ -1769,6 +2109,8 @@ function initUploadPage() {
     const completed = queue.filter(item => item.status === "completed").length;
     const review = queue.filter(item => item.status === "review_needed").length;
     const failed = queue.filter(item => item.status === "failed").length;
+    const failedBrowserSave = queue.find(item => item.status === "failed" && item.browserFailurePhase === "save");
+    const failedBrowserDetection = queue.find(item => item.status === "failed" && item.browserFailurePhase === "detect");
     const firstScan = queue.find(item => item.scanId)?.scanId;
     batchSummaryEl.hidden = false;
     batchSummaryEl.innerHTML = "";
@@ -1792,13 +2134,46 @@ function initUploadPage() {
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "secondary-btn";
-      retry.textContent = "Retry Failed Images";
-      retry.addEventListener("click", () => runBatch(queue.filter(item => item.status === "failed")));
+      retry.textContent = failedBrowserSave ? "Retry Save" : failedBrowserDetection ? "Retry Browser Detection" : "Retry Failed Images";
+      retry.addEventListener("click", () => {
+        if (failedBrowserSave) {
+          saveBrowserVerifiedResult(failedBrowserSave);
+        } else {
+          runBatch(queue.filter(item => item.status === "failed"));
+        }
+      });
       batchSummaryEl.appendChild(retry);
     }
   }
 
-  window.addEventListener("beforeunload", () => queue.forEach(item => URL.revokeObjectURL(item.previewUrl)), { once: true });
+  const onUploadBeforeUnload = event => {
+    const hasUnsavedVerifiedResult = queue.some(item => (
+      browserVerificationComplete(item) && item.browserState !== "saved"
+    ));
+    if (hasUnsavedVerifiedResult) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  };
+  const onUploadNavigationClick = event => {
+    const anchor = event.target.closest?.("a[href]");
+    if (!anchor || anchor.target === "_blank") return;
+    const hasUnsavedVerifiedResult = queue.some(item => (
+      browserVerificationComplete(item) && item.browserState !== "saved"
+    ));
+    if (hasUnsavedVerifiedResult && !window.confirm("Leave this page? Your verified browser result has not been saved.")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  window.addEventListener("beforeunload", onUploadBeforeUnload);
+  document.addEventListener("click", onUploadNavigationClick, true);
+  window.addEventListener("purityloop:page-cleanup", () => {
+    browserResizeObserver?.disconnect();
+    queue.forEach(item => URL.revokeObjectURL(item.previewUrl));
+    window.removeEventListener("beforeunload", onUploadBeforeUnload);
+    document.removeEventListener("click", onUploadNavigationClick, true);
+  }, { once: true });
 
   function createWebcamModalElements() {
     if (document.getElementById("webcamModal")) return;
