@@ -75,7 +75,10 @@ PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 # The upload folder is configured server-side, not selected with Google Picker.
 # OAuth therefore needs access to that existing folder and its idempotency search.
-OAUTH_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+OAUTH_DRIVE_SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
+]
 CONFIRMATION_THRESHOLD = 0.85
 BROWSER_CONFIDENCE_THRESHOLD = 0.32
 BROWSER_NMS_IOU_THRESHOLD = 0.70

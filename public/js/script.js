@@ -1098,17 +1098,38 @@ function initUploadPage() {
   let batchId = "";
   let browserVerificationEl = null;
   let browserResizeObserver = null;
+  let activeBrowserVerificationItemId = "";
+  let browserQueuePaused = false;
+  let browserQueueCancelled = false;
 
-  function browserOnnxEnabled() {
-    return document.getElementById("browserOnnxFeatureFlag")?.dataset.enabled === "true";
+  function browserOnnxFlags() {
+    const flag = document.getElementById("browserOnnxFeatureFlag")?.dataset;
+    return {
+      single: flag?.enabled === "true",
+      multi: flag?.multi === "true",
+      zip: flag?.zip === "true",
+      webcam: flag?.webcam === "true"
+    };
   }
 
-  function shouldUseBrowserOnnx(items) {
-    if (!browserOnnxEnabled() || queue.length + rejectedItems.length !== 1 || items.length !== 1) return false;
-    const item = items[0];
-    return item.source === "direct"
-      && item.mediaType === "image"
-      && /^image\/(jpeg|png|webp)$/i.test(String(item.file?.type || ""));
+  function isBrowserOnnxImage(item) {
+    return item?.mediaType === "image" && /^image\/(jpeg|png|webp)$/i.test(String(item.file?.type || ""));
+  }
+
+  function shouldUseBrowserOnnxForItem(item) {
+    const flags = browserOnnxFlags();
+    if (!flags.single || !isBrowserOnnxImage(item)) return false;
+    if (item.source === "zip") return flags.zip;
+    if (item.source === "webcam") return flags.webcam;
+    if (item.source !== "direct") return false;
+    const directImages = queue.filter(candidate => candidate.source === "direct" && isBrowserOnnxImage(candidate));
+    return directImages.length <= 1 || flags.multi;
+  }
+
+  function ensureBatchId() {
+    if (!batchId) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (uploadBox) uploadBox.dataset.batchId = batchId;
+    return batchId;
   }
 
   // Set up webcam modal
@@ -1172,6 +1193,45 @@ function initUploadPage() {
 
   if (clearUploadBtn) clearUploadBtn.addEventListener("click", clearQueue);
   if (scanImageBtn) scanImageBtn.addEventListener("click", () => runBatch(queue.filter(item => item.status === "ready")));
+  addBrowserQueueControls();
+
+  function addBrowserQueueControls() {
+    const actions = document.querySelector(".upload-batch-actions");
+    if (!actions || document.getElementById("pauseBrowserQueueBtn")) return;
+    const makeButton = (id, text, handler) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = id;
+      button.className = "text-btn";
+      button.textContent = text;
+      button.addEventListener("click", handler);
+      actions.appendChild(button);
+      return button;
+    };
+    makeButton("pauseBrowserQueueBtn", "Pause After Current", () => {
+      browserQueuePaused = true;
+      renderQueue();
+    });
+    makeButton("resumeBrowserQueueBtn", "Resume", () => {
+      browserQueuePaused = false;
+      browserQueueCancelled = false;
+      runBatch(queue.filter(item => item.status === "ready"));
+      renderQueue();
+    });
+    makeButton("cancelBrowserQueueBtn", "Cancel Remaining", () => {
+      browserQueueCancelled = true;
+      queue.filter(item => item.status === "ready" || item.status === "waiting").forEach(item => {
+        if (shouldUseBrowserOnnxForItem(item)) {
+          item.status = "cancelled";
+          item.browserState = "cancelled";
+        }
+      });
+      renderQueue();
+      renderBatchSummary();
+    });
+    makeButton("saveAllBrowserVerifiedBtn", "Save All Verified", () => saveAllBrowserVerified());
+    makeButton("clearCompletedBtn", "Clear Completed", clearCompletedItems);
+  }
 
   // Open Webcam Modal
   const cameraLauncher = document.createElement("button");
@@ -1201,8 +1261,9 @@ function initUploadPage() {
   }
 
   function startWebcam() {
+    if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
         .then(stream => {
           webcamStream = stream;
           webcamVideo.srcObject = stream;
@@ -1232,27 +1293,48 @@ function initUploadPage() {
   }
 
   function captureSnapshot() {
-    if (!webcamStream) return;
+    if (!webcamStream || captureWebcamBtn.disabled) return;
+    captureWebcamBtn.disabled = true;
     const canvas = document.createElement("canvas");
-    canvas.width = 640;
-    canvas.height = 480;
+    canvas.width = webcamVideo.videoWidth || 640;
+    canvas.height = webcamVideo.videoHeight || 480;
     const ctx = canvas.getContext("2d");
 
     // Draw mirrored if front facing, but environment usually is fine
-    ctx.drawImage(webcamVideo, 0, 0, 640, 480);
+    ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob(async blob => {
       if (!blob) {
         showToast("Camera capture failed.", "error");
+        canvas.width = 1;
+        canvas.height = 1;
+        if (webcamStream) captureWebcamBtn.disabled = false;
         return;
       }
       const file = new File([blob], "Camera_Snapshot_" + Date.now().toString().slice(-4) + ".jpg", { type: "image/jpeg" });
       try {
-        const scan = await plRunBackendPrediction(file);
-        stopWebcam();
-        window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
+        if (browserOnnxFlags().single && browserOnnxFlags().webcam) {
+          const item = await createQueueItem(
+            file,
+            `webcam|${file.name}|${file.size}|${file.lastModified}`,
+            "webcam",
+            { batchId: ensureBatchId() }
+          );
+          queue.push(item);
+          stopWebcam();
+          renderQueue();
+          await runBatch([item]);
+        } else {
+          const scan = await plRunBackendPrediction(file);
+          stopWebcam();
+          window.location.href = `/result?scanId=${encodeURIComponent(scan.id)}`;
+        }
       } catch (error) {
         showToast(error.message || "AI scan failed. Check backend and try again.", "error");
+      } finally {
+        canvas.width = 1;
+        canvas.height = 1;
+        if (webcamStream) captureWebcamBtn.disabled = false;
       }
     }, "image/jpeg", 0.9);
   }
@@ -1270,6 +1352,7 @@ function initUploadPage() {
 
     const rejected = [];
     const keys = new Set(queue.map(item => item.key));
+    const currentBatchId = ensureBatchId();
 
     for (const file of list) {
       const key = `${file.name}|${file.size}|${file.lastModified}`;
@@ -1286,7 +1369,7 @@ function initUploadPage() {
         continue;
       }
       try {
-        const item = await createQueueItem(file, key, "direct");
+        const item = await createQueueItem(file, key, "direct", { batchId: currentBatchId });
         queue.push(item);
         keys.add(key);
       } catch {
@@ -1295,8 +1378,6 @@ function initUploadPage() {
     }
 
     if (fileUpload) fileUpload.value = "";
-    if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (uploadBox) uploadBox.dataset.batchId = batchId;
     setMessages(queue.length ? `${queue.length} image${queue.length === 1 ? "" : "s"} added.` : "None of the selected files could be added.", rejected);
     renderQueue();
   }
@@ -1318,8 +1399,7 @@ function initUploadPage() {
         keys.add(key);
       }
     }
-    if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (uploadBox) uploadBox.dataset.batchId = batchId;
+    ensureBatchId();
     setMessages(`${videos.length} MP4 file${videos.length === 1 ? "" : "s"} staged. Click Detect Images to start processing.`, rejected);
     renderQueue();
   }
@@ -1434,6 +1514,7 @@ function initUploadPage() {
         .forEach(entry => rejectFile(rejected, entry.name, "Unsupported file type.", "zip"));
       const keys = new Set(queue.map(item => item.key));
       const stagedItems = [];
+      const currentBatchId = ensureBatchId();
 
       for (const entry of supported) {
         const data = extracted[entry.name];
@@ -1453,7 +1534,11 @@ function initUploadPage() {
         }
         try {
           const imageFile = new File([data], entry.name, { type: mimeType, lastModified: archive.lastModified });
-          stagedItems.push(await createQueueItem(imageFile, key, "zip"));
+          stagedItems.push(await createQueueItem(imageFile, key, "zip", {
+            batchId: currentBatchId,
+            zipRelativePath: entry.name,
+            zipFilename: archive.name
+          }));
           keys.add(key);
         } catch {
           rejectFile(rejected, entry.name, "Image could not be read.", "zip");
@@ -1462,8 +1547,6 @@ function initUploadPage() {
 
       queue.push(...stagedItems);
 
-      if (!batchId && queue.length) batchId = `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      if (uploadBox) uploadBox.dataset.batchId = batchId;
       setMessages(
         stagedItems.length <= MAX_BATCH_IMAGES
           ? `This ZIP contains ${stagedItems.length} images. Direct image upload is recommended for batches of 10 or fewer.`
@@ -1541,7 +1624,7 @@ function initUploadPage() {
     rejectedItems.push({ name, reason, source });
   }
 
-  async function createQueueItem(file, key, source) {
+  async function createQueueItem(file, key, source, metadata = {}) {
     const previewUrl = URL.createObjectURL(file);
     const image = new Image();
     try {
@@ -1552,13 +1635,25 @@ function initUploadPage() {
       });
       return {
         localId: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        submissionId: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        batchId: metadata.batchId || ensureBatchId(),
         key,
         file,
         previewUrl,
+        objectUrl: previewUrl,
         dataUrl: createResultPreview(image),
         source,
+        zipRelativePath: metadata.zipRelativePath || "",
+        zipFilename: metadata.zipFilename || "",
         mediaType: "image",
         status: "ready",
+        browserState: "queued",
+        persistenceState: "pending",
+        inferenceEngine: "",
+        modelName: "",
+        originalWidth: image.naturalWidth || image.width,
+        originalHeight: image.naturalHeight || image.height,
+        browserDetections: [],
         errorMessage: "",
         scanId: ""
       };
@@ -1591,6 +1686,17 @@ function initUploadPage() {
   function browserVerificationComplete(item) {
     return Boolean(item?.browserDetections?.length)
       && item.browserDetections.every(detection => detection.humanConfirmed);
+  }
+
+  function nextBrowserVerificationItem() {
+    return queue.find(item => item.localId === activeBrowserVerificationItemId && item.browserState !== "saved")
+      || queue.find(item => item.browserState === "awaiting-verification" || item.browserState === "verified")
+      || queue.find(item => item.browserState === "no-detections" || item.browserState === "failed");
+  }
+
+  function showBrowserVerification(item = nextBrowserVerificationItem()) {
+    activeBrowserVerificationItemId = item?.localId || "";
+    renderBrowserVerification(item);
   }
 
   function drawBrowserDetectionBoxes(item) {
@@ -1649,11 +1755,12 @@ function initUploadPage() {
     status.className = `browser-onnx-status state-${item.browserState || "idle"}`;
     status.setAttribute("role", "status");
     status.textContent = ({
-      "loading-model": "Loading browser model…",
       detecting: "Running browser detection…",
-      "awaiting-verification": item.browserDetections?.length
-        ? "Confirm or correct every detection before saving."
-        : `Nothing met the ${PL_BROWSER_CONFIDENCE_THRESHOLD} confidence threshold. No clean or contamination-free conclusion can be made.`,
+      decoding: "Decoding image…",
+      "loading-model": "Loading browser model…",
+      "awaiting-verification": "Confirm or correct every detection before saving.",
+      verified: "All detections confirmed. Ready to save.",
+      "no-detections": `Nothing met the ${PL_BROWSER_CONFIDENCE_THRESHOLD} confidence threshold. No clean or contamination-free conclusion can be made.`,
       saving: "Saving verified result…",
       saved: "Verified result saved.",
       failed: item.errorMessage || "Browser inference failed."
@@ -1712,6 +1819,7 @@ function initUploadPage() {
           : "Human confirms this detection.";
         checkbox.addEventListener("change", () => {
           detection.humanConfirmed = checkbox.checked;
+          item.browserState = browserVerificationComplete(item) ? "verified" : "awaiting-verification";
           renderBrowserVerification(item);
         });
         confirmLabel.append(checkbox, confirmText);
@@ -1729,18 +1837,36 @@ function initUploadPage() {
       save.disabled = !browserVerificationComplete(item) || item.browserState === "saving" || item.browserState === "saved";
       save.addEventListener("click", () => saveBrowserVerifiedResult(item));
       actions.appendChild(save);
+      if (item.source === "webcam") {
+        const retake = document.createElement("button");
+        retake.type = "button";
+        retake.className = "secondary-btn";
+        retake.textContent = "Retake";
+        retake.disabled = item.browserState === "saving" || item.browserState === "saved";
+        retake.addEventListener("click", () => {
+          removeQueueItem(item.localId);
+          webcamModal.classList.add("active");
+          webcamModal.setAttribute("aria-hidden", "false");
+          startWebcam();
+        });
+        actions.appendChild(retake);
+      }
       panel.appendChild(actions);
 
       image.addEventListener("load", () => drawBrowserDetectionBoxes(item), { once: true });
       browserResizeObserver = new ResizeObserver(() => drawBrowserDetectionBoxes(item));
       browserResizeObserver.observe(image);
       window.requestAnimationFrame(() => drawBrowserDetectionBoxes(item));
-    } else if (item.browserState === "failed" || item.browserState === "awaiting-verification") {
+    } else if (item.browserState === "failed" || item.browserState === "no-detections") {
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "secondary-btn";
-      retry.textContent = "Retry Browser Detection";
+      retry.textContent = item.browserFailurePhase === "save" ? "Retry Save" : "Retry Browser Detection";
       retry.addEventListener("click", () => {
+        if (item.browserFailurePhase === "save") {
+          saveBrowserVerifiedResult(item);
+          return;
+        }
         item.status = "ready";
         item.browserState = "";
         item.browserFailurePhase = "";
@@ -1757,19 +1883,31 @@ function initUploadPage() {
     item.submissionId ||= window.crypto?.randomUUID?.();
     if (!item.submissionId) throw new Error("Browser cannot generate a stable submission UUID.");
     item.inferenceLabel = "Browser ONNX — best.onnx";
-    item.browserState = "loading-model";
+    item.inferenceEngine = "browser-onnx";
+    item.modelName = "best.onnx";
+    item.browserState = "decoding";
     item.browserFailurePhase = "";
     item.browserDetections = [];
     renderQueue();
-    renderBrowserVerification(item);
+    if (activeBrowserVerificationItemId === item.localId) renderBrowserVerification(item);
     await new Promise(resolve => window.requestAnimationFrame(resolve));
-    item.browserState = "detecting";
+    item.browserState = "loading-model";
     renderQueue();
-    renderBrowserVerification(item);
+    if (activeBrowserVerificationItemId === item.localId) renderBrowserVerification(item);
     try {
       const bridge = window.__PURITYLOOP_BROWSER_ONNX__;
       if (!bridge?.enabled) throw new Error("Browser ONNX bridge is unavailable. Reload the Upload page and retry.");
-      plLogInference("browser-onnx", "best.onnx");
+      const browserItems = queue.filter(candidate => shouldUseBrowserOnnxForItem(candidate));
+      const source = item.source === "direct"
+        ? (browserItems.filter(candidate => candidate.source === "direct").length > 1 ? "direct-multiple" : "direct-single")
+        : item.source;
+      const sourceItems = browserItems.filter(candidate => (
+        source === "direct-multiple" ? candidate.source === "direct" : candidate.source === source
+      ));
+      const itemIndex = sourceItems.indexOf(item) + 1;
+      console.info(`[PurityLoop inference]\nengine=browser-onnx\nmodel=best.onnx\nsource=${source}${source === "direct-multiple" || source === "zip" ? `\nitem=${itemIndex}` : ""}`);
+      item.browserState = "detecting";
+      renderQueue();
       const result = await bridge.detect(item.file);
       item.originalWidth = result.originalWidth;
       item.originalHeight = result.originalHeight;
@@ -1778,8 +1916,8 @@ function initUploadPage() {
         verifiedClass: detection.className,
         humanConfirmed: false
       }));
-      item.browserState = "awaiting-verification";
-      item.status = "review_needed";
+      item.browserState = item.browserDetections.length ? "awaiting-verification" : "no-detections";
+      item.status = item.browserDetections.length ? "review_needed" : "completed";
     } catch (error) {
       item.browserState = "failed";
       item.browserFailurePhase = "detect";
@@ -1789,7 +1927,7 @@ function initUploadPage() {
     } finally {
       item.browserDetecting = false;
       renderQueue();
-      renderBrowserVerification(item);
+      showBrowserVerification(nextBrowserVerificationItem());
     }
   }
 
@@ -1848,19 +1986,38 @@ function initUploadPage() {
       const scan = await plSavePredictionPayload(payload, item.file);
       item.scanId = scan.id;
       item.browserState = "saved";
+      item.persistenceState = "saved";
       item.status = "completed";
       saveCompletedPreviewCache();
       renderBatchSummary();
     } catch (error) {
       item.browserState = "failed";
       item.browserFailurePhase = "save";
+      item.persistenceState = "failed";
       item.status = "failed";
       item.errorMessage = `Save failed: ${error?.message || "Verified result could not be saved."}`;
     } finally {
       item.browserSaving = false;
       renderQueue();
-      renderBrowserVerification(item);
+      showBrowserVerification(nextBrowserVerificationItem());
     }
+  }
+
+  async function saveAllBrowserVerified() {
+    const verified = queue.filter(item => item.browserState === "verified" && !item.browserSaving);
+    for (const item of verified) await saveBrowserVerifiedResult(item);
+  }
+
+  function clearCompletedItems() {
+    if (isProcessing) return;
+    const completed = new Set(queue.filter(item => item.status === "completed" || item.browserState === "saved").map(item => item.localId));
+    queue.filter(item => completed.has(item.localId)).forEach(item => URL.revokeObjectURL(item.previewUrl));
+    queue = queue.filter(item => !completed.has(item.localId));
+    activeBrowserVerificationItemId = "";
+    if (!queue.length) batchId = "";
+    renderQueue();
+    renderBatchSummary();
+    showBrowserVerification(nextBrowserVerificationItem());
   }
 
   function renderQueue() {
@@ -1967,13 +2124,28 @@ function initUploadPage() {
   }
 
   function queueStatusLabel(status, item) {
+    const browserStates = {
+      queued: "Queued",
+      decoding: "Decoding",
+      "loading-model": "Loading Model",
+      detecting: "Detecting",
+      "awaiting-verification": "Awaiting Verification",
+      verified: "Verified",
+      saving: "Saving",
+      saved: "Saved",
+      "no-detections": "No Detections",
+      failed: "Failed",
+      cancelled: "Cancelled"
+    };
+    if (item?.inferenceEngine === "browser-onnx" && browserStates[item.browserState]) return browserStates[item.browserState];
     return ({
       ready: "Ready",
       waiting: "Waiting",
       processing: "Analysing",
       completed: "Completed",
       review_needed: item?.browserState === "awaiting-verification" ? "Awaiting Verification" : "Review Needed",
-      failed: "Failed"
+      failed: "Failed",
+      cancelled: "Cancelled"
     })[status] || "Ready";
   }
 
@@ -2056,8 +2228,8 @@ function initUploadPage() {
   async function runBatch(items) {
     if (isProcessing || !items.length) return;
     const retrying = items.every(item => item.status === "failed");
-    const useBrowserOnnx = shouldUseBrowserOnnx(items);
     isProcessing = true;
+    browserQueueCancelled = false;
     plHideUploadProgress();
     if (batchSummaryEl) batchSummaryEl.hidden = true;
     items.forEach(item => { item.status = "waiting"; item.errorMessage = ""; });
@@ -2066,6 +2238,16 @@ function initUploadPage() {
 
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
+      if (browserQueueCancelled && shouldUseBrowserOnnxForItem(item)) {
+        item.status = "cancelled";
+        item.browserState = "cancelled";
+        continue;
+      }
+      if (browserQueuePaused && shouldUseBrowserOnnxForItem(item)) {
+        item.status = "ready";
+        item.browserState = "queued";
+        continue;
+      }
       item.status = "processing";
       if (processingStatusEl) processingStatusEl.textContent = `${retrying ? "Retrying" : "Processing"} ${index + 1} of ${items.length} images`;
       renderQueue();
@@ -2073,7 +2255,7 @@ function initUploadPage() {
         if (item.mediaType === "video") {
           await processVideoQueueItem(item);
           item.status = "completed";
-        } else if (useBrowserOnnx) {
+        } else if (shouldUseBrowserOnnxForItem(item)) {
           await runBrowserDetection(item);
         } else {
           item.inferenceLabel = "Backend PyTorch — best.pt";
@@ -2096,6 +2278,7 @@ function initUploadPage() {
     if (processingStatusEl) processingStatusEl.textContent = "";
     renderQueue();
     renderBatchSummary();
+    showBrowserVerification(nextBrowserVerificationItem());
   }
 
   function saveCompletedPreviewCache() {
@@ -2170,6 +2353,7 @@ function initUploadPage() {
   document.addEventListener("click", onUploadNavigationClick, true);
   window.addEventListener("purityloop:page-cleanup", () => {
     browserResizeObserver?.disconnect();
+    stopWebcam();
     queue.forEach(item => URL.revokeObjectURL(item.previewUrl));
     window.removeEventListener("beforeunload", onUploadBeforeUnload);
     document.removeEventListener("click", onUploadNavigationClick, true);
@@ -2195,7 +2379,7 @@ function initUploadPage() {
 
         <div class="modal-actions" style="margin-top: 18px;">
           <button type="button" class="secondary-btn" id="startWebcamBtn" style="display: none;">Re-enable Camera</button>
-          <button type="button" class="primary-btn" id="captureWebcamBtn" disabled style="width: 100%;">Capture & Run AI Classification</button>
+          <button type="button" class="primary-btn" id="captureWebcamBtn" disabled style="width: 100%;">Scan Item</button>
         </div>
       </div>
     `;

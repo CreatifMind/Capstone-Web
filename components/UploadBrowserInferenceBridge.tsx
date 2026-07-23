@@ -9,8 +9,16 @@ export type UploadBrowserDetectionResult = {
   detections: Detection[];
 };
 
+export type UploadBrowserInferenceFlags = {
+  single: boolean;
+  multi: boolean;
+  zip: boolean;
+  webcam: boolean;
+};
+
 export type UploadBrowserInferenceApi = {
   enabled: boolean;
+  flags: UploadBrowserInferenceFlags;
   detect(file: File): Promise<UploadBrowserDetectionResult>;
 };
 
@@ -29,10 +37,13 @@ function loadImage(url: string) {
   });
 }
 
-export default function UploadBrowserInferenceBridge({ enabled }: { enabled: boolean }) {
+export default function UploadBrowserInferenceBridge({ flags }: { flags: UploadBrowserInferenceFlags }) {
+  const enabled = flags.single;
+
   useEffect(() => {
     const api: UploadBrowserInferenceApi = {
       enabled,
+      flags,
       async detect(file) {
         if (!enabled) throw new Error("Browser ONNX is disabled.");
         if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
@@ -65,7 +76,16 @@ export default function UploadBrowserInferenceBridge({ enabled }: { enabled: boo
     return () => {
       if (window.__PURITYLOOP_BROWSER_ONNX__ === api) delete window.__PURITYLOOP_BROWSER_ONNX__;
     };
-  }, [enabled]);
+  }, [enabled, flags]);
 
-  return <span id="browserOnnxFeatureFlag" data-enabled={String(enabled)} hidden />;
+  return (
+    <span
+      id="browserOnnxFeatureFlag"
+      data-enabled={String(enabled)}
+      data-multi={String(flags.multi)}
+      data-zip={String(flags.zip)}
+      data-webcam={String(flags.webcam)}
+      hidden
+    />
+  );
 }
