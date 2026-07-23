@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import math
 import tempfile
 import traceback
 import threading
@@ -11,14 +12,15 @@ from datetime import datetime, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 from typing import Any, Callable, TypeVar
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from supabase import create_client
 from ultralytics import YOLO
@@ -71,7 +73,22 @@ JOBS_TABLE = "processing_jobs"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = "mock_uploaded_images"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+# The upload folder is configured server-side, not selected with Google Picker.
+# OAuth therefore needs access to that existing folder and its idempotency search.
+OAUTH_DRIVE_SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
+]
 CONFIRMATION_THRESHOLD = 0.85
+BROWSER_CONFIDENCE_THRESHOLD = 0.32
+BROWSER_NMS_IOU_THRESHOLD = 0.70
+BROWSER_MODEL_NAME = "best.onnx"
+BROWSER_MODEL_VERSION = "v3_ffremask_9cls"
+BROWSER_INFERENCE_ENGINE = "browser-onnx"
+BROWSER_MODEL_CLASSES = (
+    "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
+)
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 SUPABASE_RETRY_ATTEMPTS = 6
 SUPABASE_TRANSIENT_ERRORS = (
     httpx.RemoteProtocolError,
@@ -187,18 +204,36 @@ def safe_drive_filename(original_filename: str | None) -> str:
     return f"purityloop_{timestamp}_{safe_name}"
 
 
-def upload_original_to_supabase_storage(file_bytes: bytes, original_filename: str | None, content_type: str,
-                                        database: SupabaseExecutor | None = None) -> dict:
+def upload_original_to_supabase_storage(
+    file_bytes: bytes,
+    original_filename: str | None,
+    content_type: str,
+    database: SupabaseExecutor | None = None,
+    *,
+    object_path: str | None = None,
+) -> dict:
     database = database or SupabaseExecutor(supabase)
     if not database.client:
         raise RuntimeError("Supabase backend env is not configured")
 
-    path = safe_drive_filename(original_filename)
-    database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).upload(
-        path=path,
-        file=file_bytes,
-        file_options={"content-type": content_type, "upsert": "false"},
-    ))
+    path = object_path or safe_drive_filename(original_filename)
+    try:
+        database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).upload(
+            path=path,
+            file=file_bytes,
+            file_options={"content-type": content_type, "upsert": "false"},
+        ))
+    except Exception as exc:
+        duplicate = (
+            getattr(exc, "status_code", None) == 409
+            or getattr(exc, "status", None) == 409
+            or "duplicate" in str(exc).lower()
+            or "already exists" in str(exc).lower()
+        )
+        if not object_path or not duplicate:
+            raise
+        # Deterministic browser paths make an existing object a successful retry.
+        print(f"[Supabase Storage] Reusing deterministic object: {path}")
     public_url = database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).get_public_url(path))
     if isinstance(public_url, dict):
         public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
@@ -294,7 +329,7 @@ def oauth_flow():
 
     return Flow.from_client_secrets_file(
         str(client_path),
-        scopes=DRIVE_SCOPES,
+        scopes=OAUTH_DRIVE_SCOPES,
         redirect_uri=GOOGLE_OAUTH_REDIRECT_URI,
     )
 
@@ -349,7 +384,7 @@ def oauth_drive_credentials():
     from google.auth.transport.requests import Request as GoogleAuthRequest
     from google.oauth2.credentials import Credentials
 
-    credentials = Credentials.from_authorized_user_file(str(token_path), DRIVE_SCOPES)
+    credentials = Credentials.from_authorized_user_file(str(token_path), OAUTH_DRIVE_SCOPES)
     if credentials.expired and credentials.refresh_token:
         credentials.refresh(GoogleAuthRequest())
         save_oauth_token(credentials)
@@ -358,7 +393,13 @@ def oauth_drive_credentials():
     return credentials
 
 
-def upload_original_to_drive_oauth(file_bytes: bytes, original_filename: str | None, content_type: str | None) -> dict:
+def upload_original_to_drive_oauth(
+    file_bytes: bytes,
+    original_filename: str | None,
+    content_type: str | None,
+    *,
+    submission_id: UUID | None = None,
+) -> dict:
     if not GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID:
         raise RuntimeError("GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID is not configured")
 
@@ -368,11 +409,31 @@ def upload_original_to_drive_oauth(file_bytes: bytes, original_filename: str | N
     drive_file_name = safe_drive_filename(original_filename)
     mimetype = content_type or guess_type(drive_file_name)[0] or "application/octet-stream"
     service = build("drive", "v3", credentials=oauth_drive_credentials(), cache_discovery=False)
+    if submission_id:
+        existing = service.files().list(
+            q=(
+                f"trashed = false and '{GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID}' in parents and "
+                f"appProperties has {{ key='purityloop_submission_id' and value='{submission_id}' }}"
+            ),
+            spaces="drive",
+            fields="files(id,name,webViewLink,webContentLink)",
+            pageSize=1,
+        ).execute().get("files", [])
+        if existing:
+            created = existing[0]
+            return {
+                "drive_file_id": created.get("id"),
+                "drive_file_name": created.get("name") or drive_file_name,
+                "drive_web_url": created.get("webViewLink"),
+                "image_url": created.get("webViewLink"),
+            }
     media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mimetype, resumable=False)
     metadata = {
         "name": drive_file_name,
         "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID],
     }
+    if submission_id:
+        metadata["appProperties"] = {"purityloop_submission_id": str(submission_id)}
 
     created = (
         service.files()
@@ -528,6 +589,314 @@ def _image_content_type(filename: str | None, content_type: str | None) -> tuple
     return suffix, normalized
 
 
+def _load_scan(database: SupabaseExecutor, scan_result_id: UUID | str) -> dict | None:
+    response = database.execute(
+        lambda client: client.table(SCAN_RESULTS_TABLE).select("*").eq("id", str(scan_result_id)).maybe_single().execute()
+    )
+    return response.data if response and response.data else None
+
+
+def _load_scan_materials(database: SupabaseExecutor, scan_result_id: UUID | str) -> list[dict]:
+    response = database.execute(
+        lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", str(scan_result_id)).execute()
+    )
+    return response.data or []
+
+
+def _load_review_decisions(database: SupabaseExecutor, scan_result_id: UUID | str) -> list[dict]:
+    response = database.execute(
+        lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").eq(
+            "scan_result_id", str(scan_result_id)
+        ).execute()
+    )
+    return response.data or []
+
+
+def _scan_response(scan: dict, materials: list[dict]) -> dict:
+    return {
+        "scan_result_id": scan["id"],
+        "overall_status": scan.get("overall_status"),
+        "contamination_risk": scan.get("contamination_risk"),
+        "recommended_action": scan.get("recommended_action"),
+        "human_review_required": scan.get("human_review_required"),
+        "overall_confidence": scan.get("overall_confidence"),
+        "storage_provider": scan.get("storage_provider"),
+        "upload_status": scan.get("upload_status"),
+        "drive_upload_status": scan.get("drive_upload_status"),
+        "preview_upload_status": scan.get("preview_upload_status"),
+        "drive_file_id": scan.get("drive_file_id"),
+        "drive_file_name": scan.get("drive_file_name"),
+        "drive_web_url": scan.get("drive_web_url"),
+        "image_url": scan.get("image_url"),
+        "preview_image_url": scan.get("preview_image_url"),
+        "detected_materials": materials,
+    }
+
+
+def _browser_storage_path(submission_id: UUID, filename: str | None) -> str:
+    suffix = (Path(filename or "upload.jpg").suffix or ".jpg").lower()
+    return f"browser-onnx/{submission_id}{suffix}"
+
+
+def persist_scan(
+    file_bytes: bytes,
+    filename: str | None,
+    source_type: str,
+    materials: list[dict],
+    summary: dict,
+    *,
+    source_ref: str | None = None,
+    batch_id: str | None = None,
+    principal: Principal | None = None,
+    content_type: str | None = None,
+    existing_drive_metadata: dict | None = None,
+    frame_time_seconds: float | None = None,
+    database: SupabaseExecutor | None = None,
+    scan_result_id: UUID | None = None,
+    model_version: str | None = None,
+    verified: bool = False,
+) -> dict:
+    """Persist one canonical scan. A supplied UUID enables browser retry recovery."""
+    database = database or SupabaseExecutor(supabase)
+    if not database.client:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    suffix, normalized_type = _image_content_type(filename, content_type)
+    existing_scan = _load_scan(database, scan_result_id) if scan_result_id else None
+    if existing_scan and existing_scan.get("processing_status") == "complete":
+        stored_materials = _load_scan_materials(database, scan_result_id)
+        stored_decisions = _load_review_decisions(database, scan_result_id) if verified else []
+        storage_complete = (
+            existing_scan.get("drive_upload_status") == "uploaded"
+            and existing_scan.get("preview_upload_status") == "uploaded"
+        )
+        if (
+            len(stored_materials) == len(materials)
+            and (not verified or len(stored_decisions) == len(materials))
+            and storage_complete
+        ):
+            return _scan_response(existing_scan, stored_materials)
+    if scan_result_id and not existing_scan:
+        reservation = {
+            "id": str(scan_result_id),
+            "source_type": source_type,
+            "source_name": filename or "uploaded-image",
+            "source_ref": source_ref,
+            "model_version": model_version or BROWSER_MODEL_VERSION,
+            "processing_status": "pending",
+            "upload_status": "pending",
+            "overall_status": "review_required",
+            "human_review_required": True,
+        }
+        if principal and principal.kind == "user":
+            reservation["user_id"] = principal.id
+        try:
+            inserted = database.execute(
+                lambda client: client.table(SCAN_RESULTS_TABLE).insert(reservation).execute().data or []
+            )
+            existing_scan = inserted[0] if inserted else _load_scan(database, scan_result_id)
+        except Exception as exc:
+            if getattr(exc, "code", "") != "23505":
+                raise
+            existing_scan = _load_scan(database, scan_result_id)
+        if not existing_scan:
+            raise HTTPException(status_code=500, detail="Unable to reserve browser scan result.")
+
+    drive_metadata = {
+        "storage_provider": "google_drive_and_supabase_storage",
+        "upload_status": "pending",
+        "drive_upload_status": "pending",
+        "preview_upload_status": "pending",
+        "drive_file_id": None,
+        "drive_file_name": filename or "uploaded-image",
+        "drive_web_url": None,
+        "image_url": None,
+        "preview_image_url": None,
+    }
+    if existing_scan:
+        drive_metadata.update({
+            key: existing_scan.get(key)
+            for key in drive_metadata
+            if existing_scan.get(key) is not None
+        })
+
+    if existing_drive_metadata:
+        drive_metadata.update(existing_drive_metadata)
+        drive_metadata["drive_upload_status"] = "uploaded" if drive_metadata.get("drive_file_id") else "failed"
+    elif not drive_metadata.get("drive_file_id"):
+        try:
+            drive_metadata.update(
+                upload_original_to_drive_oauth(
+                    file_bytes,
+                    filename,
+                    normalized_type,
+                    submission_id=scan_result_id,
+                )
+            )
+            drive_metadata["drive_upload_status"] = "uploaded"
+        except Exception as exc:
+            drive_metadata["drive_upload_status"] = "failed"
+            print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+    if not drive_metadata.get("preview_image_url"):
+        try:
+            preview_upload = upload_original_to_supabase_storage(
+                file_bytes,
+                filename,
+                normalized_type,
+                database,
+                object_path=_browser_storage_path(scan_result_id, filename) if scan_result_id else None,
+            )
+            drive_metadata["preview_image_url"] = preview_upload["public_url"]
+            drive_metadata["preview_upload_status"] = "uploaded"
+        except Exception as exc:
+            drive_metadata["preview_upload_status"] = "failed"
+            print(f"[Supabase Storage] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+
+    drive_metadata["upload_status"] = (
+        "uploaded" if drive_metadata["preview_upload_status"] == "uploaded" else "preview_upload_failed"
+    )
+    scan_row = {
+        **drive_metadata,
+        "source_type": source_type,
+        "source_name": filename or "uploaded-image",
+        "source_ref": source_ref,
+        "batch_id": batch_id,
+        "model_version": model_version or os.getenv("MODEL_VERSION", "yolov8-purityloop"),
+        "processing_status": "complete",
+        **summary,
+    }
+    if verified:
+        scan_row.update({
+            "overall_status": "verified",
+            "human_review_required": False,
+            "review_status": "verified",
+            "recommended_action": "Verified after operator review.",
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        })
+    if principal and principal.kind == "user":
+        scan_row["user_id"] = principal.id
+
+    def recover_scan(client):
+        if scan_result_id:
+            response = client.table(SCAN_RESULTS_TABLE).select("*").eq("id", str(scan_result_id)).maybe_single().execute()
+            return [response.data] if response and response.data else None
+        if source_type == "video_frame" and batch_id:
+            response = client.table(SCAN_RESULTS_TABLE).select("*").eq("batch_id", batch_id).eq(
+                "source_name", scan_row["source_name"]
+            ).maybe_single().execute()
+            return [response.data] if response and response.data else None
+        return None
+
+    if existing_scan:
+        scan_data = database.execute(
+            lambda client: client.table(SCAN_RESULTS_TABLE).update(scan_row).eq(
+                "id", str(scan_result_id)
+            ).execute().data or []
+        )
+    else:
+        insert_row = {**scan_row, **({"id": str(scan_result_id)} if scan_result_id else {})}
+        try:
+            scan_data = database.execute(
+                lambda client: client.table(SCAN_RESULTS_TABLE).insert(insert_row).execute().data or [],
+                recover=recover_scan,
+            )
+        except Exception as exc:
+            if getattr(exc, "code", "") in {"23505"} and scan_result_id:
+                scan_data = recover_scan(database.client) or []
+            elif getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"} and not scan_result_id:
+                scan_data = database.execute(
+                    lambda client: client.table(SCAN_RESULTS_TABLE).insert(
+                        legacy_scan_row(scan_row, filename)
+                    ).execute().data or [],
+                    recover=recover_scan,
+                )
+            else:
+                raise
+    if not scan_data:
+        raise HTTPException(status_code=500, detail="Unable to save scan result.")
+
+    saved_scan_id = scan_data[0]["id"]
+    stored_material_keys = {
+        "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
+        "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category",
+    }
+    linked_materials = []
+    for index, item in enumerate(materials):
+        linked = {
+            key: value for key, value in item.items() if key in stored_material_keys
+        } | {"scan_result_id": saved_scan_id}
+        if scan_result_id:
+            linked["id"] = str(uuid5(scan_result_id, f"material:{index}"))
+        if frame_time_seconds is not None:
+            linked["frame_time_seconds"] = frame_time_seconds
+        linked_materials.append(linked)
+
+    existing_materials = _load_scan_materials(database, saved_scan_id) if scan_result_id else []
+    existing_material_ids = {str(item.get("id")) for item in existing_materials}
+    missing_materials = [
+        item for item in linked_materials if not item.get("id") or str(item["id"]) not in existing_material_ids
+    ]
+    if missing_materials:
+        def recover_materials(client):
+            response = client.table(DETECTED_MATERIALS_TABLE).select("*").eq(
+                "scan_result_id", saved_scan_id
+            ).execute()
+            rows = response.data or []
+            return rows if len(rows) >= len(linked_materials) else None
+
+        try:
+            database.execute(
+                lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(missing_materials).execute().data or [],
+                recover=recover_materials,
+            )
+        except Exception as exc:
+            if frame_time_seconds is not None and getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
+                database.execute(
+                    lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(
+                        [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in missing_materials]
+                    ).execute().data or [],
+                    recover=recover_materials,
+                )
+            elif getattr(exc, "code", "") != "23505":
+                raise
+
+    stored_materials = _load_scan_materials(database, saved_scan_id)
+    if len(stored_materials) != len(linked_materials):
+        raise HTTPException(status_code=500, detail="Unable to retrieve saved detected materials.")
+
+    if verified:
+        existing_decisions = _load_review_decisions(database, saved_scan_id)
+        existing_decision_ids = {str(item.get("id")) for item in existing_decisions}
+        decisions = []
+        materials_by_id = {str(item["id"]): item for item in stored_materials}
+        for index, material in enumerate(materials):
+            material_id = str(uuid5(scan_result_id, f"material:{index}"))
+            decision_id = str(uuid5(scan_result_id, f"review:{index}"))
+            if decision_id in existing_decision_ids:
+                continue
+            category = materials_by_id[material_id]["category"]
+            decisions.append({
+                "id": decision_id,
+                "scan_result_id": saved_scan_id,
+                "detected_material_id": material_id,
+                "chosen_category": category,
+                "disposition": CATEGORY_CLASS_MAP[category],
+                "outcome": "confirmed",
+                "reviewer_email": principal.id if principal else "public",
+            })
+        if decisions:
+            try:
+                database.execute(
+                    lambda client: client.table(REVIEW_DECISIONS_TABLE).insert(decisions).execute().data or []
+                )
+            except Exception as exc:
+                if getattr(exc, "code", "") != "23505":
+                    raise
+
+    saved_scan = _load_scan(database, saved_scan_id) or scan_data[0]
+    return _scan_response(saved_scan, stored_materials)
+
+
 def run_scan(
     file_bytes: bytes,
     filename: str | None,
@@ -542,125 +911,28 @@ def run_scan(
     database: SupabaseExecutor | None = None,
 ) -> dict:
     """Run one image through the existing YOLO path and persist one canonical scan."""
-    database = database or SupabaseExecutor(supabase)
-    if not database.client:
-        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    suffix, normalized_type = _image_content_type(filename, content_type)
+    suffix, _ = _image_content_type(filename, content_type)
     tmp_path = None
-    drive_metadata = {
-        "storage_provider": "google_drive_and_supabase_storage",
-        "upload_status": "pending",
-        "drive_upload_status": "pending",
-        "preview_upload_status": "pending",
-        "drive_file_id": None,
-        "drive_file_name": filename or "uploaded-image",
-        "drive_web_url": None,
-        "image_url": None,
-        "preview_image_url": None,
-    }
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
         result = get_model()(tmp_path, verbose=False)[0]
         materials = to_detected_materials(result)
-        summary = summarize(materials)
-
-        if existing_drive_metadata:
-            drive_metadata.update(existing_drive_metadata)
-            drive_metadata["drive_upload_status"] = "uploaded" if drive_metadata.get("drive_file_id") else "failed"
-        else:
-            try:
-                drive_metadata.update(upload_original_to_drive_oauth(file_bytes, filename, normalized_type))
-                drive_metadata["drive_upload_status"] = "uploaded"
-            except Exception as exc:
-                drive_metadata["drive_upload_status"] = "failed"
-                print(f"[Google Drive] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
-
-        try:
-            preview_upload = upload_original_to_supabase_storage(file_bytes, filename, normalized_type, database)
-            drive_metadata["preview_image_url"] = preview_upload["public_url"]
-            drive_metadata["preview_upload_status"] = "uploaded"
-        except Exception as exc:
-            drive_metadata["preview_upload_status"] = "failed"
-            print(f"[Supabase Storage] Upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
-
-        drive_metadata["upload_status"] = "uploaded" if drive_metadata["preview_upload_status"] == "uploaded" else "preview_upload_failed"
-        scan_row = {
-            **drive_metadata,
-            "source_type": source_type,
-            "source_name": filename or "uploaded-image",
-            "source_ref": source_ref,
-            "batch_id": batch_id,
-            "model_version": os.getenv("MODEL_VERSION", "yolov8-purityloop"),
-            "processing_status": "complete",
-            **summary,
-        }
-        if principal and principal.kind == "user":
-            scan_row["user_id"] = principal.id
-
-        def recover_scan(client):
-            if source_type != "video_frame" or not batch_id:
-                return None
-            response = client.table(SCAN_RESULTS_TABLE).select("*").eq("batch_id", batch_id).eq("source_name", scan_row["source_name"]).maybe_single().execute()
-            return [response.data] if response and response.data else None
-
-        try:
-            scan_data = database.execute(
-                lambda client: client.table(SCAN_RESULTS_TABLE).insert(scan_row).execute().data or [],
-                recover=recover_scan,
-            )
-        except Exception as exc:
-            if getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
-                raise
-            scan_data = database.execute(
-                lambda client: client.table(SCAN_RESULTS_TABLE).insert(legacy_scan_row(scan_row, filename)).execute().data or [],
-                recover=recover_scan,
-            )
-        if not scan_data:
-            raise HTTPException(status_code=500, detail="Unable to save scan result.")
-
-        scan_result_id = scan_data[0]["id"]
-        stored_material_keys = {
-            "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
-            "bbox_x", "bbox_y", "bbox_width", "bbox_height",
-        }
-        linked_materials = [
-            {key: value for key, value in item.items() if key in stored_material_keys} | {"scan_result_id": scan_result_id}
-            for item in materials
-        ]
-        if frame_time_seconds is not None:
-            linked_materials = [{**item, "frame_time_seconds": frame_time_seconds} for item in linked_materials]
-        if linked_materials:
-            def recover_materials(client):
-                response = client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute()
-                rows = response.data or []
-                return rows if len(rows) >= len(linked_materials) else None
-
-            try:
-                stored_materials = database.execute(
-                    lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(linked_materials).execute().data or [],
-                    recover=recover_materials,
-                )
-            except Exception as exc:
-                if frame_time_seconds is None or getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
-                    raise
-                stored_materials = database.execute(
-                    lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(
-                        [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in linked_materials]
-                    ).execute().data or [],
-                    recover=recover_materials,
-                )
-        else:
-            stored_materials = []
-        if len(stored_materials) != len(linked_materials):
-            raise HTTPException(status_code=500, detail="Unable to retrieve saved detected materials.")
-        return {
-            "scan_result_id": scan_result_id,
-            **summary,
-            **drive_metadata,
-            "detected_materials": stored_materials,
-        }
+        return persist_scan(
+            file_bytes,
+            filename,
+            source_type,
+            materials,
+            summarize(materials),
+            source_ref=source_ref,
+            batch_id=batch_id,
+            principal=principal,
+            content_type=content_type,
+            existing_drive_metadata=existing_drive_metadata,
+            frame_time_seconds=frame_time_seconds,
+            database=database,
+        )
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
@@ -672,6 +944,85 @@ class ReviewDecisionInput(BaseModel):
     action: str
     manual_category: str | None = None
     reviewer_email: str | None = None
+
+
+class BrowserVerifiedDetection(BaseModel):
+    detection_index: int
+    class_id: int
+    model_class_name: str
+    verified_class: str
+    confidence: float
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    verification_status: str
+
+
+def validate_browser_detections(
+    raw_detections: Any,
+    image_width: int,
+    image_height: int,
+) -> list[dict]:
+    if not isinstance(raw_detections, list) or not raw_detections:
+        raise HTTPException(status_code=400, detail="At least one verified detection is required.")
+
+    validated = []
+    indexes = set()
+    for raw in raw_detections:
+        try:
+            detection = BrowserVerifiedDetection(**raw)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Verified detection JSON is invalid.") from exc
+        if detection.detection_index < 0 or detection.detection_index in indexes:
+            raise HTTPException(status_code=400, detail="Detection indexes must be unique non-negative integers.")
+        indexes.add(detection.detection_index)
+        if detection.class_id < 0 or detection.class_id >= len(BROWSER_MODEL_CLASSES):
+            raise HTTPException(status_code=400, detail="Detection class ID is outside the fixed model contract.")
+        expected_name = BROWSER_MODEL_CLASSES[detection.class_id]
+        if detection.model_class_name != expected_name:
+            raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
+        if detection.verified_class not in BROWSER_MODEL_CLASSES:
+            raise HTTPException(status_code=400, detail="Verified class is outside the fixed model contract.")
+        if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
+            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+        coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
+        if not all(math.isfinite(value) for value in coordinates):
+            raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
+        x1 = min(max(detection.x1, 0), image_width)
+        y1 = min(max(detection.y1, 0), image_height)
+        x2 = min(max(detection.x2, 0), image_width)
+        y2 = min(max(detection.y2, 0), image_height)
+        if x2 <= x1 or y2 <= y1:
+            raise HTTPException(status_code=400, detail="Detection bounding box must have positive area.")
+        battery_detected = detection.model_class_name == "battery" or detection.verified_class == "battery"
+        required_status = "battery-confirmed" if battery_detected else "verified"
+        if detection.verification_status != required_status:
+            detail = (
+                "Battery detections require explicit human confirmation."
+                if battery_detected
+                else "Every detection must be human verified."
+            )
+            raise HTTPException(status_code=400, detail=detail)
+
+        category = "food_organics" if detection.verified_class == "food_organic" else detection.verified_class
+        original_category = "food_organics" if detection.model_class_name == "food_organic" else detection.model_class_name
+        recyclable_status, contaminant_status = material_status(category)
+        validated.append({
+            "_detection_index": detection.detection_index,
+            "material_name": detection.verified_class,
+            "category": category,
+            "original_category": original_category if original_category != category else None,
+            "confidence": round(detection.confidence, 4),
+            "recyclable_status": recyclable_status,
+            "contaminant_status": contaminant_status,
+            "bbox_x": round((x1 / image_width) * 100, 4),
+            "bbox_y": round((y1 / image_height) * 100, 4),
+            "bbox_width": round(((x2 - x1) / image_width) * 100, 4),
+            "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
+            **evaluate_material(category, detection.confidence),
+        })
+    return sorted(validated, key=lambda item: item["_detection_index"])
 
 
 class UploadStartInput(BaseModel):
@@ -1025,6 +1376,79 @@ def analytics(days: int = 7, principal: Principal = Depends(require_scope("scan:
         "accepted": sum(1 for row in rows if row.get("overall_status") == "accepted"),
         "average_confidence": round(sum(float(row.get("overall_confidence") or 0) for row in rows) / len(rows), 4) if rows else 0,
     }
+
+
+@app.post("/api/scans/browser-verified")
+async def save_browser_verified_scan(
+    file: UploadFile = File(...),
+    submission_id: UUID = Form(...),
+    original_width: int = Form(...),
+    original_height: int = Form(...),
+    model_name: str = Form(...),
+    model_version: str = Form(...),
+    inference_engine: str = Form(...),
+    confidence_threshold: float = Form(...),
+    nms_iou_threshold: float = Form(...),
+    verified_detections: str = Form(...),
+    verification_outcome: str = Form(...),
+    principal: Principal = Depends(require_scope("scan:write")),
+):
+    if model_name != BROWSER_MODEL_NAME or model_version != BROWSER_MODEL_VERSION:
+        raise HTTPException(status_code=400, detail="Browser model identity does not match the fixed contract.")
+    if inference_engine != BROWSER_INFERENCE_ENGINE:
+        raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
+    if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
+        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+    if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
+        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+    if verification_outcome != "verified":
+        raise HTTPException(status_code=400, detail="Browser detections must be human verified before saving.")
+
+    file_bytes = await file.read()
+    if not file_bytes or len(file_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be non-empty and no larger than 10 MB.")
+    _, normalized_type = _image_content_type(file.filename, file.content_type)
+    try:
+        with Image.open(BytesIO(file_bytes)) as image:
+            actual_width, actual_height = image.size
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Uploaded image is invalid or corrupted.") from exc
+    if actual_width <= 0 or actual_height <= 0:
+        raise HTTPException(status_code=400, detail="Uploaded image dimensions are invalid.")
+    if (original_width, original_height) != (actual_width, actual_height):
+        raise HTTPException(status_code=400, detail="Browser image dimensions do not match the uploaded image.")
+
+    try:
+        raw_detections = json.loads(verified_detections)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Verified detection JSON is invalid.") from exc
+    materials = validate_browser_detections(raw_detections, actual_width, actual_height)
+    summary = summarize(materials)
+    summary.update({
+        "overall_status": "verified",
+        "human_review_required": False,
+        "recommended_action": "Verified after operator review.",
+    })
+    print(
+        "[PurityLoop inference]\n"
+        "engine=browser-onnx\n"
+        "model=best.onnx\n"
+        "source=upload-page"
+    )
+    return persist_scan(
+        file_bytes,
+        file.filename,
+        "image",
+        materials,
+        summary,
+        source_ref="browser-onnx:best.onnx",
+        principal=principal,
+        content_type=normalized_type,
+        scan_result_id=submission_id,
+        model_version=model_version,
+        verified=True,
+    )
 
 
 @app.post("/api/reviews")
