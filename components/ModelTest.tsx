@@ -179,8 +179,10 @@ export default function ModelTest() {
     link.download = `${debug.filename.replace(/\.[^.]+$/, "") || "model-test"}-debug.json`;
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 1_000);
   };
 
   return (
