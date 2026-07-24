@@ -66,11 +66,7 @@ export default function ReviewPage() {
               <button id="mobileToggle" className="mobile-toggle" aria-label="Open navigation"><i className="fa-solid fa-bars" /></button>
               <div className="topbar-title"><h1>Review Workspace</h1><p>Inspect, verify and manage AI scan results</p></div>
             </div>
-            <div className="topbar-right">
-              <div data-theme-slot="app" />
-              <div className="date-pill"><i className="fa-solid fa-clock" aria-hidden="true" /><span id="liveClock">00:00:00 AM</span></div>
-              <button className="topbar-icon-btn" aria-label="Notifications"><i className="fa-solid fa-bell" /><span className="notif-dot" /></button>
-            </div>
+            <div className="topbar-right" data-topbar-actions data-topbar-variant="standard" />
           </header>
 
           <div className="page-body review-page-body">
@@ -99,7 +95,7 @@ export default function ReviewPage() {
               </div>
 
               <section id="reviewHistoryPanel" className="panel bbox-card review-history-panel" aria-labelledby="reviewHistoryTitle">
-                <header className="review-panel-header"><div><h2 id="reviewHistoryTitle">Scan History</h2><p id="historyRange" aria-live="polite">Loading scans</p></div><button id="openFullHistory" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-table-list" aria-hidden="true" />View Full History</button></header>
+                <header className="review-panel-header"><div><h2 id="reviewHistoryTitle">Scan History</h2><p id="historyRange" aria-live="polite">Loading scans</p></div><div className="review-history-tools"><button id="exportReviewHistoryPdf" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-file-pdf" aria-hidden="true" />PDF</button><button id="exportReviewHistoryExcel" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-file-excel" aria-hidden="true" />Excel</button><button id="openFullHistory" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-table-list" aria-hidden="true" />View Full History</button></div></header>
                 <div id="reviewHistoryList" className="review-history-list" aria-live="polite"><div className="review-list-skeleton"><span /><span /><span /></div></div>
                 <div id="historyPageButtons" className="history-pagination review-pagination" aria-label="Scan history pagination" />
               </section>
@@ -107,20 +103,21 @@ export default function ReviewPage() {
               <section id="reviewSelectedPanel" className="panel bbox-card review-selected-panel is-active-tab" aria-labelledby="liveStreamTitle">
                 <header className="review-panel-header review-selected-header"><h2 id="liveStreamTitle" title="No scan selected">No scan selected</h2><span id="resultSourceState">No saved result</span></header>
                 <div className="review-selected-content">
-                  <section className="stream-panel review-stream-panel" aria-label="Selected scan image">
-                    <div className="stream-canvas-wrap"><canvas id="liveInferenceCanvas" aria-label="Waste sorting classification overlay" /></div>
-                  </section>
+                  <div className="review-primary-column">
+                    <section className="stream-panel review-stream-panel" aria-label="Selected scan image">
+                      <div className="stream-canvas-wrap"><canvas id="liveInferenceCanvas" aria-label="Waste sorting classification overlay" /></div>
+                    </section>
+                    <div className="review-form-row">
+                      <section className="review-decision-card" aria-labelledby="reviewDecisionTitle">
+                        <label className="review-category-field"><span id="reviewDecisionTitle">Correct category</span><select id="reviewCategorySelect" aria-label="Correct category" disabled><option value="">Select category</option>{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select></label>
+                        <dl className="review-selected-meta sr-only" aria-label="Selected scan metadata"><div><dt>Source</dt><dd id="reviewMetaSource">-</dd></div><div><dt>Uploaded</dt><dd id="reviewMetaTime">-</dd></div><div><dt>Status</dt><dd id="reviewMetaStatus">-</dd></div></dl>
+                      </section>
+                    </div>
+                  </div>
                   <aside className="review-inspector">
-                    <section className="mini-panel detection-panel bbox-card"><h3>AI Prediction</h3><div id="liveFeed" className="live-feed"><div className="feed-empty">Select a scan to view detected materials.</div></div></section>
+                    <section className="mini-panel detection-panel bbox-card" aria-label="AI Prediction"><div id="liveFeed" className="live-feed"><div className="feed-empty">Select a scan to view detected materials.</div></div></section>
                     <section className="mini-panel action-panel bbox-card" id="liveActionPanel"><div className="panel-heading-row"><h3>Recommended Route</h3><span id="liveActionBadge">Waiting</span></div><div id="liveActionText" className="recommendation-detail"><strong>Waiting for scan result</strong><p>Select a scan to view the recommended route.</p></div></section>
                   </aside>
-
-                  <div className="review-form-row">
-                    <section className="review-decision-card" aria-labelledby="reviewDecisionTitle">
-                      <label className="review-category-field"><span id="reviewDecisionTitle">Correct category</span><select id="reviewCategorySelect" aria-label="Correct category" disabled><option value="">Select category</option>{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select></label>
-                      <dl className="review-selected-meta sr-only" aria-label="Selected scan metadata"><div><dt>Source</dt><dd id="reviewMetaSource">-</dd></div><div><dt>Uploaded</dt><dd id="reviewMetaTime">-</dd></div><div><dt>Status</dt><dd id="reviewMetaStatus">-</dd></div></dl>
-                    </section>
-                  </div>
                 </div>
                 <p id="reviewActionFeedback" className="review-action-feedback" role="status" aria-live="polite" />
                 <div className="review-action-bar">
@@ -140,7 +137,7 @@ export default function ReviewPage() {
           <div id="reviewHistoryModal" className="modal-overlay review-history-modal" role="presentation" aria-hidden="true">
             <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="reviewHistoryModalTitle" tabIndex={-1}>
               <button type="button" className="modal-close" data-review-history-close aria-label="Close full history"><i className="fa-solid fa-xmark" /></button>
-              <header><h2 id="reviewHistoryModalTitle">Audit History</h2><p id="reviewHistoryModalRange" aria-live="polite">Loading scans</p></header>
+              <header><div><h2 id="reviewHistoryModalTitle">Audit History</h2><p id="reviewHistoryModalRange" aria-live="polite">Loading scans</p></div><div className="review-history-tools"><button id="exportAuditHistoryPdf" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-file-pdf" aria-hidden="true" />PDF</button><button id="exportAuditHistoryExcel" className="secondary-btn review-history-trigger" type="button"><i className="fa-solid fa-file-excel" aria-hidden="true" />Excel</button></div></header>
               <div className="review-history-modal-body">
                 <div className="review-history-modal-filters">
                   <input id="fullHistorySearch" type="search" placeholder="Search scans" aria-label="Search full history" />
@@ -151,6 +148,19 @@ export default function ReviewPage() {
                 <div className="table-wrap"><table className="ledger-table"><thead><tr><th>Timestamp</th><th>Preview</th><th>Category</th><th>Class</th><th>Weight</th><th>AI Confidence</th><th>Status</th><th>Action</th></tr></thead><tbody id="fullHistoryTableBody" /></table></div>
               </div>
               <div id="fullHistoryPageButtons" className="history-pagination" aria-label="Full history pagination" />
+            </section>
+          </div>
+          <div id="auditReviewModal" className="modal-overlay audit-review-modal" aria-hidden="true">
+            <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="auditReviewTitle" tabIndex={-1}>
+              <button type="button" className="modal-close" data-audit-review-close aria-label="Close review">×</button>
+              <h2 id="auditReviewTitle">Review result</h2>
+              <p id="auditReviewDescription">Confirm the AI result, correct the category, or reject this result.</p>
+              <div className="audit-review-body">
+                <section className="audit-review-snapshot"><strong id="auditReviewBanner">SAVED AI RESULT</strong><div className="audit-review-summary"><img id="auditReviewPreview" alt="Selected scan preview" hidden /><div><p><strong>AI prediction:</strong> <span id="auditReviewPrediction">-</span></p><p><strong>Confidence:</strong> <span id="auditReviewConfidence">-</span></p><p><strong>Weight:</strong> <span id="auditReviewWeight">-</span></p><p><strong>Classification:</strong> <span id="auditReviewClass">-</span></p><p><strong>Final category:</strong> <span id="auditReviewFinalCategory">-</span></p><p><strong>Status:</strong> <span id="auditReviewStatus">-</span></p><p><strong>Timestamp:</strong> <span id="auditReviewTimestamp">-</span></p><p id="auditReviewQuantityRow" hidden><strong>Quantity:</strong> <span id="auditReviewQuantity">-</span></p></div></div></section>
+                <label className="audit-review-category">Manual category<select id="auditReviewCategory" aria-label="Manual category">{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select></label>
+                <p id="auditReviewFeedback" className="audit-review-feedback" role="status" aria-live="polite" />
+              </div>
+              <div className="modal-actions"><button id="auditReviewVerify" type="button" className="primary-btn">Verify Result</button><button id="auditReviewReject" type="button" className="danger-btn">Reject Result</button></div>
             </section>
           </div>
         </main>

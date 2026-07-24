@@ -66,27 +66,7 @@ const html = `
           </div>
         </div>
 
-        <div class="topbar-right">
-          <div data-theme-slot="app"></div>
-
-          <!-- Live Clock / Date Pill -->
-          <div class="date-pill">
-            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
-            <span id="liveClock">00:00:00 AM</span>
-          </div>
-
-          <!-- Notification Button -->
-          <button class="topbar-icon-btn" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="notif-dot"></span>
-          </button>
-
-          <!-- User Badge -->
-          <div class="user-badge">
-            <div class="user-badge-avatar">AD</div>
-            <span style="margin-left: 6px;">Admin Mode</span>
-          </div>
-        </div>
+        <div class="topbar-right" data-topbar-actions data-topbar-variant="standard"></div>
       </header>
 
       <div class="page-body upload-page-body">
@@ -129,10 +109,12 @@ const html = `
                 </div>
               </div>
               <div id="uploadQueue" class="upload-queue" aria-label="Selected image queue"><p class="upload-queue-empty">No images selected.</p></div>
-              <div id="batchProcessingStatus" class="batch-processing-status" aria-live="polite"></div>
-              <div class="upload-batch-actions">
-                <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled><i class="fa-solid fa-play"></i> Detect Images</button>
-                <button type="button" id="clearUploadBtn" class="text-btn" disabled>Clear Selection</button>
+              <div class="upload-progress-actions">
+                <div id="batchProcessingStatus" class="batch-processing-status" aria-live="polite"></div>
+                <div class="upload-batch-actions">
+                  <button type="button" id="scanImageBtn" class="primary-btn upload-scan-btn" disabled><i class="fa-solid fa-play"></i> Detect Images</button>
+                  <button type="button" id="clearUploadBtn" class="text-btn" disabled>Clear Selection</button>
+                </div>
               </div>
               <div id="batchSummary" class="batch-summary" hidden aria-live="polite"></div>
           </section>

@@ -151,24 +151,6 @@ function initActiveNav() {
   });
 }
 
-/* ── 4. TOPBAR ACCOUNT ACTIONS ── */
-function initTopbarAccountActions() {
-  const topbarRight = document.querySelector('.topbar-right');
-  const userBadge = topbarRight?.querySelector('.user-badge');
-  if (!topbarRight || !userBadge || topbarRight.querySelector('.topbar-account-actions')) return;
-
-  const actions = document.createElement('div');
-  actions.className = 'topbar-account-actions';
-  actions.innerHTML = `
-    <a href="/login" class="topbar-logout-btn" aria-label="Logout">
-      <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
-      <span>Logout</span>
-    </a>
-  `;
-
-  userBadge.insertAdjacentElement('afterend', actions);
-}
-
 /* ── 5. TOAST NOTIFICATIONS ── */
 window.showToast = function (message, type = 'success') {
   let container = document.getElementById('toastContainer');
@@ -752,7 +734,6 @@ function initPurityLoopTheme() {
   runThemeInit('sidebar init', initSidebar);
   runThemeInit('live clock init', initLiveClock);
   runThemeInit('active nav init', initActiveNav);
-  runThemeInit('topbar account init', initTopbarAccountActions);
   runThemeInit('landing nav init', initLandingNav);
   runThemeInit('AOS init', initAOS);
   runThemeInit('GSAP init', initGSAP, revealLandingFallback);

@@ -63,25 +63,7 @@ const html = `
           </div>
         </div>
 
-        <div class="topbar-right">
-          <button id="exportHistory" class="secondary-btn history-export" type="button"><i class="fa-solid fa-download" aria-hidden="true"></i> Export History</button>
-          <div data-theme-slot="app"></div>
-
-          <div class="date-pill">
-            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
-            <span id="liveClock">00:00:00 AM</span>
-          </div>
-
-          <button class="topbar-icon-btn" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="notif-dot"></span>
-          </button>
-
-          <div class="user-badge review-badge">
-            <div class="user-badge-avatar">QA</div>
-            <span>0 review needed</span>
-          </div>
-        </div>
+        <div class="topbar-right"><button id="exportHistory" class="secondary-btn history-export" type="button"><i class="fa-solid fa-download" aria-hidden="true"></i> Export History</button><div data-topbar-actions data-topbar-variant="standard"></div></div>
       </header>
 
       <div class="page-body">

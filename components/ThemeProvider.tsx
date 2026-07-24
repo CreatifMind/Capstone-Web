@@ -159,6 +159,34 @@ function ThemeSelectorMounts() {
   );
 }
 
+function TopbarActions({ variant }: { variant: string }) {
+  const analytics = variant === "analytics";
+  return (
+    <>
+      {analytics && <><label className="analytics-date-control" htmlFor="analyticsDate"><span className="sr-only">Date selector</span><i className="fa-regular fa-calendar" aria-hidden="true" /><input id="analyticsDate" type="date" aria-label="Date selector" /></label><button id="analyticsClearDate" className="secondary-btn" type="button" disabled>All History</button></>}
+      <div className="date-pill"><i className="fa-solid fa-clock" aria-hidden="true" /><span id="liveClock">00:00:00 AM</span></div>
+      <ThemeSelector placement="app" />
+      <button className="topbar-icon-btn" aria-label="Notifications"><i className="fa-solid fa-bell" aria-hidden="true" /><span className="notif-dot" /></button>
+      <div className="user-badge"><div className="user-badge-avatar">AD</div><span>Admin Mode</span></div>
+      <a href="/login" className="topbar-logout-btn" aria-label="Logout"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /><span>Logout</span></a>
+    </>
+  );
+}
+
+function TopbarActionMounts() {
+  const pathname = usePathname();
+  const [slots, setSlots] = useState<HTMLElement[]>([]);
+
+  useLayoutEffect(() => {
+    const syncSlots = () => setSlots(Array.from(document.querySelectorAll<HTMLElement>("[data-topbar-actions]")));
+    syncSlots();
+    window.addEventListener("purityloop:page-ready", syncSlots);
+    return () => window.removeEventListener("purityloop:page-ready", syncSlots);
+  }, [pathname]);
+
+  return <>{slots.map((slot, index) => createPortal(<TopbarActions variant={slot.dataset.topbarVariant || "standard"} />, slot, `topbar-actions-${index}`))}</>;
+}
+
 export default function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>("system");
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
@@ -210,6 +238,7 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
     <ThemeContext.Provider value={value}>
       {children}
       <ThemeSelectorMounts />
+      <TopbarActionMounts />
     </ThemeContext.Provider>
   );
 }

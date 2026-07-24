@@ -168,16 +168,16 @@ function plEvaluateMaterial(material, scan = {}) {
   };
 }
 
-function plIsClean(material) {
-  return plEvaluateMaterial(material).materialClass === "recyclable";
+function plIsClean(material, scan = {}) {
+  return plEvaluateMaterial(material, scan).materialClass === "recyclable";
 }
 
-function plIsRecyclable(material) {
-  return plEvaluateMaterial(material).materialClass === "recyclable";
+function plIsRecyclable(material, scan = {}) {
+  return plEvaluateMaterial(material, scan).materialClass === "recyclable";
 }
 
-function plIsContaminatedMaterial(material) {
-  return plEvaluateMaterial(material).materialClass === "contaminant";
+function plIsContaminatedMaterial(material, scan = {}) {
+  return plEvaluateMaterial(material, scan).materialClass === "contaminant";
 }
 
 function plConfidencePercent(value) {
@@ -189,7 +189,7 @@ function plConfidencePercent(value) {
 function plScanNeedsReview(scan) {
   const materials = plSafeArray(scan?.detected_materials);
   return materials.length
-    ? materials.some(material => plEvaluateMaterial(material).reviewRequired)
+    ? materials.some(material => plEvaluateMaterial(material, scan).reviewRequired)
     : Boolean(scan?.human_review_required) || plNormalizeStatus(scan?.overall_status) === "review_required";
 }
 
@@ -320,6 +320,36 @@ function plSaveScanResult(scan) {
   return scan;
 }
 
+function plHistoryStatusBucket(scan) {
+  const status = plNormalizeStatus(scan?.review_status || scan?.overall_status);
+  if (["rejected", "quarantined"].includes(status)) return "rejected";
+  return scan?.human_review_required || status === "review_required" ? "needs_review" : "confirmed";
+}
+
+function plUpdateHistorySummary(previousScan, nextScan) {
+  const summary = plScanHistoryMeta?.summary;
+  const fields = { confirmed: "confirmed", needs_review: "needs_review", rejected: "rejected" };
+  const previous = plHistoryStatusBucket(previousScan), next = plHistoryStatusBucket(nextScan);
+  if (previous === next || !Object.values(fields).every(field => Number.isFinite(Number(summary?.[field])))) return;
+  summary[fields[previous]] = Math.max(0, Number(summary[fields[previous]]) - 1);
+  summary[fields[next]] = Number(summary[fields[next]]) + 1;
+  plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
+}
+
+async function plFetchScanResultById(scanId) {
+  const apiBase = plApiBaseUrl();
+  if (!apiBase || !scanId) throw new Error("Review persistence is not configured for this scan.");
+  let response;
+  try {
+    response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scanId)}`, { headers: await plAuthHeaders() });
+  } catch {
+    throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(response.status === 404 ? "The deployed backend is missing the scan lookup route. Restart or deploy the updated FastAPI backend." : (payload.detail || "Unable to retrieve the persisted scan for review."));
+  return plNormalizeScan(payload.scan_result);
+}
+
 function plGetScanResultById(id) {
   if (!id) return null;
   return plGetScanResults().find(scan => scan.id === id) || null;
@@ -405,7 +435,7 @@ function plScanToLedger(scan, material = {}, index = 0) {
     source: scan.source_name || "Uploaded image",
     category: plNormalizeCategory(decision.category),
     materialClass: decision.materialClass,
-    weight: plFormatKg(getEstimatedWeightKg(material.category || material.material_name)),
+    weight: plDisplayWeight(material, scan),
     confidence: decision.confidence,
     confidenceText: `${Math.round(decision.confidence)}%`,
     status: decision.displayStatus,
@@ -421,15 +451,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   let persistedScan = scan;
   let persistedMaterial = material;
   if (!persistedMaterial?.id) {
-    let response;
-    try {
-      response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scan.id)}`, { headers: await plAuthHeaders() });
-    } catch {
-      throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
-    }
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(response.status === 404 ? "The deployed backend is missing the scan lookup route. Restart or deploy the updated FastAPI backend." : (payload.detail || "Unable to retrieve the persisted scan for review."));
-    persistedScan = plNormalizeScan(payload.scan_result);
+    persistedScan = await plFetchScanResultById(scan.id);
     const candidates = plSafeArray(persistedScan?.detected_materials).filter(item => (
       plCategoryKey(item.category) === plCategoryKey(material?.category) &&
       Math.abs(Number(item.bbox_x || 0) - Number(material?.bbox_x || 0)) < 0.01 &&
@@ -449,7 +471,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(response.status === 404 ? "The scan or detected material no longer exists in Supabase." : (payload.detail || "Unable to save review."));
-  const updatedScan = plNormalizeScan({
+  let updatedScan = plNormalizeScan({
     ...persistedScan,
     ...payload.scan_result,
     review_status: payload.scan_result?.review_status || (action === "verify" ? "verified" : "rejected"),
@@ -464,8 +486,19 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
       review_decision: payload.decision || { chosen_category: chosenCategory, outcome: action === "verify" ? "confirmed" : "rejected" }
     } : item)
   });
-  if (updatedScan) plSaveScanResult(updatedScan);
-  return { ...payload, scan: updatedScan };
+  let refreshWarning = "";
+  try {
+    updatedScan = await plFetchScanResultById(persistedScan.id);
+  } catch (error) {
+    refreshWarning = "Review saved, but current scan reload failed. Showing saved response; retry if details look stale.";
+    console.warn("PurityLoop: review saved but canonical scan reload failed.", error);
+  }
+  if (updatedScan) {
+    plSaveScanResult(updatedScan);
+    plUpdateHistorySummary(scan, updatedScan);
+    window.dispatchEvent(new Event("purityloop:scan-history-refreshed"));
+  }
+  return { ...payload, scan: updatedScan, refreshWarning };
 }
 
 const FINAL_CATEGORIES = ["general trash", "food organic", "metal", "plastic", "glass", "textile", "paper", "battery", "cardboard"];
@@ -497,6 +530,22 @@ function getEstimatedWeightKg(material, count = 1) {
   return plMaterialEstimate(material).averageWeightKg * count;
 }
 
+function plDisplayWeightKg(material, scan = {}) {
+  const values = [material?.estimated_weight_kg, material?.estimated_weight, material?.weight_kg, material?.weight, scan?.estimated_weight_kg, scan?.estimated_weight, scan?.weight_kg, scan?.weight];
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  const category = material?.review_decision?.chosen_category || material?.category || material?.material_name;
+  return category ? getEstimatedWeightKg(category) : null;
+}
+
+function plDisplayWeight(material, scan = {}) {
+  const weight = plDisplayWeightKg(material, scan);
+  return weight === null ? "-" : plFormatKg(weight);
+}
+
 function getEstimatedResaleValueRm(material, count = 1) {
   const estimate = plMaterialEstimate(material);
   return estimate.averageWeightKg * count * estimate.pricePerKgRm;
@@ -504,6 +553,37 @@ function getEstimatedResaleValueRm(material, count = 1) {
 
 function plFormatKg(value) {
   return `${(Number(value) || 0).toFixed(3)} kg`;
+}
+
+function plEscapeHtml(value) {
+  return String(value ?? "").replace(/[&<>\"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function plHistoryExportRecords(rows) {
+  return rows.map(row => ({
+    timestamp: row.time || "-", source: row.source || row.scan?.source_name || "Uploaded image", category: row.category || "Unknown",
+    materialClass: row.materialClass || "Unknown", weight: row.weight ?? "-", confidence: `${row.confidenceText || row.confidence || 0}%`,
+    status: row.status || "Unknown", preview: row.preview || ""
+  }));
+}
+
+function plDownloadHistoryExcel(rows, filename) {
+  const headers = ["Timestamp", "Source", "Category", "Class", "Weight", "AI Confidence", "Status"];
+  const quote = value => `"${String(value).replace(/"/g, '""')}"`;
+  const csv = [headers, ...plHistoryExportRecords(rows).map(row => [row.timestamp, row.source, row.category, row.materialClass, row.weight, row.confidence, row.status])].map(record => record.map(quote).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function plPrintHistoryPdf(rows, title, popup = window.open("", "_blank", "width=1000,height=760")) {
+  if (!popup) { showToast("Allow pop-ups to export PDF.", "error"); return false; }
+  const records = plHistoryExportRecords(rows);
+  const cells = row => `<tr><td>${row.preview ? `<img src="${plEscapeHtml(row.preview)}" alt="${plEscapeHtml(row.category)} preview">` : "-"}</td><td>${plEscapeHtml(row.timestamp)}</td><td>${plEscapeHtml(row.source)}</td><td>${plEscapeHtml(row.category)}</td><td>${plEscapeHtml(row.materialClass)}</td><td>${plEscapeHtml(row.weight)}</td><td>${plEscapeHtml(row.confidence)}</td><td>${plEscapeHtml(row.status)}</td></tr>`;
+  popup.document.open();
+  popup.document.write(`<!doctype html><html><head><title>${plEscapeHtml(title)}</title><style>body{font:12px Arial,sans-serif;color:#17251e;margin:28px}h1{margin:0 0 6px;font-size:22px}p{margin:0 0 20px;color:#5f7168}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d9e4dc;padding:8px;text-align:left;vertical-align:middle}th{background:#edf5f0;font-size:10px;text-transform:uppercase;letter-spacing:.05em}img{display:block;width:72px;height:54px;object-fit:cover;border-radius:4px;background:#eef2ef}@media print{body{margin:12mm}tr{break-inside:avoid}}</style></head><body><h1>${plEscapeHtml(title)}</h1><p>Exported ${plEscapeHtml(new Date().toLocaleString())} · ${records.length} scan${records.length === 1 ? "" : "s"}</p><table><thead><tr><th>Preview</th><th>Timestamp</th><th>Source</th><th>Category</th><th>Class</th><th>Weight</th><th>AI confidence</th><th>Status</th></tr></thead><tbody>${records.map(cells).join("") || '<tr><td colspan="8">No scans to export.</td></tr>'}</tbody></table></body></html>`);
+  popup.document.close();
+  Promise.all([...popup.document.images].map(image => image.complete ? Promise.resolve() : new Promise(resolve => { image.onload = image.onerror = resolve; }))).then(() => { popup.focus(); popup.print(); });
+  return true;
 }
 
 function plFormatRm(value) {
@@ -2919,9 +2999,9 @@ function initResultPage() {
     if (reviewRejectButton) reviewRejectButton.disabled = true;
     if (reviewCategorySelect) reviewCategorySelect.disabled = true;
     try {
-      await plSaveReview(activeScan, activeReviewMaterial, reviewCategorySelect.value, outcome);
+      const savedReview = await plSaveReview(activeScan, activeReviewMaterial, reviewCategorySelect.value, outcome);
       activeScan = plGetScanResultById(activeScan.id) || activeScan;
-      showToast(outcome === "rejected" ? "Result rejected." : "Review saved.", "success");
+      showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
       renderFinderGrid();
       loadActiveImage();
       if (isReviewWorkspace && activeScan) {
@@ -2973,8 +3053,11 @@ function initResultPage() {
     requestAnimationFrame(() => document.body.classList.add("result-detected"));
 
     const materials = activeScan?.detected_materials?.length ? activeScan.detected_materials : plBoxesToMaterials(boxes);
-    const confirmedMaterials = materials.filter(material => !plEvaluateMaterial(material).reviewRequired && plEvaluateMaterial(material).materialClass !== "unknown");
-    const recyclableCount = confirmedMaterials.filter(plIsRecyclable).length;
+    const confirmedMaterials = materials.filter(material => {
+      const decision = plEvaluateMaterial(material, activeScan);
+      return !decision.reviewRequired && decision.materialClass !== "unknown";
+    });
+    const recyclableCount = confirmedMaterials.filter(material => plIsRecyclable(material, activeScan)).length;
     const purityPct = confirmedMaterials.length ? Math.round((recyclableCount / confirmedMaterials.length) * 100) : 0;
 
     if (scannedVal) scannedVal.textContent = `${boxes.length} items`;
@@ -3005,27 +3088,38 @@ function initResultPage() {
     const reviewNeededEl = document.getElementById("liveReviewNeeded");
     if (marketValueEl) marketValueEl.textContent = plFormatRm(materials.reduce((sum, material) => sum + getEstimatedResaleValueRm(material), 0));
     if (reviewNeededEl) {
-      const reviewCount = materials.filter(material => plEvaluateMaterial(material).reviewRequired).length;
+      const reviewCount = materials.filter(material => plEvaluateMaterial(material, activeScan).reviewRequired).length;
       reviewNeededEl.textContent = reviewCount ? `${reviewCount} item${reviewCount === 1 ? "" : "s"}` : "No manual review";
     }
 
     // Next Steps Action Guide Generator
     if (actionText) {
-      const reviewCount = materials.filter(material => plEvaluateMaterial(material).reviewRequired).length;
+      const reviewCount = materials.filter(material => plEvaluateMaterial(material, activeScan).reviewRequired).length;
       const primary = materials[0];
-      const primaryDecision = plEvaluateMaterial(primary);
+      const primaryDecision = plEvaluateMaterial(primary, activeScan);
 
       let actionHtml = "";
-      if (reviewCount) {
-        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card review-required";
+      const confirmedAiStatus = primaryDecision.materialClass === "contaminant" ? "Confirmed Contaminant" : "Confirmed Recyclable";
+      const reviewStatusFooter = status => `<dl class="review-route-status"><div><dt>AI status</dt><dd>${status}</dd></div></dl>`;
+      if (primaryDecision.decisionStatus === "rejected") {
+        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card route-rejected";
+        if (actionBadge) actionBadge.textContent = "Rejected";
+        actionHtml = isReviewWorkspace ? `<div class="review-route-content"><span>Final decision</span><strong>Result Rejected</strong><p>This result has been rejected and will not be routed as a confirmed detection.</p>${reviewStatusFooter("Rejected")}</div>` : `<dl class="action-status-sheet"><div><dt>Status</dt><dd>Rejected</dd></div></dl>`;
+      } else if (primaryDecision.decisionStatus === "verified") {
+        if (actionPanel) actionPanel.className = `mini-panel action-panel bbox-card route-verified ${primaryDecision.materialClass === "contaminant" ? "contaminant-confirmed" : "recovery-clear"}`;
+        if (actionBadge) actionBadge.textContent = "Verified";
+        const description = primaryDecision.materialClass === "contaminant" ? "This verified contaminant should be removed from the recyclable stream." : "This verified result is ready for the indicated sorting stream.";
+        actionHtml = isReviewWorkspace ? `<div class="review-route-content"><span>Sorting destination</span><strong>${primaryDecision.disposalRoute || "Route by material stream"}</strong><p>${description}</p>${reviewStatusFooter(confirmedAiStatus)}</div>` : `<dl class="action-status-sheet"><div><dt>Status</dt><dd>${confirmedAiStatus}</dd></div><div><dt>Recommended route</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div></dl>`;
+      } else if (reviewCount) {
+        if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card route-review";
         if (actionBadge) actionBadge.textContent = "Awaiting human review";
         actionHtml = isReviewWorkspace ? `
-          <div class="review-action-outcome is-review">
+          <div class="review-route-content">
             <span>Sorting decision</span>
             <strong>Manual Audit Queue</strong>
             <p>Choose a verified category before this item is routed.</p>
+            ${reviewStatusFooter("Low confidence — review required")}
           </div>
-          <dl class="action-status-sheet"><div><dt>AI status</dt><dd>Low confidence - review required</dd></div></dl>
         ` : `
           <dl class="action-status-sheet">
             <div><dt>Status</dt><dd>Awaiting human review</dd></div>
@@ -3035,15 +3129,16 @@ function initResultPage() {
           <p class="action-callout"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> This item will be routed to the Manual Audit Queue until a reviewer confirms the correct category.</p>
         `;
       } else {
-        if (actionPanel) actionPanel.className = `mini-panel action-panel bbox-card ${primaryDecision.materialClass === "contaminant" ? "contaminant-confirmed" : "recovery-clear"}`;
+        if (actionPanel) actionPanel.className = `mini-panel action-panel bbox-card route-auto ${primaryDecision.materialClass === "contaminant" ? "contaminant-confirmed" : "recovery-clear"}`;
         if (actionBadge) actionBadge.textContent = "Auto-confirmed";
+        const description = primaryDecision.materialClass === "contaminant" ? "This confirmed contaminant should be removed from the recyclable stream." : "This result is ready for the indicated sorting stream.";
         actionHtml = isReviewWorkspace ? `
-          <div class="review-action-outcome">
+          <div class="review-route-content">
             <span>Sorting destination</span>
             <strong>${primaryDecision.disposalRoute || "Route by material stream"}</strong>
-            <p>This result is ready for the indicated sorting stream.</p>
+            <p>${description}</p>
+            ${reviewStatusFooter(confirmedAiStatus)}
           </div>
-          <dl class="action-status-sheet"><div><dt>AI status</dt><dd>${primaryDecision.displayStatus}</dd></div></dl>
         ` : `
           <dl class="action-status-sheet">
             <div><dt>Status</dt><dd>${primaryDecision.displayStatus}</dd></div>
@@ -3059,10 +3154,11 @@ function initResultPage() {
       liveFeed.innerHTML = "";
 
       const primaryMaterial = materials[0];
-      const primaryDecision = plEvaluateMaterial(primaryMaterial);
+      const primaryDecision = plEvaluateMaterial(primaryMaterial, activeScan);
       const primaryWeight = getEstimatedWeightKg(primaryDecision.category);
       const primaryValue = getEstimatedResaleValueRm(primaryDecision.category);
       const primaryRoute = PL_CATEGORY_ROUTES[primaryDecision.category] || "Route by material stream";
+      const quantity = primaryMaterial?.quantity ?? primaryMaterial?.count ?? activeScan?.quantity ?? 1;
       const materialIcon = {
         battery: "fa-battery-full", plastic: "fa-bottle-water", metal: "fa-cube", glass: "fa-wine-bottle",
         paper: "fa-file-lines", cardboard: "fa-box", textile: "fa-shirt", food_organics: "fa-leaf", general_trash: "fa-trash-can"
@@ -3076,7 +3172,6 @@ function initResultPage() {
           <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
           <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel}</span>
         </div>
-        <div class="material-confidence"><strong>${Math.round(primaryDecision.confidence)}%</strong><span>Confidence</span></div>
       ` : `
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
         <div>
@@ -3089,14 +3184,18 @@ function initResultPage() {
 
       const metrics = document.createElement("dl");
       metrics.className = "material-metrics";
-      metrics.innerHTML = `
-        <div><dt>Estimated Weight${isReviewWorkspace ? `<span class="metric-qty">Qty: 1</span>` : ""}</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
+      metrics.innerHTML = isReviewWorkspace ? `
+        <div><dt>Confidence</dt><dd>${Math.round(primaryDecision.confidence)}%</dd></div>
+        <div><dt>Estimated Weight</dt><dd>${plDisplayWeight(primaryMaterial, activeScan)}</dd></div>
+        <div><dt>Quantity</dt><dd>${quantity}</dd></div>
+      ` : `
+        <div><dt>Estimated Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
         <div><dt>Illustrative Recovery Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
-        ${isReviewWorkspace ? "" : `<div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>`}
+        <div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
       `;
       liveFeed.appendChild(metrics);
 
-      const unresolved = materials.find(material => plEvaluateMaterial(material).reviewRequired);
+      const unresolved = materials.find(material => plEvaluateMaterial(material, activeScan).reviewRequired);
       if (isReviewWorkspace) {
         setReviewWorkspaceControls(materials);
       } else if (unresolved?.id) {
@@ -3142,9 +3241,9 @@ function initResultPage() {
           confirm.textContent = "Saving…";
           feedback.textContent = "";
           try {
-            await plSaveReview(activeScan, unresolved, select.value, "confirmed");
+            const savedReview = await plSaveReview(activeScan, unresolved, select.value, "confirmed");
             activeScan = plGetScanResultById(activeScan.id) || activeScan;
-            showToast("Human review saved.", "success");
+            showToast(savedReview.refreshWarning || "Human review saved.", savedReview.refreshWarning ? "warning" : "success");
             renderFinderGrid();
             loadActiveImage();
           } catch (error) {
@@ -3341,11 +3440,8 @@ function initReviewWorkspace() {
   const selectedId = () => state.selectedId;
   const scanRow = scan => {
     const material = scan.detected_materials?.[0] || {};
-    const decision = plEvaluateMaterial(material);
-    const rejected = ["rejected", "quarantined"].includes(plNormalizeStatus(scan.overall_status));
-    const needsReview = Boolean(scan.human_review_required);
-    const decisionStatus = rejected ? "rejected" : needsReview ? "review_needed" : "confirmed";
-    return { scan, id: scan.id, scanId: scan.id, source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(material.category || material.material_name || "Unknown"), materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus, status: rejected ? "Rejected" : needsReview ? "Review Needed" : scan.review_status || scan.overall_status === "verified" ? "Verified" : "Confirmed" };
+    const decision = plEvaluateMaterial(material, scan);
+    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(material.category || material.material_name || "Unknown"), materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
   };
   const rows = () => plGetScanResults().map(scanRow);
   const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
@@ -3411,7 +3507,64 @@ function initReviewWorkspace() {
   document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort || (button.id.includes("Confidence") ? "confidence" : "timestamp"); state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".review-filter-toolbar .history-sort").forEach(item => item.classList.toggle("active", item.dataset.sort === next)); applyFilters(); }));
   let modalOpener = null; let modalState = { page: 1, sort: "timestamp", direction: "desc" }; let remote = { items: [], total: 0 };
   const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
-  const closeFullHistory = () => { modal.classList.remove("active"); modal.setAttribute("aria-hidden", "true"); document.body.classList.remove("review-history-modal-open"); modalOpener?.focus(); };
+  const auditModal = document.getElementById("auditReviewModal"), auditTitle = document.getElementById("auditReviewTitle"), auditDescription = document.getElementById("auditReviewDescription"), auditBanner = document.getElementById("auditReviewBanner"), auditPreview = document.getElementById("auditReviewPreview"), auditPrediction = document.getElementById("auditReviewPrediction"), auditConfidence = document.getElementById("auditReviewConfidence"), auditWeight = document.getElementById("auditReviewWeight"), auditClass = document.getElementById("auditReviewClass"), auditFinalCategory = document.getElementById("auditReviewFinalCategory"), auditStatus = document.getElementById("auditReviewStatus"), auditTimestamp = document.getElementById("auditReviewTimestamp"), auditQuantity = document.getElementById("auditReviewQuantity"), auditQuantityRow = document.getElementById("auditReviewQuantityRow"), auditCategory = document.getElementById("auditReviewCategory"), auditFeedback = document.getElementById("auditReviewFeedback"), auditVerify = document.getElementById("auditReviewVerify"), auditReject = document.getElementById("auditReviewReject");
+  let auditScan = null, auditMaterial = null, auditSubmitting = false, auditMode = "review", auditSession = null;
+  const closeFullHistory = () => { auditSession = null; modal.classList.remove("active"); modal.setAttribute("aria-hidden", "true"); document.body.classList.remove("review-history-modal-open"); modalOpener?.focus(); };
+  const restoreAuditHistory = async refresh => {
+    const session = auditSession; auditSession = null;
+    if (!session) return;
+    modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open");
+    if (refresh) await fetchFullHistory();
+    requestAnimationFrame(() => {
+      modal.querySelector(".review-history-modal-body")?.scrollTo({ top: session.scrollTop });
+      const target = [...fullBody.querySelectorAll("[data-full-history-action]")].find(button => button.dataset.fullHistoryAction === session.scanId);
+      (target || session.opener)?.focus();
+    });
+  };
+  const closeAuditReview = async (force = false, refresh = false) => {
+    if (!auditModal || (auditSubmitting && !force)) return;
+    auditModal.classList.remove("active", "audit-readonly"); auditModal.setAttribute("aria-hidden", "true"); document.body.classList.remove("audit-review-modal-open");
+    auditScan = null; auditMaterial = null; auditFeedback.textContent = ""; await restoreAuditHistory(refresh);
+  };
+  const resolveAuditScan = async (scanId, materialId = "") => {
+    let scan = remote.items.find(item => item.id === scanId) || plGetScanResultById(scanId);
+    if (!scan?.detected_materials?.length || (materialId && !scan.detected_materials.some(item => item.id === materialId))) {
+      const response = await fetch(`${plApiBaseUrl()}/api/scans/${encodeURIComponent(scanId)}`, { headers: await plAuthHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || "Unable to load selected scan.");
+      scan = plNormalizeScan(payload.scan_result);
+    }
+    return scan;
+  };
+  const openAuditDetails = async (scanId, materialId, mode, opener) => {
+    if (!auditModal || auditSubmitting) return;
+    try {
+      const scan = await resolveAuditScan(scanId, materialId); const material = scan.detected_materials?.find(item => item.id === materialId) || scan.detected_materials?.[0];
+      if (!material) throw new Error("Selected scan has no reviewable material.");
+      const decision = plEvaluateMaterial(material, scan), category = scan.verified_category || material.review_decision?.chosen_category || material.category;
+      auditScan = scan; auditMaterial = material; auditMode = mode;
+      auditSession = { scanId, materialId, opener, scrollTop: modal.querySelector(".review-history-modal-body")?.scrollTop || 0 };
+      auditTitle.textContent = mode === "view" ? `View ${plNormalizeCategory(category)} Result` : `Review ${plNormalizeCategory(material.category)}`;
+      auditDescription.textContent = mode === "view" ? "View the saved scan details and review decision." : "Confirm the AI result, correct the category, or reject this result.";
+      auditBanner.textContent = mode === "view" ? ({ verified: "VERIFIED RESULT", rejected: "REJECTED RESULT", confirmed: decision.materialClass === "contaminant" ? "CONFIRMED CONTAMINANT" : "CONFIRMED RECYCLABLE" }[decision.decisionStatus] || decision.displayStatus.toUpperCase()) : "LOW CONFIDENCE - HUMAN AUDIT REQUIRED";
+      auditPrediction.textContent = plNormalizeCategory(material.category); auditConfidence.textContent = `${Math.round(plConfidencePercent(material.confidence || scan.overall_confidence))}%`; auditWeight.textContent = plDisplayWeight(material, scan); auditClass.textContent = plNormalizeCategory(decision.materialClass); auditFinalCategory.textContent = plNormalizeCategory(category); auditStatus.textContent = decision.displayStatus; auditTimestamp.textContent = plFormatScanTime(scan); auditCategory.value = plCategoryKey(category);
+      const quantity = material.quantity ?? material.count ?? scan.quantity;
+      auditQuantityRow.hidden = quantity === null || quantity === undefined || quantity === ""; if (!auditQuantityRow.hidden) auditQuantity.textContent = String(quantity);
+      const preview = scan.preview_image_url || scan.image_url || "";
+      auditPreview.hidden = !preview; if (preview) auditPreview.src = preview; else auditPreview.removeAttribute("src");
+      auditModal.classList.toggle("audit-readonly", mode === "view"); modal.classList.remove("active"); modal.setAttribute("aria-hidden", "true"); document.body.classList.remove("review-history-modal-open"); auditModal.classList.add("active"); auditModal.setAttribute("aria-hidden", "false"); document.body.classList.add("audit-review-modal-open");
+      requestAnimationFrame(() => auditModal.querySelector("[role=dialog]")?.focus());
+    } catch (error) { showToast(error.message || "Unable to open review.", "error"); opener?.focus(); }
+  };
+  const saveAuditReview = async outcome => {
+    if (auditMode !== "review" || auditSubmitting || !auditScan || !auditMaterial) return;
+    auditSubmitting = true; auditFeedback.textContent = ""; auditVerify.disabled = true; auditReject.disabled = true; auditCategory.disabled = true;
+    try {
+      const savedReview = await plSaveReview(auditScan, auditMaterial, auditCategory.value, outcome);
+      render(); await closeAuditReview(true, true); showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
+    } catch (error) { auditFeedback.textContent = error.message || "Unable to save review."; }
+    finally { auditSubmitting = false; auditVerify.disabled = false; auditReject.disabled = false; auditCategory.disabled = false; }
+  };
   const fetchFullHistory = async () => {
     const params = new URLSearchParams({ limit: String(pageSize), offset: String((modalState.page - 1) * pageSize), sort: modalState.sort, direction: modalState.direction });
     if (fullSearch?.value.trim()) params.set("search", fullSearch.value.trim());
@@ -3421,19 +3574,52 @@ function initReviewWorkspace() {
     try { const response = await fetch(`${plApiBaseUrl()}/api/scans?${params}`, { headers: await plAuthHeaders() }); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
     catch (error) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); }
     const historyRows = remote.items.map(scanRow);
-    fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>-</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-select="${escape(row.id)}">Review</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
-    fullBody.querySelectorAll("[data-full-history-select]").forEach(button => button.addEventListener("click", () => { const scan = remote.items.find(item => item.id === button.dataset.fullHistorySelect); if (scan) { plSaveScanResult(scan); select(scan.id); render(); } closeFullHistory(); }));
+    fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>${escape(row.weight)}</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-action="${escape(row.id)}" data-full-history-material="${escape(row.materialId)}" data-full-history-mode="${row.decisionStatus === "review_needed" ? "review" : "view"}">${row.decisionStatus === "review_needed" ? "Review" : "View"}</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
+    fullBody.querySelectorAll("[data-full-history-action]").forEach(button => button.addEventListener("click", () => openAuditDetails(button.dataset.fullHistoryAction, button.dataset.fullHistoryMaterial, button.dataset.fullHistoryMode, button)));
     const pages = Math.max(1, Math.ceil(remote.total / pageSize)); if (fullRange) fullRange.textContent = `Showing ${remote.items.length ? (modalState.page - 1) * pageSize + 1 : 0} to ${Math.min(modalState.page * pageSize, remote.total)} of ${remote.total} total`;
     renderPager(fullPager, modalState.page, pages, page => { modalState.page = page; fetchFullHistory(); });
   };
+  const fullHistoryParams = (limit, offset) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset), sort: modalState.sort, direction: modalState.direction });
+    if (fullSearch?.value.trim()) params.set("search", fullSearch.value.trim());
+    if (fullStatus?.value) params.set("status", fullStatus.value);
+    if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
+    return params;
+  };
+  const fetchAllFullHistory = async () => {
+    const collected = []; let offset = 0; let total = 0;
+    do {
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?${fullHistoryParams(200, offset)}`, { headers: await plAuthHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || "Unable to export history.");
+      const items = (payload.items || []).map(plNormalizeScan).filter(Boolean); collected.push(...items); total = Number(payload.total) || 0; offset += items.length;
+      if (!items.length) break;
+    } while (offset < total);
+    return collected.map(scanRow);
+  };
+  const setExporting = (ids, exporting) => ids.forEach(id => { const button = document.getElementById(id); if (button) button.disabled = exporting; });
+  const exportAuditHistory = async kind => {
+    const ids = ["exportAuditHistoryPdf", "exportAuditHistoryExcel"]; const popup = kind === "pdf" ? window.open("", "_blank", "width=1000,height=760") : null;
+    setExporting(ids, true);
+    try { const historyRows = await fetchAllFullHistory(); kind === "pdf" ? plPrintHistoryPdf(historyRows, "PurityLoop Audit History", popup) : plDownloadHistoryExcel(historyRows, "purityloop-audit-history.csv"); }
+    catch (error) { popup?.close(); showToast(error.message || "Unable to export history.", "error"); }
+    finally { setExporting(ids, false); }
+  };
   const openFullHistory = event => { modalOpener = event.currentTarget; modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory(); };
   document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
+  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", () => plPrintHistoryPdf(sortedRows(), "PurityLoop Scan History"));
+  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", () => plDownloadHistoryExcel(sortedRows(), "purityloop-scan-history.csv"));
+  document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", () => exportAuditHistory("pdf"));
+  document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", () => exportAuditHistory("excel"));
   modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
+  auditModal?.querySelectorAll("[data-audit-review-close]").forEach(button => button.addEventListener("click", closeAuditReview)); auditModal?.addEventListener("click", event => { if (event.target === auditModal) closeAuditReview(); });
+  auditVerify?.addEventListener("click", () => saveAuditReview("confirmed")); auditReject?.addEventListener("click", () => saveAuditReview("rejected"));
   [fullSearch, fullDate, fullStatus].forEach(input => input?.addEventListener(input === fullStatus ? "change" : "input", () => { modalState.page = 1; fetchFullHistory(); }));
   document.getElementById("fullHistorySortTimestamp")?.addEventListener("click", () => { modalState.sort = "timestamp"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.getElementById("fullHistorySortConfidence")?.addEventListener("click", () => { modalState.sort = "confidence"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.addEventListener("keydown", event => { if (!modal.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeFullHistory(); return; } if (event.key !== "Tab") return; const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
-  window.addEventListener("purityloop:scan-history-refreshed", render); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open"); });
+  document.addEventListener("keydown", event => { if (!auditModal?.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeAuditReview(); return; } if (event.key !== "Tab") return; const focusable = [...auditModal.querySelectorAll('button:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
+  window.addEventListener("purityloop:scan-history-refreshed", render); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open", "audit-review-modal-open"); });
   render();
 }
 

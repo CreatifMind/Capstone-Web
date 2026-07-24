@@ -63,24 +63,7 @@ const html = `
           </div>
         </div>
 
-        <div class="topbar-right">
-          <div data-theme-slot="app"></div>
-
-          <div class="date-pill">
-            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
-            <span id="liveClock">00:00:00 AM</span>
-          </div>
-
-          <button class="topbar-icon-btn" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="notif-dot"></span>
-          </button>
-
-          <div class="user-badge live-badge">
-            <div class="user-badge-avatar">AI</div>
-            <span>Processing</span>
-          </div>
-        </div>
+        <div class="topbar-right" data-topbar-actions data-topbar-variant="standard"></div>
       </header>
 
       <div class="page-body">

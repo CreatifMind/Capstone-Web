@@ -66,30 +66,7 @@ const html = `
           </div>
         </div>
 
-        <div class="topbar-right">
-          <div data-theme-slot="app"></div>
-
-          <label class="analytics-date-control" for="analyticsDate">
-            <span class="sr-only">Date selector</span>
-            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-            <input id="analyticsDate" type="date" aria-label="Date selector" />
-          </label>
-          <button id="analyticsClearDate" class="secondary-btn" type="button" disabled>All History</button>
-          <div class="date-pill">
-            <i class="fa-solid fa-clock" style="margin-right: 4px;"></i>
-            <span id="liveClock">00:00:00 AM</span>
-          </div>
-
-          <button class="topbar-icon-btn" aria-label="Notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="notif-dot"></span>
-          </button>
-
-          <div class="user-badge">
-            <div class="user-badge-avatar">AD</div>
-            <span style="margin-left: 6px;">Admin Mode</span>
-          </div>
-        </div>
+        <div class="topbar-right" data-topbar-actions data-topbar-variant="analytics"></div>
       </header>
 
       <div class="page-body">
