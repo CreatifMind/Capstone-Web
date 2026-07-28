@@ -3902,14 +3902,16 @@ input:checked+.slider:before {
 }
 
 .password-wrap input {
-  padding-right: 48px;
+  padding-right: 56px;
 }
 
-#passwordToggle {
+.password-wrap [data-login-password-toggle] {
   position: absolute;
-  right: 12px;
+  right: 16px;
   top: 50%;
   transform: translateY(-50%);
+  margin: 0;
+  padding: 0;
   background: none;
   border: none;
   color: var(--muted);

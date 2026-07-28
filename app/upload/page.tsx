@@ -46,7 +46,7 @@ const html = `
             <div class="user-role">MRF Review Mode</div>
           </div>
         </div>
-        <a href="/login" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
+        <a href="/auth/signout" class="logout-btn" style="width: 100%; margin-top: 10px; display: flex;">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span class="logout-text">Logout</span>
         </a>

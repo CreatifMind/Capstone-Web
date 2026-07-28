@@ -168,7 +168,7 @@ function TopbarActions({ variant }: { variant: string }) {
       <ThemeSelector placement="app" />
       <button className="topbar-icon-btn" aria-label="Notifications"><i className="fa-solid fa-bell" aria-hidden="true" /><span className="notif-dot" /></button>
       <div className="user-badge"><div className="user-badge-avatar">AD</div><span>Admin Mode</span></div>
-      <a href="/login" className="topbar-logout-btn" aria-label="Logout"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /><span>Logout</span></a>
+      <a href="/auth/signout" className="topbar-logout-btn" aria-label="Logout"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /><span>Logout</span></a>
     </>
   );
 }

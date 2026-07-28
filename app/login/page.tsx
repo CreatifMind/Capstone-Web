@@ -1,6 +1,8 @@
 import PageHtml from "@/components/PageHtml";
+import LoginFormBridge from "@/components/LoginFormBridge";
 
 export const metadata = { title: "PurityLoop AI | Sign In" };
+export const dynamic = "force-dynamic";
 
 const html = `
 <div class="login-split">
@@ -109,7 +111,7 @@ const html = `
       </div>
 
       <!-- Login Form -->
-      <form id="loginForm" action="/upload" method="post" novalidate>
+      <form id="loginForm" action="/auth/login" method="post">
 
         <div class="form-group">
           <label for="email">Email Address</label>
@@ -122,7 +124,7 @@ const html = `
           <div class="password-wrap">
             <input type="password" id="password" name="password" placeholder="Enter your password"
               autocomplete="current-password" required />
-            <button type="button" id="passwordToggle" aria-label="Toggle password visibility">
+            <button type="button" data-login-password-toggle aria-label="Show password" aria-pressed="false">
               <i class="fa-solid fa-eye"></i>
             </button>
           </div>
@@ -134,14 +136,6 @@ const html = `
         </button>
 
       </form>
-
-      <div class="create-account-panel">
-        <div>
-          <span>Need an account?</span>
-          <strong>Create an account to manage your workspace</strong>
-        </div>
-        <a href="/create-account" class="create-account-link">Create Account</a>
-      </div>
 
       <!-- Trust indicators -->
       <div class="login-trust-row">
@@ -157,6 +151,6 @@ const html = `
   </div>
 `;
 
-export default function Page() {
-  return <PageHtml bodyClass="login-body premium-login dark-ai dark-login" html={html} />;
+export default function Page({ searchParams }: { searchParams?: { reason?: string; error?: string } }) {
+  return <><PageHtml bodyClass="login-body premium-login dark-ai dark-login" html={html} /><LoginFormBridge inactive={searchParams?.reason === "inactive"} error={searchParams?.error} /></>;
 }

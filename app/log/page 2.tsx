@@ -50,7 +50,7 @@ const html = `
             <div class="user-role">HITL Supervisor</div>
           </div>
         </div>
-        <a href="/login" class="logout-btn">
+        <a href="/auth/signout" class="logout-btn">
           <i class="fa-solid fa-right-from-bracket"></i>
           <span class="logout-text">Logout</span>
         </a>

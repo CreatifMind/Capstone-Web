@@ -66,8 +66,8 @@ def _new_supabase_client():
 
 # Request handlers may keep using this client. Workers always create their own executor.
 supabase = _new_supabase_client()
-SCAN_RESULTS_TABLE = "mock_scan_results"
-DETECTED_MATERIALS_TABLE = "mock_detected_materials"
+SCAN_RESULTS_TABLE = "scan_results"
+DETECTED_MATERIALS_TABLE = "detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"

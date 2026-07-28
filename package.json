@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "copy:onnxruntime-assets": "node scripts/copy-onnxruntime-assets.mjs",
     "postinstall": "pnpm run copy:onnxruntime-assets",
     "dev": "next dev",
@@ -11,6 +12,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "fflate": "^0.8.3",
     "next": "^14.2.16",

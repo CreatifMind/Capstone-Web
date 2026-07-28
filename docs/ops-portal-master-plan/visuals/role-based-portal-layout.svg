@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="2560" viewBox="0 0 2400 2560" role="img" aria-labelledby="title desc">
+  <title id="title">PurityLoop role-based portal layout</title>
+  <desc id="desc">A visual draft showing the shared portal shell and seven role-specific workspaces for the PurityLoop internal operations portal.</desc>
+  <style>
+    .bg{fill:#f3f7f4}.panel{fill:#fff;stroke:#d8e5dd;stroke-width:2}.sub{fill:#f7faf8;stroke:#d8e5dd;stroke-width:2}.green{fill:#146c43}.mint{fill:#e5f3eb}.amber{fill:#fff2d6}.red{fill:#fde8e7}.line{stroke:#c8d8cf;stroke-width:2}.h1{font:700 44px Arial,sans-serif;fill:#12352a}.h2{font:700 28px Arial,sans-serif;fill:#12352a}.h3{font:700 20px Arial,sans-serif;fill:#12352a}.body{font:400 18px Arial,sans-serif;fill:#315447}.small{font:400 15px Arial,sans-serif;fill:#547164}.white{font:700 18px Arial,sans-serif;fill:#fff}.badge{font:700 15px Arial,sans-serif;fill:#146c43}.muted{font:400 15px Arial,sans-serif;fill:#70887d}.kpi{font:700 30px Arial,sans-serif;fill:#12352a}.btn{fill:#146c43}.outline{fill:#fff;stroke:#146c43;stroke-width:2}.danger{fill:#b3261e}.warn{fill:#a35b00}
+  </style>
+  <rect class="bg" width="2400" height="2560"/>
+  <text x="100" y="105" class="h1">PurityLoop · Role-based internal portal</text>
+  <text x="100" y="142" class="body">Layout draft — each role sees one primary task, clear hand-offs, and the evidence needed to act.</text>
+
+  <!-- shared shell -->
+  <rect x="100" y="190" width="2200" height="270" rx="18" class="panel"/>
+  <rect x="100" y="190" width="350" height="270" rx="18" class="green"/>
+  <text x="140" y="245" class="white">PURITYLOOP</text>
+  <text x="140" y="285" class="white">Operations portal</text>
+  <line x1="140" y1="315" x2="410" y2="315" stroke="#7cc39c" stroke-width="2"/>
+  <text x="140" y="355" class="white">Role-specific navigation</text>
+  <text x="140" y="400" class="white">Active role always visible</text>
+  <text x="500" y="250" class="h2">Page title and purpose</text>
+  <text x="500" y="285" class="body">Only show pages the active role can open.</text>
+  <rect x="1830" y="225" width="180" height="50" rx="25" class="mint"/>
+  <text x="1860" y="257" class="badge">Role switcher</text>
+  <rect x="2040" y="225" width="190" height="50" rx="25" class="sub"/>
+  <text x="2070" y="257" class="badge">Notifications</text>
+  <text x="500" y="380" class="muted">Desktop: navigation + task workspace. Mobile: one focused task pane at a time.</text>
+
+  <!-- operator -->
+  <rect x="100" y="520" width="1060" height="550" rx="18" class="panel"/>
+  <text x="135" y="570" class="h2">01 · Operator — My Review Queue</text>
+  <text x="135" y="602" class="body">Suggest labels for every flagged object in one assigned image.</text>
+  <rect x="135" y="635" width="270" height="380" rx="12" class="sub"/>
+  <text x="160" y="680" class="h3">MY ASSIGNED WORK</text>
+  <rect x="160" y="705" width="210" height="34" rx="17" class="red"/><text x="180" y="728" class="badge">1 Critical</text>
+  <text x="160" y="775" class="body">3 High</text><text x="160" y="815" class="body">8 Normal</text>
+  <rect x="155" y="855" width="225" height="55" rx="10" class="mint"/><text x="170" y="889" class="h3">PL-0248 · High</text>
+  <text x="160" y="950" class="muted">Urgency order locked</text>
+  <rect x="435" y="635" width="690" height="380" rx="12" class="sub"/>
+  <text x="465" y="680" class="h3">CASE PL-0248</text><text x="900" y="680" class="warn">HIGH · 02:17 left</text>
+  <rect x="465" y="710" width="300" height="185" rx="8" fill="#dbe7e0"/>
+  <rect x="515" y="755" width="90" height="75" fill="none" stroke="#146c43" stroke-width="4"/>
+  <rect x="650" y="780" width="70" height="55" fill="none" stroke="#a35b00" stroke-width="4"/>
+  <text x="805" y="750" class="h3">Object 1 · Plastic</text><text x="805" y="780" class="body">42% · Low confidence</text>
+  <rect x="805" y="805" width="245" height="42" rx="7" class="panel"/><text x="825" y="832" class="body">Suggested label: Plastic</text>
+  <text x="805" y="880" class="h3">Object 2 · Needs review</text>
+  <text x="805" y="910" class="body">Cause: Small object</text>
+  <rect x="465" y="930" width="175" height="48" rx="8" class="outline"/><text x="487" y="961" class="badge">Add missed object</text>
+  <rect x="860" y="930" width="230" height="48" rx="8" class="btn"/><text x="889" y="961" class="white">Submit suggestions</text>
+
+  <!-- team lead -->
+  <rect x="1240" y="520" width="1060" height="550" rx="18" class="panel"/>
+  <text x="1275" y="570" class="h2">02 · Team Lead — Approval and SLA Queue</text>
+  <text x="1275" y="602" class="body">Validate suggestions, then protect queue health.</text>
+  <rect x="1275" y="635" width="280" height="380" rx="12" class="sub"/>
+  <text x="1300" y="680" class="h3">NEEDS ACTION</text>
+  <rect x="1300" y="705" width="185" height="34" rx="17" class="red"/><text x="1315" y="728" class="badge">2 Critical</text>
+  <text x="1300" y="775" class="body">4 SLA breach</text><text x="1300" y="815" class="body">18 pending approvals</text>
+  <rect x="1295" y="855" width="225" height="55" rx="10" class="amber"/><text x="1310" y="889" class="h3">PL-0248 · Critical</text>
+  <text x="1300" y="950" class="muted">Batch: low-risk only</text>
+  <rect x="1585" y="635" width="680" height="380" rx="12" class="sub"/>
+  <text x="1615" y="680" class="h3">APPROVAL DETAIL</text>
+  <text x="1615" y="725" class="body">Original model output</text><text x="1950" y="725" class="body">Battery · 48%</text>
+  <text x="1615" y="765" class="body">Operator suggestion</text><text x="1950" y="765" class="body">Battery</text>
+  <rect x="1615" y="795" width="490" height="70" rx="8" class="panel"/><text x="1635" y="825" class="body">Correction reason (required if changing)</text><text x="1635" y="850" class="muted">Evidence does not support original confidence</text>
+  <rect x="1615" y="910" width="125" height="48" rx="8" class="btn"/><text x="1640" y="941" class="white">Approve</text>
+  <rect x="1760" y="910" width="125" height="48" rx="8" class="outline"/><text x="1785" y="941" class="badge">Correct</text>
+  <rect x="1905" y="910" width="140" height="48" rx="8" class="outline"/><text x="1930" y="941" class="badge">Escalate</text>
+
+  <!-- ops manager -->
+  <rect x="100" y="1130" width="1060" height="550" rx="18" class="panel"/>
+  <text x="135" y="1180" class="h2">03 · Operations Manager — Operations Health</text>
+  <text x="135" y="1212" class="body">See business risk first; then decide policy, safety, and release.</text>
+  <rect x="830" y="1150" width="150" height="42" rx="21" class="mint"/><text x="853" y="1177" class="badge">Monthly baseline</text>
+  <rect x="990" y="1150" width="110" height="42" rx="21" class="sub"/><text x="1018" y="1177" class="badge">Yearly</text>
+  <rect x="135" y="1250" width="290" height="125" rx="12" class="sub"/><text x="160" y="1285" class="body">Estimated recovery value</text><text x="160" y="1330" class="kpi">RM 12,480</text><text x="160" y="1360" class="muted">vs baseline · -8%</text>
+  <rect x="450" y="1250" width="290" height="125" rx="12" class="sub"/><text x="475" y="1285" class="body">Critical risks</text><text x="475" y="1330" class="kpi">6</text><text x="475" y="1360" class="muted">Battery 2 · Food organic 4</text>
+  <rect x="765" y="1250" width="330" height="125" rx="12" class="sub"/><text x="790" y="1285" class="body">Pending decision</text><text x="790" y="1330" class="kpi">3</text><text x="790" y="1360" class="muted">Release 1 · Policy 2</text>
+  <rect x="135" y="1410" width="555" height="220" rx="12" class="sub"/><text x="160" y="1450" class="h3">Risk driver by category</text>
+  <line x1="180" y1="1580" x2="650" y2="1580" class="line"/><rect x="220" y="1510" width="55" height="70" class="green"/><rect x="330" y="1470" width="55" height="110" class="warn"/><rect x="440" y="1535" width="55" height="45" class="green"/><rect x="550" y="1440" width="55" height="140" class="danger"/>
+  <text x="205" y="1615" class="muted">Plastic</text><text x="320" y="1615" class="muted">Food</text><text x="430" y="1615" class="muted">Paper</text><text x="545" y="1615" class="muted">Battery</text>
+  <rect x="720" y="1410" width="375" height="220" rx="12" class="sub"/><text x="745" y="1450" class="h3">Active feedback cases</text><text x="745" y="1490" class="body">PL-0248 · Model Team · RCA</text><text x="745" y="1530" class="body">PL-0231 · Web Team · Handover</text><text x="745" y="1580" class="muted">Estimated value only. Not revenue.</text>
+
+  <!-- model team -->
+  <rect x="1240" y="1130" width="1060" height="550" rx="18" class="panel"/>
+  <text x="1275" y="1180" class="h2">04 · Model Team — RCA Case Workspace</text>
+  <text x="1275" y="1212" class="body">Explain failure, decide data readiness, and prepare technical handover.</text>
+  <rect x="1275" y="1250" width="285" height="380" rx="12" class="sub"/><text x="1300" y="1290" class="h3">ASSIGNED RCA CASES</text>
+  <rect x="1295" y="1320" width="225" height="55" rx="10" class="mint"/><text x="1310" y="1355" class="h3">PL-0248</text><text x="1300" y="1425" class="body">PL-0231</text><text x="1300" y="1495" class="h3">Dataset readiness</text><text x="1300" y="1530" class="kpi">63 / target TBD</text>
+  <rect x="1590" y="1250" width="675" height="380" rx="12" class="sub"/><text x="1620" y="1290" class="h3">CASE PL-0248</text>
+  <rect x="1620" y="1320" width="195" height="125" rx="8" fill="#dbe7e0"/><rect x="1660" y="1350" width="60" height="50" fill="none" stroke="#a35b00" stroke-width="4"/>
+  <text x="1845" y="1350" class="body">Input / output / confidence</text><text x="1845" y="1385" class="body">Model version · final HITL label</text><text x="1845" y="1420" class="body">Cause pattern · recovery impact</text>
+  <rect x="1620" y="1490" width="125" height="48" rx="8" class="btn"/><text x="1640" y="1521" class="white">Accept</text>
+  <rect x="1765" y="1490" width="130" height="48" rx="8" class="outline"/><text x="1784" y="1521" class="badge">Unusable</text>
+  <rect x="1915" y="1490" width="170" height="48" rx="8" class="outline"/><text x="1935" y="1521" class="badge">Request data</text>
+  <rect x="2105" y="1490" width="125" height="48" rx="8" class="btn"/><text x="2121" y="1521" class="white">RCA update</text>
+
+  <!-- PM -->
+  <rect x="100" y="1740" width="700" height="550" rx="18" class="panel"/>
+  <text x="135" y="1790" class="h2">05 · Project Manager</text><text x="135" y="1822" class="body">Coordination board: unblock work.</text>
+  <rect x="135" y="1860" width="630" height="255" rx="12" class="sub"/><text x="160" y="1900" class="h3">BLOCKED WORK</text>
+  <line x1="160" y1="1930" x2="740" y2="1930" class="line"/><text x="160" y="1965" class="body">PL-0248</text><text x="330" y="1965" class="body">Model Team</text><text x="510" y="1965" class="body">More data</text>
+  <line x1="160" y1="1985" x2="740" y2="1985" class="line"/><text x="160" y="2020" class="body">PL-0231</text><text x="330" y="2020" class="body">Web Team</text><text x="510" y="2020" class="body">Handover</text>
+  <rect x="160" y="2050" width="180" height="44" rx="8" class="outline"/><text x="182" y="2079" class="badge">Send reminder</text>
+  <text x="135" y="2180" class="muted">Read-only status by default. Reminders need recipient, reason, due date.</text>
+
+  <!-- web team -->
+  <rect x="850" y="1740" width="700" height="550" rx="18" class="panel"/>
+  <text x="885" y="1790" class="h2">06 · Web Team</text><text x="885" y="1822" class="body">Implement the signed model handover exactly.</text>
+  <rect x="885" y="1860" width="630" height="255" rx="12" class="sub"/><text x="910" y="1900" class="h3">INTEGRATION HANDOVER</text>
+  <text x="910" y="1950" class="body">Class map · display rule · confidence rule</text><text x="910" y="1990" class="body">NMS contract · model version · release notes</text>
+  <rect x="910" y="2035" width="240" height="44" rx="8" class="mint"/><text x="930" y="2064" class="badge">Complete integration check</text>
+  <text x="885" y="2180" class="muted">No silent change to class map, confidence, or NMS rule.</text>
+
+  <!-- sys admin -->
+  <rect x="1600" y="1740" width="700" height="550" rx="18" class="panel"/>
+  <text x="1635" y="1790" class="h2">07 · System Administrator</text><text x="1635" y="1822" class="body">Control access and preserve an audit trail.</text>
+  <rect x="1635" y="1860" width="630" height="255" rx="12" class="sub"/><text x="1660" y="1900" class="h3">ACCESS ALERTS</text>
+  <rect x="1660" y="1930" width="300" height="48" rx="8" class="amber"/><text x="1680" y="1960" class="badge">3 grants expire this week</text>
+  <text x="1660" y="2020" class="body">User and active role</text><text x="1980" y="2020" class="body">Case-scoped access</text>
+  <rect x="1660" y="2055" width="130" height="44" rx="8" class="outline"/><text x="1684" y="2084" class="badge">Extend</text>
+  <rect x="1810" y="2055" width="130" height="44" rx="8" class="outline"/><text x="1838" y="2084" class="badge">Revoke</text>
+  <text x="1635" y="2180" class="muted">Log every evidence view, export, role switch, and access change.</text>
+
+  <line x1="100" y1="2370" x2="2300" y2="2370" class="line"/>
+  <text x="100" y="2425" class="h2">Shared safety and decision rules</text>
+  <text x="100" y="2470" class="body">Critical = clear instruction + acknowledgement · Model confidence = percentage + plain-language band · Every change retains original evidence.</text>
+  <text x="100" y="2515" class="muted">Reference: UI_UX_LAYOUT.md · Draft only — no UI code approved.</text>
+</svg>

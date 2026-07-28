@@ -56,7 +56,7 @@ export default function ReviewPage() {
           </nav>
           <div className="sidebar-footer">
             <div className="user-row"><div className="user-avatar">AD</div><div className="user-info"><div className="user-name">Admin Operator</div><div className="user-role">HITL Supervisor</div></div></div>
-            <a href="/login" className="logout-btn"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /><span className="logout-text">Logout</span></a>
+            <a href="/auth/signout" className="logout-btn"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /><span className="logout-text">Logout</span></a>
           </div>
         </aside>
 

@@ -572,50 +572,6 @@ window.addEventListener('purityloop:theme-change', () => {
   window.requestAnimationFrame(refreshChartTheme);
 });
 
-/* ── 12. PASSWORD TOGGLE (login page) ── */
-function initPasswordToggle() {
-  const btn = document.getElementById('passwordToggle');
-  const input = document.getElementById('password');
-  if (!btn || !input) return;
-  btn.addEventListener('click', () => {
-    const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-    input.setAttribute('type', type);
-    const icon = btn.querySelector('i');
-    if (icon) icon.className = type === 'text' ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
-  });
-}
-
-/* ── 12A. SUPABASE AUTH FLOW ── */
-function initLoginForm() {
-  const form = document.getElementById('loginForm');
-  if (!form || form.dataset.loginReady === 'true') return;
-  form.dataset.loginReady = 'true';
-
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const email = document.getElementById('email');
-    const password = document.getElementById('password');
-    const emailValue = email?.value?.trim();
-    const passwordValue = password?.value?.trim();
-
-    if (!emailValue || !passwordValue) {
-      window.showToast?.('Enter your operator email and password.', 'warning');
-      return;
-    }
-
-    try {
-      sessionStorage.setItem('purityloop_demo_user', JSON.stringify({
-        email: emailValue,
-        signedInAt: new Date().toISOString()
-      }));
-    } catch (error) {
-      // Session metadata is optional; Supabase owns the real session.
-    }
-
-    window.location.assign('/upload');
-  });
-}
-
 function initCreateAccountForm() {
   const form = document.getElementById('createAccountForm');
   if (!form || form.dataset.authReady === 'true') return;
@@ -741,8 +697,6 @@ function initPurityLoopTheme() {
   runThemeInit('Typed init', initTyped);
   runThemeInit('hero bars init', initHeroBars);
   runThemeInit('landing charts init', initLandingCharts);
-  runThemeInit('password toggle init', initPasswordToggle);
-  runThemeInit('login form init', initLoginForm);
   runThemeInit('create account form init', initCreateAccountForm);
   runThemeInit('auth logout init', initAuthLogout);
   runThemeInit('motion init', initMotionEffects);

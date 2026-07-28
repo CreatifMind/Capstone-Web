@@ -127,8 +127,8 @@ Example response:
 
 The backend currently writes to:
 
-- `mock_scan_results`
-- `mock_detected_materials`
+- `scan_results`
+- `detected_materials`
 
 Apply or verify the database schema from:
 
