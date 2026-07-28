@@ -292,10 +292,9 @@ function initCountUp() {
   if (typeof CountUp === 'undefined') return;
 
   const items = [
-    { id: 'count-1', end: 95, suffix: '%' },
+    { id: 'count-1', end: 98.2, suffix: '%', decimalPlaces: 1 },
     { id: 'count-2', end: 40, suffix: '%' },
     { id: 'count-3', end: 30, suffix: '%' },
-    { id: 'count-4', end: 24, suffix: '/7' },
   ];
 
   const observer = new IntersectionObserver(entries => {
@@ -306,6 +305,7 @@ function initCountUp() {
       if (!item) return;
       const cu = new CountUp.CountUp(el, item.end, {
         suffix: item.suffix,
+        decimalPlaces: item.decimalPlaces || 0,
         duration: 2.2,
         useEasing: true,
       });
@@ -685,6 +685,205 @@ function initMetricCountUp() {
   window.addEventListener('purityloop:page-cleanup', () => frames.forEach(frame => cancelAnimationFrame(frame)), { once: true });
 }
 
+function initLandingPresentation() {
+  const videoShell = document.querySelector('.business-video-shell');
+  const video = videoShell?.querySelector('video');
+  const playButton = videoShell?.querySelector('.business-video-play');
+  if (videoShell && video && playButton && videoShell.dataset.videoReady !== 'true') {
+    videoShell.dataset.videoReady = 'true';
+    playButton.addEventListener('click', () => {
+      const result = video.play();
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    });
+    video.addEventListener('play', () => videoShell.classList.add('video-playing'));
+    video.addEventListener('pause', () => videoShell.classList.remove('video-playing'));
+    video.addEventListener('ended', () => videoShell.classList.remove('video-playing'));
+  }
+
+  const root = document.querySelector('[data-methodology-tabs]');
+  if (!root || root.dataset.methodologyReady === 'true') return;
+  root.dataset.methodologyReady = 'true';
+
+  const tabs = [...root.querySelectorAll('[role="tab"][data-methodology-tab]')];
+  const panels = [...root.querySelectorAll('[role="tabpanel"][data-methodology-panel]')];
+  const prev = root.querySelector('[data-methodology-prev]');
+  const next = root.querySelector('[data-methodology-next]');
+  const fullscreen = root.querySelector('[data-methodology-fullscreen]');
+  const count = root.querySelector('[data-methodology-count]');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let activeIndex = Math.max(0, tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true'));
+  let lastFocus = null;
+  let lightbox = null;
+
+  const ensureImage = index => {
+    const image = panels[index]?.querySelector('img[data-methodology-image]');
+    if (image && !image.getAttribute('src') && image.dataset.src) {
+      image.setAttribute('src', image.dataset.src);
+    }
+    return image;
+  };
+
+  const setActive = (index, focusTab = false) => {
+    if (!tabs.length) return;
+    activeIndex = (index + tabs.length) % tabs.length;
+    tabs.forEach((tab, tabIndex) => {
+      const selected = tabIndex === activeIndex;
+      tab.classList.toggle('active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    panels.forEach((panel, panelIndex) => {
+      const selected = panelIndex === activeIndex;
+      panel.classList.toggle('active', selected);
+      panel.hidden = !selected;
+    });
+    ensureImage(activeIndex);
+    if (count) count.textContent = `${activeIndex + 1} of ${tabs.length}`;
+    if (focusTab) {
+      tabs[activeIndex].focus({ preventScroll: true });
+      tabs[activeIndex].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (lightbox?.classList.contains('open')) syncLightbox();
+  };
+
+  const scrollToMethodology = () => {
+    document.getElementById('methodology')?.scrollIntoView({
+      behavior: reduceMotion.matches ? 'auto' : 'smooth',
+      block: 'start'
+    });
+  };
+
+  const activeTitle = () => tabs[activeIndex]?.querySelector('span')?.textContent?.trim() || 'Methodology diagram';
+
+  const syncLightbox = () => {
+    if (!lightbox) return;
+    const image = ensureImage(activeIndex);
+    const lightboxImage = lightbox.querySelector('[data-lightbox-image]');
+    const title = lightbox.querySelector('[data-lightbox-title]');
+    if (image && lightboxImage) {
+      lightboxImage.setAttribute('src', image.currentSrc || image.src);
+      lightboxImage.setAttribute('alt', image.alt || activeTitle());
+    }
+    if (title) title.textContent = activeTitle();
+  };
+
+  const closeLightbox = () => {
+    if (!lightbox) return;
+    lightbox.classList.remove('open');
+    lightbox.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('methodology-dialog-open');
+    document.removeEventListener('keydown', onLightboxKeydown);
+    if (lastFocus instanceof HTMLElement) lastFocus.focus({ preventScroll: true });
+  };
+
+  const openLightbox = () => {
+    if (!lightbox) {
+      lightbox = document.createElement('div');
+      lightbox.className = 'methodology-lightbox';
+      lightbox.setAttribute('role', 'dialog');
+      lightbox.setAttribute('aria-modal', 'true');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightbox.innerHTML = `
+        <div class="methodology-lightbox-card" role="document">
+          <header class="methodology-lightbox-header">
+            <p class="methodology-lightbox-title" data-lightbox-title></p>
+            <div class="methodology-lightbox-actions">
+              <button type="button" data-lightbox-prev aria-label="Previous methodology diagram"><i class="fa-solid fa-arrow-left"></i></button>
+              <button type="button" data-lightbox-next aria-label="Next methodology diagram"><i class="fa-solid fa-arrow-right"></i></button>
+              <button type="button" data-lightbox-close aria-label="Close full screen diagram"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+          </header>
+          <figure class="methodology-lightbox-figure">
+            <img data-lightbox-image src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" />
+          </figure>
+        </div>
+      `;
+      document.body.appendChild(lightbox);
+      lightbox.querySelector('[data-lightbox-close]')?.addEventListener('click', closeLightbox);
+      lightbox.querySelector('[data-lightbox-prev]')?.addEventListener('click', () => setActive(activeIndex - 1, false));
+      lightbox.querySelector('[data-lightbox-next]')?.addEventListener('click', () => setActive(activeIndex + 1, false));
+      lightbox.addEventListener('click', event => {
+        if (event.target === lightbox) closeLightbox();
+      });
+    }
+    lastFocus = document.activeElement;
+    syncLightbox();
+    lightbox.classList.add('open');
+    lightbox.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('methodology-dialog-open');
+    document.addEventListener('keydown', onLightboxKeydown);
+    lightbox.querySelector('[data-lightbox-close]')?.focus({ preventScroll: true });
+  };
+
+  function onLightboxKeydown(event) {
+    if (!lightbox?.classList.contains('open')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeLightbox();
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setActive(activeIndex - 1, false);
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setActive(activeIndex + 1, false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...lightbox.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(element => !element.disabled && element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setActive(index, false));
+    tab.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActive(index - 1, true);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActive(index + 1, true);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setActive(0, true);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setActive(tabs.length - 1, true);
+      }
+    });
+  });
+
+  prev?.addEventListener('click', () => setActive(activeIndex - 1, true));
+  next?.addEventListener('click', () => setActive(activeIndex + 1, true));
+  fullscreen?.addEventListener('click', openLightbox);
+
+  document.querySelectorAll('[data-methodology-jump]').forEach(link => {
+    link.addEventListener('click', event => {
+      const index = Number(link.getAttribute('data-methodology-jump'));
+      if (!Number.isFinite(index)) return;
+      event.preventDefault();
+      setActive(index, false);
+      scrollToMethodology();
+      window.setTimeout(() => setActive(index, true), reduceMotion.matches ? 0 : 420);
+    });
+  });
+
+  setActive(activeIndex, false);
+}
+
 /* ── INIT ALL ── */
 function initPurityLoopTheme() {
   runThemeInit('sidebar init', initSidebar);
@@ -702,6 +901,7 @@ function initPurityLoopTheme() {
   runThemeInit('motion init', initMotionEffects);
   runThemeInit('metric countup init', initMetricCountUp);
   runThemeInit('progress bar init', animateProgressBars);
+  runThemeInit('landing presentation init', initLandingPresentation);
   runThemeInit('chart theme refresh', refreshChartTheme);
   revealLandingFallback();
 }

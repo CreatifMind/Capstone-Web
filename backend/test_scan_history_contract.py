@@ -84,6 +84,30 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["sort"], "confidence")
         self.assertEqual(payload["direction"], "asc")
 
+    def test_final_category_filter_prefers_verified_then_reviewed_category(self):
+        scans = [
+            {"id": "verified", "verified_category": "Glass"},
+            {"id": "reviewed"},
+            {"id": "predicted"},
+        ]
+        materials = [
+            {"id": "material-1", "scan_result_id": "verified", "category": "Plastic"},
+            {"id": "material-2", "scan_result_id": "reviewed", "category": "Glass"},
+            {"id": "material-3", "scan_result_id": "predicted", "category": "PET Bottle"},
+        ]
+        decisions = [{"detected_material_id": "material-2", "chosen_category": "Plastic", "created_at": "2026-07-28T00:00:00Z"}]
+
+        filtered = main.filter_scans_by_final_category(scans, materials, decisions, "plastic")
+
+        self.assertEqual([scan["id"] for scan in filtered], ["reviewed", "predicted"])
+
+    def test_scan_history_accepts_category_filter(self):
+        with patch.object(main, "supabase", FakeSupabase()):
+            payload = main.get_scan_history(limit=10, offset=0, category="plastic", principal=main.require_principal())
+
+        self.assertEqual(payload["category"], "plastic")
+        self.assertEqual(payload["total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

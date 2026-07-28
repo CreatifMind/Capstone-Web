@@ -81,6 +81,7 @@ export default function ReviewPage() {
               <label className="sr-only" htmlFor="historySearch">Search scan history</label>
               <div className="review-filter-control review-filter-search"><i className="fa-solid fa-magnifying-glass" aria-hidden="true" /><input id="historySearch" type="search" placeholder="Search scans" /></div>
               <label className="review-filter-control"><span className="sr-only">Filter by date</span><i className="fa-regular fa-calendar" aria-hidden="true" /><input id="historyDate" type="date" aria-label="Filter by date" /></label>
+              <label className="review-filter-control"><span className="sr-only">Filter by category</span><select id="historyCategory" aria-label="Filter by category"><option value="">All categories</option>{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select></label>
               <label className="review-filter-control"><span className="sr-only">Filter by status</span><select id="historyStatus" aria-label="Filter by status"><option value="">All statuses</option><option>Confirmed Recyclable</option><option>Confirmed Contaminant</option><option>Review Needed</option><option>Verified</option><option>Rejected</option></select></label>
               <div className="review-sort-controls" aria-label="Sort scans">
                 <button className="history-sort active" type="button" data-sort="timestamp" aria-sort="descending">Newest first</button>
@@ -142,6 +143,7 @@ export default function ReviewPage() {
                 <div className="review-history-modal-filters">
                   <input id="fullHistorySearch" type="search" placeholder="Search scans" aria-label="Search full history" />
                   <input id="fullHistoryDate" type="date" aria-label="Filter full history by date" />
+                  <select id="fullHistoryCategory" aria-label="Filter full history by category"><option value="">All categories</option>{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select>
                   <select id="fullHistoryStatus" aria-label="Filter full history by status"><option value="">All statuses</option><option value="review_needed">Review Needed</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option></select>
                   <button id="fullHistorySortTimestamp" className="history-sort active" type="button">Newest first</button><button id="fullHistorySortConfidence" className="history-sort" type="button">Confidence</button>
                 </div>

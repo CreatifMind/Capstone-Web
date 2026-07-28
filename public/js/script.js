@@ -3431,6 +3431,7 @@ function initReviewWorkspace() {
   list.dataset.historyReady = "true";
   const search = document.getElementById("historySearch");
   const date = document.getElementById("historyDate");
+  const category = document.getElementById("historyCategory");
   const status = document.getElementById("historyStatus");
   const range = document.getElementById("historyRange");
   const pager = document.getElementById("historyPageButtons");
@@ -3441,18 +3442,20 @@ function initReviewWorkspace() {
   const scanRow = scan => {
     const material = scan.detected_materials?.[0] || {};
     const decision = plEvaluateMaterial(material, scan);
-    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(material.category || material.material_name || "Unknown"), materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
+    const categoryKey = plCategoryKey(scan.verified_category || material.review_decision?.chosen_category || material.category || material.material_name);
+    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
   };
   const rows = () => plGetScanResults().map(scanRow);
   const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
   const matches = row => {
     const query = String(search?.value || "").trim().toLowerCase();
+    const selectedCategory = plCategoryKey(category?.value);
     const selectedStatus = String(status?.value || "");
     const selectedDate = String(date?.value || "");
     const day = new Date(row.timestamp);
     const rowDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     const statusMatch = !selectedStatus || row.status === selectedStatus || (selectedStatus.startsWith("Confirmed") && row.decisionStatus === "confirmed");
-    return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!selectedDate || rowDate === selectedDate) && statusMatch && (!state.bucket || state.bucket === "total" || row.decisionStatus === state.bucket);
+    return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!selectedDate || rowDate === selectedDate) && (!category?.value || row.categoryKey === selectedCategory) && statusMatch && (!state.bucket || state.bucket === "total" || row.decisionStatus === state.bucket);
   };
   const sortedRows = () => rows().filter(matches).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
   const clearSelection = () => {
@@ -3483,11 +3486,13 @@ function initReviewWorkspace() {
     const pages = Math.max(1, Math.ceil(all.length / pageSize));
     state.page = Math.min(state.page, pages);
     const visible = all.slice((state.page - 1) * pageSize, state.page * pageSize);
-    if (state.selectedId && !visible.some(row => row.id === state.selectedId)) clearSelection();
+    if (state.selectedId && !all.some(row => row.id === state.selectedId)) {
+      if (visible[0]) select(visible[0].id);
+      else clearSelection();
+    }
     list.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
-    const knownTotal = plScanHistoryMeta.total !== null && plScanHistoryMeta.total !== undefined && Number.isFinite(Number(plScanHistoryMeta.total));
-    if (range) range.textContent = `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, all.length)} loaded results of ${knownTotal ? plScanHistoryMeta.total : all.length} total`;
+    if (range) range.textContent = `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, all.length)} loaded results of ${all.length} total`;
     renderPager(pager, state.page, pages, page => { state.page = page; render(); });
     const index = all.findIndex(row => row.id === selectedId());
     window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: index > 0, hasNext: index >= 0 && index < all.length - 1 } }));
@@ -3499,6 +3504,7 @@ function initReviewWorkspace() {
   };
   const applyFilters = () => { state.page = 1; render(); };
   [search, date].forEach(input => input?.addEventListener("input", () => { state.bucket = ""; applyFilters(); }));
+  category?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   status?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
     const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); };
@@ -3506,7 +3512,7 @@ function initReviewWorkspace() {
   });
   document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort || (button.id.includes("Confidence") ? "confidence" : "timestamp"); state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".review-filter-toolbar .history-sort").forEach(item => item.classList.toggle("active", item.dataset.sort === next)); applyFilters(); }));
   let modalOpener = null; let modalState = { page: 1, sort: "timestamp", direction: "desc" }; let remote = { items: [], total: 0 };
-  const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
+  const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullCategory = document.getElementById("fullHistoryCategory"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
   const auditModal = document.getElementById("auditReviewModal"), auditTitle = document.getElementById("auditReviewTitle"), auditDescription = document.getElementById("auditReviewDescription"), auditBanner = document.getElementById("auditReviewBanner"), auditPreview = document.getElementById("auditReviewPreview"), auditPrediction = document.getElementById("auditReviewPrediction"), auditConfidence = document.getElementById("auditReviewConfidence"), auditWeight = document.getElementById("auditReviewWeight"), auditClass = document.getElementById("auditReviewClass"), auditFinalCategory = document.getElementById("auditReviewFinalCategory"), auditStatus = document.getElementById("auditReviewStatus"), auditTimestamp = document.getElementById("auditReviewTimestamp"), auditQuantity = document.getElementById("auditReviewQuantity"), auditQuantityRow = document.getElementById("auditReviewQuantityRow"), auditCategory = document.getElementById("auditReviewCategory"), auditFeedback = document.getElementById("auditReviewFeedback"), auditVerify = document.getElementById("auditReviewVerify"), auditReject = document.getElementById("auditReviewReject");
   let auditScan = null, auditMaterial = null, auditSubmitting = false, auditMode = "review", auditSession = null;
   const closeFullHistory = () => { auditSession = null; modal.classList.remove("active"); modal.setAttribute("aria-hidden", "true"); document.body.classList.remove("review-history-modal-open"); modalOpener?.focus(); };
@@ -3566,10 +3572,7 @@ function initReviewWorkspace() {
     finally { auditSubmitting = false; auditVerify.disabled = false; auditReject.disabled = false; auditCategory.disabled = false; }
   };
   const fetchFullHistory = async () => {
-    const params = new URLSearchParams({ limit: String(pageSize), offset: String((modalState.page - 1) * pageSize), sort: modalState.sort, direction: modalState.direction });
-    if (fullSearch?.value.trim()) params.set("search", fullSearch.value.trim());
-    if (fullStatus?.value) params.set("status", fullStatus.value);
-    if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
+    const params = fullHistoryParams(pageSize, (modalState.page - 1) * pageSize);
     fullRange.textContent = "Loading scans";
     try { const response = await fetch(`${plApiBaseUrl()}/api/scans?${params}`, { headers: await plAuthHeaders() }); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
     catch (error) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); }
@@ -3582,6 +3585,7 @@ function initReviewWorkspace() {
   const fullHistoryParams = (limit, offset) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset), sort: modalState.sort, direction: modalState.direction });
     if (fullSearch?.value.trim()) params.set("search", fullSearch.value.trim());
+    if (fullCategory?.value) params.set("category", fullCategory.value);
     if (fullStatus?.value) params.set("status", fullStatus.value);
     if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
     return params;
@@ -3605,7 +3609,16 @@ function initReviewWorkspace() {
     catch (error) { popup?.close(); showToast(error.message || "Unable to export history.", "error"); }
     finally { setExporting(ids, false); }
   };
-  const openFullHistory = event => { modalOpener = event.currentTarget; modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory(); };
+  const openFullHistory = event => {
+    modalOpener = event.currentTarget;
+    if (fullSearch) fullSearch.value = search?.value || "";
+    if (fullDate) fullDate.value = date?.value || "";
+    if (fullCategory) fullCategory.value = category?.value || "";
+    if (fullStatus) fullStatus.value = ({ "Review Needed": "review_needed", Rejected: "rejected" })[status?.value] || (status?.value?.startsWith("Confirmed") || status?.value === "Verified" ? "confirmed" : "");
+    modalState = { page: 1, sort: state.sort, direction: state.direction === -1 ? "desc" : "asc" };
+    document.querySelectorAll(".review-history-modal .history-sort").forEach(button => button.classList.toggle("active", button.id === (state.sort === "confidence" ? "fullHistorySortConfidence" : "fullHistorySortTimestamp")));
+    modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory();
+  };
   document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
   document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", () => plPrintHistoryPdf(sortedRows(), "PurityLoop Scan History"));
   document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", () => plDownloadHistoryExcel(sortedRows(), "purityloop-scan-history.csv"));
@@ -3614,7 +3627,7 @@ function initReviewWorkspace() {
   modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
   auditModal?.querySelectorAll("[data-audit-review-close]").forEach(button => button.addEventListener("click", closeAuditReview)); auditModal?.addEventListener("click", event => { if (event.target === auditModal) closeAuditReview(); });
   auditVerify?.addEventListener("click", () => saveAuditReview("confirmed")); auditReject?.addEventListener("click", () => saveAuditReview("rejected"));
-  [fullSearch, fullDate, fullStatus].forEach(input => input?.addEventListener(input === fullStatus ? "change" : "input", () => { modalState.page = 1; fetchFullHistory(); }));
+  [fullSearch, fullDate, fullCategory, fullStatus].forEach(input => input?.addEventListener(input === fullCategory || input === fullStatus ? "change" : "input", () => { modalState.page = 1; fetchFullHistory(); }));
   document.getElementById("fullHistorySortTimestamp")?.addEventListener("click", () => { modalState.sort = "timestamp"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.getElementById("fullHistorySortConfidence")?.addEventListener("click", () => { modalState.sort = "confidence"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.addEventListener("keydown", event => { if (!modal.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeFullHistory(); return; } if (event.key !== "Tab") return; const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });

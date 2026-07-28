@@ -1,6 +1,6 @@
 import PageHtml from "@/components/PageHtml";
 
-export const metadata = { title: "PurityLoop AI | Public Demo" };
+export const metadata = { title: "PurityLoop AI | System Showcase" };
 
 const html = `
 <!-- ══════════════════════════════════════
@@ -110,18 +110,22 @@ const html = `
             <span class="hdc-live"><span class="hdc-live-dot"></span> YOLOv8</span>
           </div>
 
-          <div class="hdc-metrics">
+          <div class="hdc-metrics hdc-capability-grid">
             <div class="hdc-metric">
-              <span class="hdc-metric-val">98.2%</span>
-              <span class="hdc-metric-label">AI Precision</span>
+              <span class="hdc-metric-val">YOLOv8m-seg</span>
+              <span class="hdc-metric-label">Model</span>
             </div>
             <div class="hdc-metric">
               <span class="hdc-metric-val">9</span>
-              <span class="hdc-metric-label">Categories</span>
+              <span class="hdc-metric-label">Waste Categories</span>
             </div>
             <div class="hdc-metric">
-              <span class="hdc-metric-val">&lt;100ms</span>
-              <span class="hdc-metric-label">Inference</span>
+              <span class="hdc-metric-val">Human Review</span>
+              <span class="hdc-metric-label">Enabled</span>
+            </div>
+            <div class="hdc-metric">
+              <span class="hdc-metric-val">Hazard Alert</span>
+              <span class="hdc-metric-label">Routing</span>
             </div>
           </div>
 
@@ -141,13 +145,13 @@ const html = `
           <div class="hdc-items">
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#10B981"></span>
-              <span class="hdc-item-label">YOLOv8 Detection</span>
-              <span class="hdc-item-val">97.3%</span>
+              <span class="hdc-item-label">Contaminant Blocking</span>
+              <span class="hdc-item-val">Active</span>
             </div>
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#3B82F6"></span>
-              <span class="hdc-item-label">Contaminant Blocking</span>
-              <span class="hdc-item-val">Active</span>
+              <span class="hdc-item-label">Supabase Audit Trail</span>
+              <span class="hdc-item-val">Connected</span>
             </div>
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#F59E0B"></span>
@@ -162,7 +166,31 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
-       SECTION 2 — THE PROBLEM
+       SECTION 2 — BUSINESS CHALLENGE VIDEO
+  ══════════════════════════════════════ -->
+  <section id="business-challenge" class="section section-alt business-video-section">
+    <div class="section-inner">
+      <div class="section-header centered" data-aos="fade-up">
+        <div class="section-tag"><i class="fa-solid fa-circle-play"></i> THE BUSINESS CHALLENGE</div>
+        <h2 class="section-headline">Why Waste Sorting Needs Better Intelligence</h2>
+        <p class="section-sub">Contamination, delayed operator review, and low visibility make manual sorting hard to scale with confidence.</p>
+      </div>
+
+      <div class="business-video-shell" data-aos="fade-up" data-aos-delay="100">
+        <video class="business-video" controls playsinline preload="metadata" poster="/assets/capstone-project-poster.jpg">
+          <source src="/assets/Capstone Project.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+        <button class="business-video-play" type="button" aria-label="Play business challenge video">
+          <i class="fa-solid fa-play"></i>
+        </button>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════════════════════════════
+       SECTION 3 — THE PROBLEM
   ══════════════════════════════════════ -->
   <section id="problem" class="section section-alt">
     <div class="section-inner">
@@ -211,7 +239,7 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
-       SECTION 3 — HOW IT WORKS
+       SECTION 4 — HOW IT WORKS
   ══════════════════════════════════════ -->
   <section id="how" class="section">
     <div class="section-inner">
@@ -266,12 +294,132 @@ const html = `
           <p>Material yields, purity rates, and commodity values flow into real-time analytics and audit ledger.</p>
         </div>
       </div>
+
+      <div class="workflow-methodology-link" data-aos="fade-up" data-aos-delay="160">
+        <a href="#methodology" class="btn-outline btn-lg" data-methodology-jump="1">
+          <i class="fa-solid fa-diagram-project"></i> View Detailed Business Process
+        </a>
+      </div>
     </div>
   </section>
 
 
   <!-- ══════════════════════════════════════
-       SECTION 4 — CORE FEATURES
+       SECTION 5 — METHODOLOGY
+  ══════════════════════════════════════ -->
+  <section id="methodology" class="section methodology-section">
+    <div class="section-inner">
+      <div class="section-header centered" data-aos="fade-up">
+        <div class="section-tag"><i class="fa-solid fa-map"></i> CAPSTONE METHODOLOGY</div>
+        <h2 class="section-headline">Project Methodology & Model Validation</h2>
+        <p class="section-sub">Explore how PurityLoop AI was planned, developed, validated and prepared for deployment.</p>
+      </div>
+
+      <div class="methodology-tabs" data-methodology-tabs data-aos="fade-up" data-aos-delay="100">
+        <div class="methodology-tablist" role="tablist" aria-label="Capstone methodology diagrams">
+          <button id="methodology-tab-1" class="methodology-tab active" type="button" role="tab" aria-selected="true" aria-controls="methodology-panel-1" tabindex="0" data-methodology-tab="0">
+            <span>01 — Project Lifecycle</span>
+            <small>How the AI model, web application and analytics dashboard were developed in parallel.</small>
+          </button>
+          <button id="methodology-tab-2" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-2" tabindex="-1" data-methodology-tab="1">
+            <span>02 — Business Process</span>
+            <small>The complete operational workflow from image upload and AI inference to operator review, database storage and analytics.</small>
+          </button>
+          <button id="methodology-tab-3" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-3" tabindex="-1" data-methodology-tab="2">
+            <span>03 — AI Development Plan</span>
+            <small>The data preparation, model training, optimisation, validation and deployment process.</small>
+          </button>
+          <button id="methodology-tab-4" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-4" tabindex="-1" data-methodology-tab="3">
+            <span>04 — Validation Criteria</span>
+            <small>The target mAP, recall, inference latency, confidence thresholds and human-review rules.</small>
+          </button>
+        </div>
+
+        <div class="methodology-panels">
+          <article id="methodology-panel-1" class="methodology-panel active" role="tabpanel" aria-labelledby="methodology-tab-1" tabindex="0" data-methodology-panel="0">
+            <div class="methodology-panel-copy">
+              <span class="methodology-index">01 / Project Lifecycle</span>
+              <h3>Parallel delivery tracks</h3>
+              <p>Shows how model development, web application delivery, and analytics dashboard work moved together through the capstone lifecycle.</p>
+            </div>
+            <figure class="methodology-figure">
+              <img src="/assets/Project Lifecycle.png" width="1536" height="1024" alt="Project lifecycle diagram showing SDLC stages and three parallel tracks for AI model development, web application development, and analytics dashboard delivery." data-methodology-image="0" />
+            </figure>
+          </article>
+
+          <article id="methodology-panel-2" class="methodology-panel" role="tabpanel" aria-labelledby="methodology-tab-2" tabindex="0" data-methodology-panel="1" hidden>
+            <div class="methodology-panel-copy">
+              <span class="methodology-index">02 / Business Process</span>
+              <h3>Operational sorting workflow</h3>
+              <p>Maps the upload, YOLOv8m-seg inference, operator review, Supabase record, alert queue, and dashboard update path.</p>
+            </div>
+            <figure class="methodology-figure">
+              <img data-src="/assets/Waste Classification Business Process.png" width="1536" height="1024" alt="Waste classification business process diagram from operator upload through AI detection, review queues, Supabase storage, and analytics updates." data-methodology-image="1" loading="lazy" />
+            </figure>
+          </article>
+
+          <article id="methodology-panel-3" class="methodology-panel" role="tabpanel" aria-labelledby="methodology-tab-3" tabindex="0" data-methodology-panel="2" hidden>
+            <div class="methodology-panel-copy">
+              <span class="methodology-index">03 / AI Development Plan</span>
+              <h3>Data and model development path</h3>
+              <p>Details the YOLOv8m-seg model flow from data audit and label fixing through training, optimisation, validation, and deployment.</p>
+            </div>
+            <figure class="methodology-figure">
+              <img data-src="/assets/DL Framework & Development Plan.png" width="1536" height="1024" alt="Deep learning framework and development plan diagram covering OSEMN stages, YOLOv8m-seg architecture, data preparation, model training, and deployment gates." data-methodology-image="2" loading="lazy" />
+            </figure>
+          </article>
+
+          <article id="methodology-panel-4" class="methodology-panel" role="tabpanel" aria-labelledby="methodology-tab-4" tabindex="0" data-methodology-panel="3" hidden>
+            <div class="methodology-panel-copy">
+              <span class="methodology-index">VALIDATION CRITERIA</span>
+              <h3>Model Acceptance Targets &amp; Routing Rules</h3>
+              <p>Proposed performance targets and operational confidence thresholds. These values are validation criteria, not final measured results.</p>
+              <span class="methodology-target-badge">TARGETS — NOT FINAL RESULTS</span>
+            </div>
+            <div class="methodology-evidence">
+              <figure class="methodology-figure">
+                <img data-src="/assets/Production Model Success Metrics.png" width="1536" height="1024" alt="Production model success metrics diagram showing capstone validation targets for mAP, recall, inference latency, class thresholds, and human review rules." data-methodology-image="3" loading="lazy" />
+              </figure>
+              <div class="measured-performance-panel" aria-label="Measured model performance placeholder">
+                <div class="measured-performance-copy">
+                  <h4>Measured Model Performance</h4>
+                  <p>Final held-out test evaluation results will be reported here after model validation.</p>
+                </div>
+                <dl class="measured-performance-grid">
+                  <div><dt>Bounding-box mAP@0.5</dt><dd>Pending</dd></div>
+                  <div><dt>Mask mAP@0.5</dt><dd>Pending</dd></div>
+                  <div><dt>Mask mAP@0.5:0.95</dt><dd>Pending</dd></div>
+                  <div><dt>Battery recall</dt><dd>Pending</dd></div>
+                  <div><dt>Median inference latency</dt><dd>Pending</dd></div>
+                  <div><dt>Model version</dt><dd>Pending</dd></div>
+                  <div><dt>Test-set size</dt><dd>Pending</dd></div>
+                  <div><dt>Evaluation device</dt><dd>Pending</dd></div>
+                  <div><dt>Evaluation date</dt><dd>Pending</dd></div>
+                </dl>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="methodology-controls" aria-label="Methodology diagram controls">
+          <button class="methodology-control" type="button" data-methodology-prev>
+            <i class="fa-solid fa-arrow-left"></i> Previous
+          </button>
+          <span class="methodology-count" aria-live="polite" data-methodology-count>1 of 4</span>
+          <button class="methodology-control" type="button" data-methodology-next>
+            Next <i class="fa-solid fa-arrow-right"></i>
+          </button>
+          <button class="methodology-control methodology-fullscreen" type="button" data-methodology-fullscreen>
+            <i class="fa-solid fa-expand"></i> Full screen
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════════════════════════════
+       SECTION 6 — CORE FEATURES
   ══════════════════════════════════════ -->
   <section id="features" class="section section-alt">
     <div class="section-inner">
@@ -410,16 +558,16 @@ const html = `
         <div class="feature-visual material-dashboard-card" data-aos="fade-left">
           <div class="feature-visual-header">
             <span style="font-size:0.875rem;font-weight:700;">Material Diverted (YTD)</span>
-            <span class="feature-visual-tag">+5.2% vs last year</span>
+            <span class="feature-visual-tag">+5.2% VS LAST YEAR</span>
           </div>
           <div class="material-metric-grid">
             <div class="material-metric-tile">
-              <strong>Demo</strong>
-              <span>Material Summary</span>
+              <strong>957t</strong>
+              <span>MATERIAL SUMMARY</span>
             </div>
             <div class="material-metric-tile">
-              <strong>Est.</strong>
-              <span>Recovery Value</span>
+              <strong>$799k</strong>
+              <span>ESTIMATED RECOVERY VALUE</span>
             </div>
           </div>
           <div class="material-bar-list">
@@ -440,23 +588,23 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
-       SECTION 5 — LIVE IMPACT COUNTERS
+       SECTION 7 — LIVE IMPACT COUNTERS
   ══════════════════════════════════════ -->
   <section id="impact" class="section impact-section">
     <div class="section-inner">
       <div class="section-header centered impact-header" data-aos="fade-up">
         <div class="section-tag impact-tag">
-          <i class="fa-solid fa-flask"></i> Illustrative Demo Metrics
+          <i class="fa-solid fa-flask"></i> ILLUSTRATIVE PLATFORM METRICS
         </div>
         <h2 class="section-headline">Platform Performance at a Glance</h2>
-        <p class="section-sub">Example metrics showing how the capstone dashboard presents model and operations data.</p>
+        <p class="section-sub">Example interface values showing how PurityLoop AI presents classification, review and operations information.</p>
       </div>
 
       <div class="impact-grid">
         <div class="impact-item" data-aos="fade-up" data-aos-delay="0">
           <span id="count-1" class="impact-num">98.2%</span>
-          <p class="impact-label">Detection Accuracy</p>
-          <p class="impact-sub">Across all 9 waste categories</p>
+          <p class="impact-label">Classification Visibility</p>
+          <p class="impact-sub">Example 9-category dashboard signal</p>
         </div>
         <div class="impact-item" data-aos="fade-up" data-aos-delay="100">
           <span id="count-2" class="impact-num">40%</span>
@@ -468,18 +616,13 @@ const html = `
           <p class="impact-label">Audit Time Saved</p>
           <p class="impact-sub">Per sorting batch cycle</p>
         </div>
-        <div class="impact-item" data-aos="fade-up" data-aos-delay="300">
-          <span id="count-4" class="impact-num">Demo</span>
-          <p class="impact-label">Environment Status</p>
-          <p class="impact-sub">Public capstone workspace</p>
-        </div>
       </div>
     </div>
   </section>
 
 
   <!-- ══════════════════════════════════════
-       SECTION 6 — ANALYTICS SHOWCASE
+       SECTION 8 — ANALYTICS SHOWCASE
   ══════════════════════════════════════ -->
   <section id="analytics" class="section section-alt">
     <div class="section-inner">
@@ -546,7 +689,7 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
-       SECTION 7 — CAPSTONE HIGHLIGHTS
+       SECTION 9 — CAPSTONE HIGHLIGHTS
   ══════════════════════════════════════ -->
   <section id="capstone" class="section">
     <div class="section-inner">
@@ -555,84 +698,54 @@ const html = `
         <h2 class="section-headline">Built with Cutting-Edge Technology</h2>
         <p class="section-sub">A full-stack AI prototype designed for real Material Recovery Facility operations, built
           as a final year capstone project.</p>
+        <div class="capstone-methodology-links" aria-label="Capstone methodology quick links">
+          <a href="#methodology" data-methodology-jump="0">View Project Methodology</a>
+          <a href="#methodology" data-methodology-jump="2">View AI Development Plan</a>
+          <a href="#methodology" data-methodology-jump="3">View Validation Criteria</a>
+        </div>
       </div>
 
-      <div class="capstone-grid">
-        <div data-aos="fade-right">
-          <h3 style="margin-bottom:20px;">Technology Stack</h3>
-          <div class="tech-stack-grid">
-            <span class="tech-pill"><i class="fa-solid fa-code"></i> Next.js + React</span>
-            <span class="tech-pill"><i class="fa-solid fa-file-code"></i> TypeScript</span>
-            <span class="tech-pill"><i class="fa-brands fa-python"></i> FastAPI + Python</span>
-            <span class="tech-pill"><i class="fa-solid fa-chart-bar"></i> Chart.js</span>
-            <span class="tech-pill"><i class="fa-solid fa-database"></i> Supabase</span>
-            <span class="tech-pill"><i class="fa-brands fa-google-drive"></i> Google Drive</span>
-            <span class="tech-pill"><i class="fa-solid fa-brain"></i> YOLOv8 AI Model</span>
-            <span class="tech-pill"><i class="fa-solid fa-robot"></i> Machine Learning</span>
-            <span class="tech-pill"><i class="fa-solid fa-bolt"></i> GSAP Animation</span>
-            <span class="tech-pill"><i class="fa-solid fa-eye"></i> Computer Vision</span>
-            <span class="tech-pill"><i class="fa-brands fa-github"></i> Git & GitHub</span>
-            <span class="tech-pill"><i class="fa-solid fa-server"></i> Vercel Deploy</span>
-          </div>
-        </div>
-
-        <div data-aos="fade-left">
-          <h3 style="margin-bottom:20px;">Research Areas</h3>
-          <div class="research-list">
-            <div class="research-item">
-              <i class="fa-solid fa-recycle"></i>
-              <div>
-                <h4>Waste Stream Classification</h4>
-                <p>YOLOv8 object detection trained on 9-category waste taxonomy for MRF operations.</p>
-              </div>
-            </div>
-            <div class="research-item">
-              <i class="fa-solid fa-shield-halved"></i>
-              <div>
-                <h4>Hazard Detection & Isolation</h4>
-                <p>Battery and chemical contaminant identification with operator quarantine recommendations.</p>
-              </div>
-            </div>
-            <div class="research-item">
-              <i class="fa-solid fa-chart-line"></i>
-              <div>
-                <h4>Purity & Yield Analytics</h4>
-                <p>Material purity scoring, tonnage tracking, and commodity value intelligence dashboards.</p>
-              </div>
-            </div>
-            <div class="research-item">
-              <i class="fa-solid fa-magnifying-glass-chart"></i>
-              <div>
-                <h4>Audit Trail & QA Workflow</h4>
-                <p>Full scan verification ledger with human-in-the-loop override capability for low-confidence results.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="capstone-research-grid" data-aos="fade-up">
+        <article class="capstone-research-card">
+          <i class="fa-solid fa-recycle"></i>
+          <h3>WASTE STREAM CLASSIFICATION</h3>
+          <p>YOLO-based classification of waste categories for Material Recovery Facility operations.</p>
+        </article>
+        <article class="capstone-research-card">
+          <i class="fa-solid fa-shield-halved"></i>
+          <h3>HAZARD DETECTION &amp; ISOLATION</h3>
+          <p>Battery and contaminant identification with operator review and quarantine routing.</p>
+        </article>
+        <article class="capstone-research-card">
+          <i class="fa-solid fa-chart-line"></i>
+          <h3>PURITY &amp; YIELD ANALYTICS</h3>
+          <p>Material purity scoring, tonnage tracking, and recovery-value insights.</p>
+        </article>
+        <article class="capstone-research-card">
+          <i class="fa-solid fa-magnifying-glass-chart"></i>
+          <h3>AUDIT TRAIL &amp; QA WORKFLOW</h3>
+          <p>Human-in-the-loop verification with traceable scan history and review actions.</p>
+        </article>
       </div>
     </div>
   </section>
 
 
   <!-- ══════════════════════════════════════
-       SECTION 8 — FINAL CTA
+       SECTION 10 — FINAL CTA
   ══════════════════════════════════════ -->
   <section id="contact" class="section section-alt final-cta">
     <div class="section-inner">
       <div class="final-cta-inner" data-aos="fade-up">
         <div class="section-tag" style="justify-content:center;"><i class="fa-solid fa-rocket"></i> Get Started</div>
         <h2>Ready to Experience<br>Intelligent Waste Sorting?</h2>
-        <p>Explore the PurityLoop AI public demo, from YOLOv8 classification to operations analytics.</p>
+        <p>Explore the PurityLoop AI presentation workspace, from YOLOv8 classification to operations analytics.</p>
         <div class="final-cta-btns">
           <a href="/login" class="btn btn-xl">
-            <i class="fa-solid fa-flask"></i> Try the Demo
-          </a>
-          <a href="#analytics" class="btn-outline btn-xl">
-            <i class="fa-solid fa-chart-area"></i> View Analytics Demo
+            <i class="fa-solid fa-flask"></i> Login
           </a>
         </div>
-        <p style="margin-top:24px;font-size:0.8125rem;color:var(--muted);">Public capstone demo | No real account required</p>
+        <p style="margin-top:24px;font-size:0.8125rem;color:var(--muted);">Public capstone showcase | Presentation access available</p>
       </div>
     </div>
   </section>
@@ -660,7 +773,7 @@ const html = `
       <a href="#capstone">Capstone</a>
       <a href="/login">Platform</a>
     </div>
-    <p class="footer-copy">© 2026 PurityLoop AI | Capstone Demonstration Project | Built with YOLOv8 +
+    <p class="footer-copy">© 2026 PurityLoop AI | Capstone Presentation Project | Built with YOLOv8 +
       JavaScript</p>
   </footer>
 

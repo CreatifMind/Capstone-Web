@@ -177,6 +177,45 @@ CATEGORY_ROUTES = {
 }
 
 
+def canonical_category_key(value: str | None) -> str:
+    key = " ".join(str(value or "").strip().lower().replace("_", " ").replace("-", " ").split())
+    if "food" in key or "organic" in key:
+        return "food_organics"
+    if "general" in key or "trash" in key or "waste" in key:
+        return "general_trash"
+    if "textile" in key or "fabric" in key or "cloth" in key:
+        return "textile"
+    if "battery" in key:
+        return "battery"
+    if "cardboard" in key or "box" in key:
+        return "cardboard"
+    if "glass" in key or "jar" in key:
+        return "glass"
+    if "paper" in key:
+        return "paper"
+    if "metal" in key or "aluminum" in key or "aluminium" in key or "can" in key:
+        return "metal"
+    if "plastic" in key or "bottle" in key or "pet" in key or "film" in key:
+        return "plastic"
+    return "unknown"
+
+
+def filter_scans_by_final_category(scans: list[dict], materials: list[dict], decisions: list[dict], category: str) -> list[dict]:
+    latest = {}
+    for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+        latest[str(decision.get("detected_material_id", ""))] = decision
+    materials_by_scan = {}
+    for material in materials:
+        materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append(material)
+
+    def final_category(scan: dict) -> str:
+        material = (materials_by_scan.get(str(scan.get("id", ""))) or [{}])[0]
+        decision = latest.get(str(material.get("id", "")), {})
+        return canonical_category_key(scan.get("verified_category") or decision.get("chosen_category") or material.get("category"))
+
+    return [scan for scan in scans if final_category(scan) == category]
+
+
 @dataclass(frozen=True)
 class Principal:
     kind: str
@@ -1836,6 +1875,7 @@ def get_scan_history(
     start_date: str | None = None,
     end_date: str | None = None,
     search: str | None = None,
+    category: str | None = None,
     status: str | None = None,
     sort: str = "timestamp",
     direction: str = "desc",
@@ -1862,29 +1902,60 @@ def get_scan_history(
             scan_query = scan_query.eq("human_review_required", False)
         order_column = "overall_confidence" if sort == "confidence" else "created_at"
         descending = str(direction).lower() != "asc"
-        scan_response = scoped_query(
-            scan_query.order(order_column, desc=descending).range(offset, offset + limit - 1), principal
-        ).execute()
-        scans = scan_response.data or []
-        count_value = getattr(scan_response, "count", None)
-        if count_value is None:
-            raise RuntimeError("Supabase did not return an exact scan count")
-        total = int(count_value)
+        ordered_scan_query = scan_query.order(order_column, desc=descending)
+        category_key = canonical_category_key(category) if category else ""
+        if category and category_key == "unknown":
+            return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0}}
+
+        if category_key:
+            candidate_scans = []
+            candidate_offset = 0
+            while True:
+                response = scoped_query(
+                    ordered_scan_query.range(candidate_offset, candidate_offset + 199), principal
+                ).execute()
+                batch = response.data or []
+                candidate_scans.extend(batch)
+                if len(batch) < 200:
+                    break
+                candidate_offset += len(batch)
+            candidate_ids = [str(scan.get("id")) for scan in candidate_scans if scan.get("id")]
+            candidate_materials, candidate_decisions = [], []
+            for start in range(0, len(candidate_ids), 200):
+                scan_ids = candidate_ids[start:start + 200]
+                candidate_materials.extend(supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
+                candidate_decisions.extend(supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
+            filtered_scans = filter_scans_by_final_category(candidate_scans, candidate_materials, candidate_decisions, category_key)
+            total = len(filtered_scans)
+            scans = filtered_scans[offset:offset + limit]
+            rejected = sum(str(scan.get("overall_status", "")).lower() in {"rejected", "quarantined"} for scan in filtered_scans)
+            needs_review = sum(bool(scan.get("human_review_required")) for scan in filtered_scans)
+            confirmed = max(0, total - rejected - needs_review)
+        else:
+            scan_response = scoped_query(
+                ordered_scan_query.range(offset, offset + limit - 1), principal
+            ).execute()
+            scans = scan_response.data or []
+            count_value = getattr(scan_response, "count", None)
+            if count_value is None:
+                raise RuntimeError("Supabase did not return an exact scan count")
+            total = int(count_value)
         def exact_count(query):
             response = scoped_query(query, principal).execute()
             value = getattr(response, "count", None)
             return int(value) if value is not None else 0
 
-        rejected_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-        needs_review_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-        for query in (rejected_query, needs_review_query):
-            if start_date:
-                query.gte("created_at", start_date)
-            if end_date:
-                query.lt("created_at", end_date)
-        rejected = exact_count(rejected_query.in_("overall_status", ["rejected", "quarantined"]))
-        needs_review = exact_count(needs_review_query.eq("human_review_required", True))
-        confirmed = max(0, total - rejected - needs_review)
+        if not category_key:
+            rejected_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+            needs_review_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+            for query in (rejected_query, needs_review_query):
+                if start_date:
+                    query.gte("created_at", start_date)
+                if end_date:
+                    query.lt("created_at", end_date)
+            rejected = exact_count(rejected_query.in_("overall_status", ["rejected", "quarantined"]))
+            needs_review = exact_count(needs_review_query.eq("human_review_required", True))
+            confirmed = max(0, total - rejected - needs_review)
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
         if scan_ids:
             materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
@@ -1913,6 +1984,7 @@ def get_scan_history(
             "start_date": start_date,
             "end_date": end_date,
             "search": search,
+            "category": category,
             "status": status,
             "sort": "confidence" if sort == "confidence" else "timestamp",
             "direction": "desc" if descending else "asc",
