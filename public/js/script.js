@@ -211,6 +211,22 @@ function plNormalizeMaterial(material) {
     bbox_y: Number(material?.bbox_y || 0),
     bbox_width: Number(material?.bbox_width || 0),
     bbox_height: Number(material?.bbox_height || 0),
+    stable_object_id: material?.stable_object_id || "",
+    track_id: material?.track_id || "",
+    track_first_frame: material?.track_first_frame ?? null,
+    track_last_frame: material?.track_last_frame ?? null,
+    track_first_timestamp: material?.track_first_timestamp ?? null,
+    track_last_timestamp: material?.track_last_timestamp ?? null,
+    track_duration_seconds: material?.track_duration_seconds ?? null,
+    track_avg_confidence: material?.track_avg_confidence ?? null,
+    track_max_confidence: material?.track_max_confidence ?? null,
+    track_frame_count: material?.track_frame_count ?? null,
+    track_hazard_status: material?.track_hazard_status || "",
+    track_counted: material?.track_counted,
+    track_debug: material?.track_debug || null,
+    track_path: plSafeArray(material?.track_path),
+    segmentation_mask: material?.segmentation_mask || null,
+    best_box: material?.best_box || null,
     review_decision: material?.review_decision || null
   };
 }
@@ -236,6 +252,7 @@ function plDisplayableImageUrl(value) {
 function plNormalizeScan(scan) {
   if (!scan || !scan.id) return null;
   const sourceName = scan.source_name || scan.drive_file_name || "Uploaded image";
+  const sourceType = scan.source_type || "image";
   return {
     ...scan,
     image_url: String(scan.image_url || ""),
@@ -249,6 +266,10 @@ function plNormalizeScan(scan) {
     review_status: scan.review_status || null,
     verified_category: scan.verified_category || null,
     reviewed_at: scan.reviewed_at || null,
+    result_kind: scan.result_kind || (sourceType === "tracked_video" ? "tracked_video_object" : sourceType === "video_frame" ? "legacy_video_frame" : "image"),
+    legacy_result: Boolean(scan.legacy_result || sourceType === "video_frame"),
+    total_unique_objects: Number(scan.total_unique_objects || (sourceType === "tracked_video" ? 1 : 0)),
+    video_tracking_summary: scan.video_tracking_summary || {},
     created_at: scan.created_at || new Date().toISOString(),
     detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
   };
@@ -437,6 +458,9 @@ function plFormatScanTime(scan) {
 
 function plScanToLedger(scan, material = {}, index = 0) {
   const decision = plEvaluateMaterial(material, scan);
+  const isTrackedVideo = scan.result_kind === "tracked_video_object" || scan.source_type === "tracked_video" || Boolean(material?.stable_object_id);
+  const sourceTypeLabel = isTrackedVideo ? "Tracked video object" : scan.legacy_result ? "Legacy frame-based video" : "Image result";
+  const duration = material?.track_duration_seconds !== null && material?.track_duration_seconds !== undefined ? `${Number(material.track_duration_seconds).toFixed(2)}s` : "";
   return {
     id: `${scan.id}:${material.id || index}`,
     scanId: scan.id,
@@ -445,6 +469,9 @@ function plScanToLedger(scan, material = {}, index = 0) {
     timestamp: new Date(scan.created_at || Date.now()).getTime(),
     time: plFormatScanTime(scan),
     source: scan.source_name || "Uploaded image",
+    sourceTypeLabel,
+    duration,
+    stableObjectId: material?.stable_object_id || "",
     category: plNormalizeCategory(decision.category),
     materialClass: decision.materialClass,
     weight: plDisplayWeight(material, scan),
@@ -1600,11 +1627,12 @@ function initUploadPage() {
       transientFailures = 0;
       if (job.status === "complete" || job.status === "completed") {
         plSetUploadProgress(100, "MP4 processing complete");
-        setMessages(`${filename} processed. ${Number(job.processed_count || 0)} frame scans saved.`);
+        const uniqueCount = Number(job.result_summary?.total_unique_objects ?? job.total_count ?? job.processed_count ?? 0);
+        setMessages(`${filename} processed. ${uniqueCount} unique object${uniqueCount === 1 ? "" : "s"} saved.`);
         return job;
       }
       if (job.status === "failed") throw new Error(job.error || "MP4 processing failed.");
-      if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} frames)`;
+      if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} unique objects)`;
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
@@ -2927,6 +2955,13 @@ function initResultPage() {
       activeBeltTitle.textContent = activeFile.name;
       activeBeltTitle.title = activeFile.name;
     }
+    if (resultSourceState) {
+      resultSourceState.textContent = activeScan?.result_kind === "tracked_video_object" || activeScan?.source_type === "tracked_video"
+        ? "Tracked video result"
+        : activeScan?.legacy_result
+          ? "Legacy frame-based video result"
+          : "Image result";
+    }
 
     activeImageObj = new Image();
     activeImageObj.onload = function () {
@@ -3088,6 +3123,11 @@ function initResultPage() {
     return activeScan ? plMaterialsToBoxes(activeScan.detected_materials) : [];
   }
 
+  function getActiveTrackPath() {
+    const material = activeScan?.detected_materials?.[0];
+    return plSafeArray(material?.track_path).filter(point => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  }
+
   function updateResultDetails(result, file) {
     const scannedVal = document.getElementById("liveScanned");
     const purityVal = document.getElementById("livePurity");
@@ -3204,6 +3244,15 @@ function initResultPage() {
       const primaryValue = getEstimatedResaleValueRm(primaryDecision.category);
       const primaryRoute = PL_CATEGORY_ROUTES[primaryDecision.category] || "Route by material stream";
       const quantity = primaryMaterial?.quantity ?? primaryMaterial?.count ?? activeScan?.quantity ?? 1;
+      const isTrackedVideo = activeScan?.result_kind === "tracked_video_object" || activeScan?.source_type === "tracked_video" || Boolean(primaryMaterial?.stable_object_id);
+      const resultLabel = isTrackedVideo ? "Tracked video object" : activeScan?.legacy_result ? "Legacy frame-based video" : "Image result";
+      const durationLabel = primaryMaterial?.track_duration_seconds !== null && primaryMaterial?.track_duration_seconds !== undefined
+        ? `${Number(primaryMaterial.track_duration_seconds).toFixed(2)}s`
+        : "-";
+      const firstLastLabel = primaryMaterial?.track_first_timestamp !== null && primaryMaterial?.track_last_timestamp !== null && primaryMaterial?.track_first_timestamp !== undefined && primaryMaterial?.track_last_timestamp !== undefined
+        ? `${Number(primaryMaterial.track_first_timestamp).toFixed(2)}s - ${Number(primaryMaterial.track_last_timestamp).toFixed(2)}s`
+        : "-";
+      const hazardLabel = primaryMaterial?.track_hazard_status ? plNormalizeCategory(primaryMaterial.track_hazard_status) : (primaryDecision.materialClass === "contaminant" ? "Hazard" : "Clear");
       const materialIcon = {
         battery: "fa-battery-full", plastic: "fa-bottle-water", metal: "fa-cube", glass: "fa-wine-bottle",
         paper: "fa-file-lines", cardboard: "fa-box", textile: "fa-shirt", food_organics: "fa-leaf", general_trash: "fa-trash-can"
@@ -3215,7 +3264,7 @@ function initResultPage() {
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
         <div class="review-material-identity">
           <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
-          <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel}</span>
+          <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel} | ${resultLabel}</span>
         </div>
       ` : `
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
@@ -3231,14 +3280,28 @@ function initResultPage() {
       metrics.className = "material-metrics";
       metrics.innerHTML = isReviewWorkspace ? `
         <div><dt>Confidence</dt><dd>${Math.round(primaryDecision.confidence)}%</dd></div>
-        <div><dt>Estimated Weight</dt><dd>${plDisplayWeight(primaryMaterial, activeScan)}</dd></div>
-        <div><dt>Quantity</dt><dd>${quantity}</dd></div>
+        <div><dt>Duration</dt><dd>${durationLabel}</dd></div>
+        <div><dt>First / Last Seen</dt><dd>${firstLastLabel}</dd></div>
+        <div><dt>Hazard Status</dt><dd>${hazardLabel}</dd></div>
       ` : `
         <div><dt>Estimated Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
         <div><dt>Illustrative Recovery Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
         <div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
       `;
       liveFeed.appendChild(metrics);
+      const observations = plSafeArray(primaryMaterial?.track_debug?.frame_observations);
+      if (isReviewWorkspace && observations.length) {
+        const debugPanel = document.createElement("details");
+        debugPanel.className = "track-observations-panel";
+        debugPanel.innerHTML = `
+          <summary>Frame observations (${observations.length})</summary>
+          <div class="track-observations-list">
+            ${observations.slice(0, 12).map(item => `<span>Frame ${Number(item.frame)} · ${Number(item.timestamp).toFixed(2)}s · ${Math.round(plConfidencePercent(item.confidence))}%</span>`).join("")}
+            ${observations.length > 12 ? `<span>+ ${observations.length - 12} more observations</span>` : ""}
+          </div>
+        `;
+        liveFeed.appendChild(debugPanel);
+      }
 
       const unresolved = materials.find(material => plEvaluateMaterial(material, activeScan).reviewRequired);
       if (isReviewWorkspace) {
@@ -3403,6 +3466,22 @@ function initResultPage() {
       ctx2d.fillText(labelText, tagX + 7, tagY + 15);
     });
 
+    const path = getActiveTrackPath();
+    if (path.length > 1) {
+      ctx2d.save();
+      ctx2d.strokeStyle = "rgba(32, 178, 107, 0.92)";
+      ctx2d.lineWidth = 3;
+      ctx2d.beginPath();
+      path.forEach((point, index) => {
+        const x = drawX + drawW * Number(point.x);
+        const y = drawY + drawH * Number(point.y);
+        if (index === 0) ctx2d.moveTo(x, y);
+        else ctx2d.lineTo(x, y);
+      });
+      ctx2d.stroke();
+      ctx2d.restore();
+    }
+
     // - 5. Bottom telemetry bar (subtle, minimal - doesn't distract from image) -
     const hudY = canvas.height - 30;
     ctx2d.fillStyle = "rgba(4, 8, 6, 0.70)";
@@ -3488,7 +3567,8 @@ function initReviewWorkspace() {
     const material = scan.detected_materials?.[0] || {};
     const decision = plEvaluateMaterial(material, scan);
     const categoryKey = plCategoryKey(scan.verified_category || material.review_decision?.chosen_category || material.category || material.material_name);
-    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
+    const row = plScanToLedger(scan, material);
+    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, sourceTypeLabel: row.sourceTypeLabel, duration: row.duration, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
   };
   const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
   const reviewStatusParam = () => {
@@ -3566,7 +3646,7 @@ function initReviewWorkspace() {
     const visible = currentRows();
     const pages = Math.max(1, Math.ceil(state.total / pageSize));
     state.page = Math.min(state.page, pages);
-    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (state.error ? `<div class="feed-empty">${escape(state.error)}</div>` : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>'));
+    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (state.error ? `<div class="feed-empty">${escape(state.error)}</div>` : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.sourceTypeLabel)} · ${escape(row.duration || row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>'));
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
     if (range) range.textContent = state.loading ? "Loading scans" : `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, state.total)} loaded results of ${state.total} total`;
     renderPager(pager, state.page, pages, page => fetchReviewPage(page));
@@ -3981,7 +4061,7 @@ function initReviewModal() {
     }
     if (historyList) {
       const selectedScanId = new URLSearchParams(window.location.search).get("scanId") || plGetLatestScanResult()?.id || "";
-      historyList.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.scanId === selectedScanId ? "is-selected" : ""}" data-select-scan="${escape(row.scanId)}" aria-pressed="${row.scanId === selectedScanId}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${escape(row.confidenceText)} confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+      historyList.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.scanId === selectedScanId ? "is-selected" : ""}" data-select-scan="${escape(row.scanId)}" aria-pressed="${row.scanId === selectedScanId}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.sourceTypeLabel)} · ${escape(row.duration || row.time)} · ${escape(row.confidenceText)} confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
     }
     const start = rows.length ? (state.page - 1) * pageSize + 1 : 0;
     const resultTotal = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows.length;

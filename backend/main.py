@@ -7,7 +7,7 @@ import traceback
 import threading
 import time
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
@@ -180,6 +180,278 @@ CATEGORY_ROUTES = {
     "paper": "Paper Sorting Bin",
     "cardboard": "Cardboard Sorting Bin",
 }
+VIDEO_TRACK_MIN_FRAMES = max(1, int(os.getenv("VIDEO_TRACK_MIN_FRAMES", "3")))
+VIDEO_TRACK_SHORT_CONFIDENCE = float(os.getenv("VIDEO_TRACK_SHORT_CONFIDENCE", "0.92"))
+VIDEO_TRACK_LOST_BUFFER = max(1, int(os.getenv("VIDEO_TRACK_LOST_BUFFER", "15")))
+VIDEO_TRACK_RECOVERY_IOU = float(os.getenv("VIDEO_TRACK_RECOVERY_IOU", "0.35"))
+VIDEO_TRACK_RECOVERY_CENTER_DISTANCE = float(os.getenv("VIDEO_TRACK_RECOVERY_CENTER_DISTANCE", "0.18"))
+
+
+def _coerce_float(value: Any, fallback: float = 0.0) -> float:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _bbox_iou(first: list[float] | None, second: list[float] | None) -> float:
+    if not first or not second or len(first) < 4 or len(second) < 4:
+        return 0.0
+    ax1, ay1, ax2, ay2 = first[:4]
+    bx1, by1, bx2, by2 = second[:4]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _bbox_center(box: list[float] | None) -> tuple[float, float]:
+    if not box or len(box) < 4:
+        return (0.0, 0.0)
+    return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def _parse_counting_line(options: dict | None) -> dict | None:
+    raw = (options or {}).get("counting_line") or os.getenv("VIDEO_COUNTING_LINE")
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            axis, _, position = raw.partition("=")
+            raw = {"axis": axis, "position": position}
+    if not isinstance(raw, dict):
+        return None
+    axis = str(raw.get("axis") or "x").lower()
+    if axis not in {"x", "y"}:
+        axis = "x"
+    position = _coerce_float(raw.get("position"), 0.5)
+    if position > 1:
+        position = position / 100
+    direction = str(raw.get("direction") or "any").lower()
+    if direction not in {"positive", "negative", "any"}:
+        direction = "any"
+    return {"axis": axis, "position": max(0.0, min(1.0, position)), "direction": direction}
+
+
+@dataclass
+class VideoTrackState:
+    key: str
+    raw_track_ids: set[str] = field(default_factory=set)
+    first_frame: int = 0
+    last_frame: int = 0
+    first_timestamp: float = 0.0
+    last_timestamp: float = 0.0
+    class_votes: dict[str, float] = field(default_factory=dict)
+    class_names: dict[str, str] = field(default_factory=dict)
+    confidences: list[float] = field(default_factory=list)
+    observations: list[dict] = field(default_factory=list)
+    path: list[dict] = field(default_factory=list)
+    best_observation: dict = field(default_factory=dict)
+    best_crop_bytes: bytes | None = None
+    counted: bool = False
+    last_center: tuple[float, float] | None = None
+
+
+class VideoTrackAggregator:
+    """Collect sequential ByteTrack observations into one row per physical object."""
+
+    def __init__(
+        self,
+        upload_id: str,
+        *,
+        min_frames: int = VIDEO_TRACK_MIN_FRAMES,
+        short_track_confidence: float = VIDEO_TRACK_SHORT_CONFIDENCE,
+        lost_buffer: int = VIDEO_TRACK_LOST_BUFFER,
+        recovery_iou: float = VIDEO_TRACK_RECOVERY_IOU,
+        recovery_center_distance: float = VIDEO_TRACK_RECOVERY_CENTER_DISTANCE,
+        counting_line: dict | None = None,
+    ):
+        self.upload_id = str(upload_id)
+        self.min_frames = min_frames
+        self.short_track_confidence = short_track_confidence
+        self.lost_buffer = lost_buffer
+        self.recovery_iou = recovery_iou
+        self.recovery_center_distance = recovery_center_distance
+        self.counting_line = counting_line
+        self.active: dict[str, VideoTrackState] = {}
+        self.raw_to_key: dict[str, str] = {}
+        self.finalized: list[dict] = []
+        self._next_synthetic = 1
+
+    def observe(self, frame_index: int, timestamp: float, detections: list[dict]) -> list[dict]:
+        for detection in detections:
+            self._observe_one(frame_index, timestamp, detection)
+        return self.flush_stale(frame_index)
+
+    def flush_stale(self, frame_index: int, *, force: bool = False) -> list[dict]:
+        flushed = []
+        for key, state in list(self.active.items()):
+            if force or frame_index - state.last_frame > self.lost_buffer:
+                self.active.pop(key, None)
+                for raw_id in state.raw_track_ids:
+                    if self.raw_to_key.get(raw_id) == key:
+                        self.raw_to_key.pop(raw_id, None)
+                material = self._finalize(state)
+                if material:
+                    self.finalized.append(material)
+                    flushed.append(material)
+        return flushed
+
+    def finish(self, frame_index: int = 0) -> list[dict]:
+        return self.flush_stale(frame_index, force=True)
+
+    def _observe_one(self, frame_index: int, timestamp: float, detection: dict) -> None:
+        track_id = detection.get("track_id")
+        raw_id = str(track_id) if track_id is not None and str(track_id) != "" else ""
+        category = material_category(detection.get("category") or detection.get("material_name"))
+        box = [round(_coerce_float(value), 6) for value in detection.get("bbox") or []][:4]
+        key = self._resolve_key(raw_id, category, box, frame_index)
+        state = self.active.get(key)
+        confidence = max(0.0, min(1.0, _coerce_float(detection.get("confidence"))))
+        if not state:
+            state = VideoTrackState(
+                key=key,
+                first_frame=frame_index,
+                last_frame=frame_index,
+                first_timestamp=timestamp,
+                last_timestamp=timestamp,
+            )
+            self.active[key] = state
+        if raw_id:
+            state.raw_track_ids.add(raw_id)
+            self.raw_to_key[raw_id] = key
+        state.last_frame = frame_index
+        state.last_timestamp = timestamp
+        state.class_votes[category] = state.class_votes.get(category, 0.0) + confidence
+        state.class_names.setdefault(category, str(detection.get("material_name") or category))
+        state.confidences.append(confidence)
+        center = _bbox_center(box)
+        state.path.append({"frame": frame_index, "timestamp": round(timestamp, 3), "x": round(center[0], 4), "y": round(center[1], 4)})
+        self._update_counting_line(state, center)
+        observation = {
+            "frame": frame_index,
+            "timestamp": round(timestamp, 3),
+            "track_id": raw_id or key,
+            "category": category,
+            "confidence": round(confidence, 4),
+            "bbox": box,
+            "bbox_percent": detection.get("bbox_percent"),
+        }
+        state.observations.append(observation)
+        if confidence >= _coerce_float(state.best_observation.get("confidence"), -1):
+            state.best_observation = {
+                **observation,
+                "mask": detection.get("mask"),
+                "best_box": detection.get("best_box") or detection.get("bbox_percent") or box,
+            }
+            state.best_crop_bytes = detection.get("crop_bytes") or state.best_crop_bytes
+        state.last_center = center
+
+    def _resolve_key(self, raw_id: str, category: str, box: list[float], frame_index: int) -> str:
+        if raw_id and raw_id in self.raw_to_key and self.raw_to_key[raw_id] in self.active:
+            return self.raw_to_key[raw_id]
+        recovered = self._recover_key(category, box, frame_index)
+        if recovered:
+            return recovered
+        if raw_id:
+            return raw_id
+        key = f"synthetic-{self._next_synthetic}"
+        self._next_synthetic += 1
+        return key
+
+    def _recover_key(self, category: str, box: list[float], frame_index: int) -> str | None:
+        best_key = None
+        best_score = 0.0
+        cx, cy = _bbox_center(box)
+        for key, state in self.active.items():
+            if frame_index - state.last_frame > self.lost_buffer:
+                continue
+            previous_category = max(state.class_votes, key=state.class_votes.get, default="")
+            if previous_category != category:
+                continue
+            previous_box = state.best_observation.get("bbox") or []
+            iou = _bbox_iou(previous_box, box)
+            px, py = state.last_center or _bbox_center(previous_box)
+            distance = math.hypot(cx - px, cy - py)
+            score = max(iou, 1.0 - distance)
+            if (iou >= self.recovery_iou or distance <= self.recovery_center_distance) and score > best_score:
+                best_score = score
+                best_key = key
+        return best_key
+
+    def _update_counting_line(self, state: VideoTrackState, center: tuple[float, float]) -> None:
+        if not self.counting_line:
+            return
+        previous = state.last_center
+        if previous is None or state.counted:
+            return
+        index = 0 if self.counting_line["axis"] == "x" else 1
+        position = self.counting_line["position"]
+        before = previous[index] - position
+        after = center[index] - position
+        crossed = before == 0 or after == 0 or before * after < 0
+        if not crossed:
+            return
+        direction = self.counting_line["direction"]
+        if direction == "positive" and after <= before:
+            return
+        if direction == "negative" and after >= before:
+            return
+        state.counted = True
+
+    def _finalize(self, state: VideoTrackState) -> dict | None:
+        frame_count = len(state.observations)
+        max_confidence = max(state.confidences or [0.0])
+        if frame_count < self.min_frames and max_confidence < self.short_track_confidence:
+            return None
+        final_category = max(state.class_votes, key=state.class_votes.get, default="unknown")
+        avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
+        recyclable_status, contaminant_status = material_status(final_category)
+        hazard_status = "hazard" if CATEGORY_CLASS_MAP.get(final_category) == "contaminant" else "clear"
+        best_box = state.best_observation.get("bbox_percent") or {}
+        if not isinstance(best_box, dict):
+            best_box = {}
+        stable_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "-", state.key).strip("-") or "object"
+        material = {
+            "stable_object_id": f"{self.upload_id}-track-{stable_suffix}",
+            "track_id": ",".join(sorted(state.raw_track_ids)) or stable_suffix,
+            "material_name": state.class_names.get(final_category, final_category),
+            "category": final_category,
+            "confidence": round(max_confidence, 4),
+            "track_avg_confidence": round(avg_confidence, 4),
+            "track_max_confidence": round(max_confidence, 4),
+            "track_first_frame": state.first_frame,
+            "track_last_frame": state.last_frame,
+            "track_first_timestamp": round(state.first_timestamp, 3),
+            "track_last_timestamp": round(state.last_timestamp, 3),
+            "track_duration_seconds": round(max(0.0, state.last_timestamp - state.first_timestamp), 3),
+            "track_frame_count": frame_count,
+            "track_hazard_status": hazard_status,
+            "track_counted": True if not self.counting_line else state.counted,
+            "recyclable_status": recyclable_status,
+            "contaminant_status": contaminant_status,
+            **evaluate_material(final_category, max_confidence),
+            "bbox_x": round(_coerce_float(best_box.get("x")), 2),
+            "bbox_y": round(_coerce_float(best_box.get("y")), 2),
+            "bbox_width": round(_coerce_float(best_box.get("width")), 2),
+            "bbox_height": round(_coerce_float(best_box.get("height")), 2),
+            "best_box": state.best_observation.get("best_box"),
+            "segmentation_mask": state.best_observation.get("mask"),
+            "track_path": state.path,
+            "track_debug": {
+                "frame_observations": state.observations,
+                "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
+                "raw_track_ids": sorted(state.raw_track_ids),
+            },
+            "_best_crop_bytes": state.best_crop_bytes,
+        }
+        return material
 
 
 def canonical_category_key(value: str | None) -> str:
@@ -732,6 +1004,12 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "drive_web_url": scan.get("drive_web_url"),
         "image_url": scan.get("image_url"),
         "preview_image_url": scan.get("preview_image_url"),
+        "result_kind": scan.get("result_kind"),
+        "legacy_result": scan.get("legacy_result"),
+        "total_unique_objects": scan.get("total_unique_objects"),
+        "counts_by_class": (scan.get("video_tracking_summary") or {}).get("counts_by_class") if isinstance(scan.get("video_tracking_summary"), dict) else None,
+        "hazards": (scan.get("video_tracking_summary") or {}).get("hazards") if isinstance(scan.get("video_tracking_summary"), dict) else None,
+        "tracked_objects": materials if str(scan.get("result_kind") or "") == "tracked_video_object" else None,
         "detected_materials": materials,
     }
 
@@ -921,6 +1199,14 @@ def persist_scan(
     saved_scan_id = scan_data[0]["id"]
     stored_material_keys = {
         "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
+        "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category", "stable_object_id",
+        "track_id", "track_first_frame", "track_last_frame", "track_first_timestamp",
+        "track_last_timestamp", "track_duration_seconds", "track_avg_confidence",
+        "track_max_confidence", "track_frame_count", "track_hazard_status", "track_counted",
+        "track_debug", "track_path", "segmentation_mask", "best_box",
+    }
+    legacy_material_keys = {
+        "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
         "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category",
     }
     linked_materials = []
@@ -953,10 +1239,10 @@ def persist_scan(
                 recover=recover_materials,
             )
         except Exception as exc:
-            if frame_time_seconds is not None and getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
+            if getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
                 database.execute(
                     lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(
-                        [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in missing_materials]
+                        [{key: value for key, value in item.items() if key in legacy_material_keys or key in {"id", "scan_result_id"}} for item in missing_materials]
                     ).execute().data or [],
                     recover=recover_materials,
                 )
@@ -1246,6 +1532,220 @@ def _find_video_frame_scan(database: SupabaseExecutor, job_id: str, filename: st
     return str(response.data["id"]) if response and response.data else None
 
 
+def _clip_box(box: list[float], width: int, height: int) -> tuple[int, int, int, int]:
+    x1 = max(0, min(width - 1, int(round(_coerce_float(box[0]))))) if width else 0
+    y1 = max(0, min(height - 1, int(round(_coerce_float(box[1]))))) if height else 0
+    x2 = max(x1 + 1, min(width, int(round(_coerce_float(box[2]))))) if width else 0
+    y2 = max(y1 + 1, min(height, int(round(_coerce_float(box[3]))))) if height else 0
+    return x1, y1, x2, y2
+
+
+def _encode_detection_crop(frame, box: list[float]) -> bytes | None:
+    import cv2
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = _clip_box(box, width, height)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        crop = frame
+    ok, encoded = cv2.imencode(".jpg", crop)
+    return encoded.tobytes() if ok else None
+
+
+def _mask_polygon(result, index: int) -> list | None:
+    masks = getattr(result, "masks", None)
+    if not masks:
+        return None
+    polygons = getattr(masks, "xyn", None) or getattr(masks, "xy", None)
+    if polygons is None or index >= len(polygons):
+        return None
+    polygon = polygons[index]
+    if hasattr(polygon, "tolist"):
+        polygon = polygon.tolist()
+    return polygon
+
+
+def _result_track_observations(result, frame, frame_index: int, timestamp: float) -> list[dict]:
+    boxes = getattr(result, "boxes", None)
+    if boxes is None:
+        return []
+    names = getattr(result, "names", {}) or {}
+    image_height, image_width = getattr(result, "orig_shape", frame.shape[:2])
+    track_ids = getattr(boxes, "id", None)
+    detections = []
+    for index, box in enumerate(boxes):
+        xyxy = [float(value) for value in box.xyxy[0].tolist()]
+        confidence = float(box.conf[0])
+        class_id = int(box.cls[0])
+        material_name = str(names.get(class_id, f"class_{class_id}"))
+        track_id = None
+        if track_ids is not None:
+            try:
+                track_id = int(track_ids[index].item())
+            except (AttributeError, IndexError, TypeError, ValueError):
+                track_id = None
+        detections.append({
+            "track_id": track_id,
+            "material_name": material_name,
+            "category": material_category(material_name),
+            "confidence": confidence,
+            "bbox": [
+                xyxy[0] / image_width if image_width else 0,
+                xyxy[1] / image_height if image_height else 0,
+                xyxy[2] / image_width if image_width else 0,
+                xyxy[3] / image_height if image_height else 0,
+            ],
+            "bbox_percent": {
+                "x": round((xyxy[0] / image_width) * 100, 2) if image_width else 0,
+                "y": round((xyxy[1] / image_height) * 100, 2) if image_height else 0,
+                "width": round(((xyxy[2] - xyxy[0]) / image_width) * 100, 2) if image_width else 0,
+                "height": round(((xyxy[3] - xyxy[1]) / image_height) * 100, 2) if image_height else 0,
+            },
+            "best_box": {
+                "xyxy": [round(value, 2) for value in xyxy],
+                "frame": frame_index,
+                "timestamp": round(timestamp, 3),
+            },
+            "mask": _mask_polygon(result, index),
+            "crop_bytes": _encode_detection_crop(frame, xyxy),
+        })
+    return detections
+
+
+def _video_tracking_summary(tracked_objects: list[dict]) -> dict:
+    counts_by_class: dict[str, int] = {}
+    hazards = []
+    public_objects = []
+    for item in tracked_objects:
+        category = str(item.get("category") or "unknown")
+        counts_by_class[category] = counts_by_class.get(category, 0) + 1
+        public = {key: value for key, value in item.items() if not key.startswith("_")}
+        public_objects.append(public)
+        if item.get("track_hazard_status") == "hazard" or item.get("contaminant_status") == "contaminated":
+            hazards.append(public)
+    return {
+        "total_unique_objects": len(tracked_objects),
+        "counts_by_class": counts_by_class,
+        "hazards": hazards,
+        "tracked_objects": public_objects,
+        "result_kind": "tracked_video",
+    }
+
+
+def _persist_tracked_video_objects(
+    *,
+    tracked_objects: list[dict],
+    source_name: str,
+    file_id: str,
+    job: dict,
+    principal: Principal | None,
+    database: SupabaseExecutor,
+    existing_drive_metadata: dict,
+) -> list[str]:
+    scan_ids: list[str] = []
+    namespace = UUID(str(job["id"]))
+    for item in tracked_objects:
+        stable_object_id = str(item["stable_object_id"])
+        crop_bytes = item.get("_best_crop_bytes")
+        if not crop_bytes:
+            continue
+        public_material = {key: value for key, value in item.items() if not key.startswith("_")}
+        object_summary = summarize([public_material])
+        object_summary.update({
+            "result_kind": "tracked_video_object",
+            "legacy_result": False,
+            "total_unique_objects": 1,
+            "video_tracking_summary": {
+                "total_unique_objects": 1,
+                "counts_by_class": {public_material["category"]: 1},
+                "hazards": [public_material] if public_material.get("track_hazard_status") == "hazard" else [],
+                "tracked_objects": [public_material],
+            },
+        })
+        scan_uuid = uuid5(namespace, stable_object_id)
+        filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
+        print(f"[video-track] persisting object stable_object_id={stable_object_id} model_path={MODEL_PATH}")
+        result = persist_scan(
+            crop_bytes,
+            filename,
+            "tracked_video",
+            [public_material],
+            object_summary,
+            source_ref=file_id,
+            batch_id=str(job["id"]),
+            principal=principal,
+            content_type="image/jpeg",
+            existing_drive_metadata=existing_drive_metadata,
+            database=database,
+            scan_result_id=scan_uuid,
+            model_version=os.getenv("MODEL_VERSION", "yolov8m-seg-bytetrack"),
+        )
+        scan_ids.append(str(result["scan_result_id"]))
+    return scan_ids
+
+
+def _process_video_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor, existing: dict, payload: bytes, name: str) -> list[str]:
+    import cv2
+    tmp_path = None
+    scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
+    options = job.get("options") or {}
+    aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
+    last_checkpoint_count = len(scan_ids)
+    last_checkpoint_at = time.monotonic()
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+            tmp.write(payload)
+            tmp_path = tmp.name
+        capture = cv2.VideoCapture(tmp_path)
+        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+        frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        _update_job(job["id"], database, total_count=None, result_summary={"mode": "tracked_video", "frame_total": frame_total})
+        frame_index = 0
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            timestamp = frame_index / fps if fps else 0.0
+            results = get_model().track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
+            result = results[0] if results else None
+            detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
+            flushed = aggregator.observe(frame_index, timestamp, detections)
+            if flushed:
+                scan_ids.extend(_persist_tracked_video_objects(
+                    tracked_objects=flushed,
+                    source_name=name,
+                    file_id=file_id,
+                    job=job,
+                    principal=principal,
+                    database=database,
+                    existing_drive_metadata=existing,
+                ))
+            now = time.monotonic()
+            if len(scan_ids) - last_checkpoint_count >= 5 or now - last_checkpoint_at >= 8:
+                summary = _video_tracking_summary(aggregator.finalized)
+                _update_job(job["id"], database, processed_count=len(scan_ids), scan_ids=scan_ids, result_summary=summary)
+                last_checkpoint_count = len(scan_ids)
+                last_checkpoint_at = now
+            frame_index += 1
+        capture.release()
+        remaining = aggregator.finish(frame_index)
+        if remaining:
+            scan_ids.extend(_persist_tracked_video_objects(
+                tracked_objects=remaining,
+                source_name=name,
+                file_id=file_id,
+                job=job,
+                principal=principal,
+                database=database,
+                existing_drive_metadata=existing,
+            ))
+        summary = _video_tracking_summary(aggregator.finalized)
+        _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
+        return scan_ids
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
 def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
     info = _drive_file_info(file_id)
     if info.get("trashed"):
@@ -1261,53 +1761,7 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
     mime = str(info.get("mimeType") or "")
     name = info.get("name") or file_id
     if mime == "video/mp4" or name.lower().endswith(".mp4"):
-        import cv2
-        stride = max(1, int((job.get("options") or {}).get("vid_stride", 30)))
-        tmp_path = None
-        scan_ids = [str(scan_id) for scan_id in job.get("scan_ids") or []]
-        last_checkpoint_count = len(scan_ids)
-        last_checkpoint_at = time.monotonic()
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp.write(payload)
-                tmp_path = tmp.name
-            capture = cv2.VideoCapture(tmp_path)
-            fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
-            frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-            sampled_total = (frame_total + stride - 1) // stride if frame_total else None
-            _update_job(job["id"], database, total_count=sampled_total)
-            frame_index = 0
-            while True:
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                if frame_index % stride == 0:
-                    encoded_ok, encoded = cv2.imencode(".jpg", frame)
-                    if encoded_ok:
-                        frame_name = f"{Path(name).stem}_frame_{frame_index:08d}.jpg"
-                        scan_id = _find_video_frame_scan(database, str(job["id"]), frame_name)
-                        if not scan_id:
-                            result = run_scan(
-                                encoded.tobytes(), frame_name, "video_frame", source_ref=file_id,
-                                batch_id=str(job["id"]), principal=principal, content_type="image/jpeg",
-                                existing_drive_metadata=existing,
-                                frame_time_seconds=(frame_index / fps if fps else None), database=database,
-                            )
-                            scan_id = str(result["scan_result_id"])
-                        if scan_id not in scan_ids:
-                            scan_ids.append(scan_id)
-                        now = time.monotonic()
-                        if len(scan_ids) - last_checkpoint_count >= 10 or now - last_checkpoint_at >= 5:
-                            _update_job(job["id"], database, processed_count=len(scan_ids), scan_ids=scan_ids)
-                            last_checkpoint_count = len(scan_ids)
-                            last_checkpoint_at = now
-                frame_index += 1
-            capture.release()
-            _update_job(job["id"], database, processed_count=len(scan_ids), total_count=sampled_total or len(scan_ids), scan_ids=scan_ids)
-            return scan_ids
-        finally:
-            if tmp_path:
-                Path(tmp_path).unlink(missing_ok=True)
+        return _process_video_drive_file(file_id, job, principal, database, existing, payload, name)
     result = run_scan(
         payload,
         name,
@@ -1323,9 +1777,19 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
 
 
 def _update_job(job_id: str, database: SupabaseExecutor, **fields) -> None:
-    database.execute(
-        lambda client: client.table(JOBS_TABLE).update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
-    )
+    payload = {**fields, "updated_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        database.execute(
+            lambda client: client.table(JOBS_TABLE).update(payload).eq("id", job_id).execute()
+        )
+    except Exception as exc:
+        if "result_summary" in payload and getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
+            payload.pop("result_summary", None)
+            database.execute(
+                lambda client: client.table(JOBS_TABLE).update(payload).eq("id", job_id).execute()
+            )
+            return
+        raise
 
 
 def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:

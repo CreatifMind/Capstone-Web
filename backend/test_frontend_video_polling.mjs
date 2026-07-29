@@ -29,7 +29,7 @@ const context = {
   fetch: async () => {
     fetches += 1;
     const temporary = fetches === 1;
-    return { status: temporary ? 503 : 200, ok: !temporary, json: async () => temporary ? { retryable: true } : { status: "completed", processed_count: 1, scan_ids: ["scan-1"] } };
+    return { status: temporary ? 503 : 200, ok: !temporary, json: async () => temporary ? { retryable: true } : { status: "completed", processed_count: 1, total_count: 1, result_summary: { total_unique_objects: 1 }, scan_ids: ["scan-1"] } };
   },
 };
 vm.createContext(context);
@@ -39,6 +39,7 @@ await context.pollVideoJob("http://api", "job-1", "video.mp4");
 
 assert.equal(fetches, 2);
 assert.ok(messages.includes("Connection temporarily interrupted. Retrying…"));
-assert.equal(context.window.location.href, "/result?scanId=scan-1");
+assert.equal(context.window.location.href, "");
+assert.ok(messages.includes("video.mp4 processed. 1 unique object saved."));
 assert.ok(!source.includes("AbortController"), "page navigation must not cancel the server-side job");
 console.log("frontend polling recovers after one 503");
