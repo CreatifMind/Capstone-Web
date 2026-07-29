@@ -172,6 +172,9 @@ alter table scan_results
 
 alter table detected_materials
   add column if not exists stable_object_id text,
+  add column if not exists object_uid text,
+  add column if not exists source_track_ids jsonb not null default '[]'::jsonb,
+  add column if not exists result_type text,
   add column if not exists track_id text,
   add column if not exists track_first_frame integer,
   add column if not exists track_last_frame integer,
@@ -183,10 +186,16 @@ alter table detected_materials
   add column if not exists track_frame_count integer,
   add column if not exists track_hazard_status text,
   add column if not exists track_counted boolean,
+  add column if not exists track_start_center jsonb not null default '{}'::jsonb,
+  add column if not exists track_end_center jsonb not null default '{}'::jsonb,
+  add column if not exists track_avg_width numeric,
+  add column if not exists track_avg_height numeric,
+  add column if not exists track_avg_aspect_ratio numeric,
   add column if not exists track_debug jsonb not null default '{}'::jsonb,
   add column if not exists track_path jsonb not null default '[]'::jsonb,
   add column if not exists segmentation_mask jsonb,
-  add column if not exists best_box jsonb;
+  add column if not exists best_box jsonb,
+  add column if not exists best_bbox_norm jsonb;
 
 create table if not exists api_clients (
   id uuid primary key default gen_random_uuid(),
@@ -233,3 +242,6 @@ create index if not exists scan_results_user_id_idx on scan_results(user_id);
 create index if not exists scan_results_result_kind_idx on scan_results(result_kind);
 create index if not exists detected_materials_scan_result_id_idx on detected_materials(scan_result_id);
 create index if not exists detected_materials_stable_object_id_idx on detected_materials(stable_object_id);
+create unique index if not exists detected_materials_scan_object_uid_key
+  on detected_materials(scan_result_id, object_uid)
+  where object_uid is not null;

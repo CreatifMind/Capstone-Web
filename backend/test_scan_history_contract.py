@@ -42,6 +42,10 @@ class FakeQuery:
         self.filters[field] = value
         return self
 
+    def neq(self, field, value):
+        self.filters[f"{field}!="] = value
+        return self
+
     def gte(self, field, value):
         self.filters[field] = value
         return self

@@ -185,6 +185,11 @@ VIDEO_TRACK_SHORT_CONFIDENCE = float(os.getenv("VIDEO_TRACK_SHORT_CONFIDENCE", "
 VIDEO_TRACK_LOST_BUFFER = max(1, int(os.getenv("VIDEO_TRACK_LOST_BUFFER", "15")))
 VIDEO_TRACK_RECOVERY_IOU = float(os.getenv("VIDEO_TRACK_RECOVERY_IOU", "0.35"))
 VIDEO_TRACK_RECOVERY_CENTER_DISTANCE = float(os.getenv("VIDEO_TRACK_RECOVERY_CENTER_DISTANCE", "0.18"))
+VIDEO_LOGICAL_MERGE_MAX_GAP = max(1, int(os.getenv("VIDEO_LOGICAL_MERGE_MAX_GAP", "90")))
+VIDEO_LOGICAL_MERGE_CENTER_DISTANCE = float(os.getenv("VIDEO_LOGICAL_MERGE_CENTER_DISTANCE", "0.22"))
+VIDEO_LOGICAL_MERGE_SIZE_RATIO = float(os.getenv("VIDEO_LOGICAL_MERGE_SIZE_RATIO", "0.65"))
+VIDEO_TRACKER_CONFIG = os.getenv("VIDEO_TRACKER_CONFIG", "config/bytetrack_purityloop.yaml")
+VIDEO_TRACK_DEBUG_LOGS = os.getenv("VIDEO_TRACK_DEBUG_LOGS", "true").lower() != "false"
 
 
 def _coerce_float(value: Any, fallback: float = 0.0) -> float:
@@ -239,6 +244,22 @@ def _parse_counting_line(options: dict | None) -> dict | None:
     return {"axis": axis, "position": max(0.0, min(1.0, position)), "direction": direction}
 
 
+def _video_debug(event: str, **fields) -> None:
+    if not VIDEO_TRACK_DEBUG_LOGS:
+        return
+    safe = {"event": event, **fields}
+    print(f"[video-track] {json.dumps(safe, default=str, sort_keys=True)}")
+
+
+def _bbox_size(box: list[float] | None) -> tuple[float, float, float]:
+    if not box or len(box) < 4:
+        return (0.0, 0.0, 0.0)
+    width = max(0.0, box[2] - box[0])
+    height = max(0.0, box[3] - box[1])
+    aspect = width / height if height > 0 else 0.0
+    return width, height, aspect
+
+
 @dataclass
 class VideoTrackState:
     key: str
@@ -281,6 +302,7 @@ class VideoTrackAggregator:
         self.counting_line = counting_line
         self.active: dict[str, VideoTrackState] = {}
         self.raw_to_key: dict[str, str] = {}
+        self.finalized_track_ids: set[str] = set()
         self.finalized: list[dict] = []
         self._next_synthetic = 1
 
@@ -299,8 +321,19 @@ class VideoTrackAggregator:
                         self.raw_to_key.pop(raw_id, None)
                 material = self._finalize(state)
                 if material:
+                    self.finalized_track_ids.update(state.raw_track_ids)
                     self.finalized.append(material)
                     flushed.append(material)
+                    _video_debug(
+                        "track_finalized",
+                        scan_id=self.upload_id,
+                        logical_object_id=material.get("stable_object_id"),
+                        source_track_ids=material.get("source_track_ids"),
+                        first_frame=material.get("track_first_frame"),
+                        last_frame=material.get("track_last_frame"),
+                        observations=material.get("track_frame_count"),
+                        final_class=material.get("category"),
+                    )
         return flushed
 
     def finish(self, frame_index: int = 0) -> list[dict]:
@@ -309,6 +342,9 @@ class VideoTrackAggregator:
     def _observe_one(self, frame_index: int, timestamp: float, detection: dict) -> None:
         track_id = detection.get("track_id")
         raw_id = str(track_id) if track_id is not None and str(track_id) != "" else ""
+        if raw_id and raw_id in self.finalized_track_ids:
+            _video_debug("track_observation_skipped_finalized", scan_id=self.upload_id, frame=frame_index, raw_track_id=raw_id)
+            return
         category = material_category(detection.get("category") or detection.get("material_name"))
         box = [round(_coerce_float(value), 6) for value in detection.get("bbox") or []][:4]
         key = self._resolve_key(raw_id, category, box, frame_index)
@@ -343,6 +379,15 @@ class VideoTrackAggregator:
             "bbox": box,
             "bbox_percent": detection.get("bbox_percent"),
         }
+        _video_debug(
+            "track_observation",
+            scan_id=self.upload_id,
+            frame=frame_index,
+            raw_track_id=raw_id or key,
+            class_name=category,
+            confidence=round(confidence, 4),
+            bbox=box,
+        )
         state.observations.append(observation)
         if confidence >= _coerce_float(state.best_observation.get("confidence"), -1):
             state.best_observation = {
@@ -417,9 +462,21 @@ class VideoTrackAggregator:
         best_box = state.best_observation.get("bbox_percent") or {}
         if not isinstance(best_box, dict):
             best_box = {}
+        best_norm_box = state.best_observation.get("bbox") or []
+        start_center = state.path[0] if state.path else {"x": 0, "y": 0}
+        end_center = state.path[-1] if state.path else {"x": 0, "y": 0}
+        widths, heights, aspects = [], [], []
+        for observation in state.observations:
+            width, height, aspect = _bbox_size(observation.get("bbox"))
+            widths.append(width)
+            heights.append(height)
+            aspects.append(aspect)
+        source_track_ids = sorted(state.raw_track_ids)
         stable_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "-", state.key).strip("-") or "object"
         material = {
             "stable_object_id": f"{self.upload_id}-track-{stable_suffix}",
+            "object_uid": f"{self.upload_id}-track-{stable_suffix}",
+            "source_track_ids": source_track_ids,
             "track_id": ",".join(sorted(state.raw_track_ids)) or stable_suffix,
             "material_name": state.class_names.get(final_category, final_category),
             "category": final_category,
@@ -434,6 +491,11 @@ class VideoTrackAggregator:
             "track_frame_count": frame_count,
             "track_hazard_status": hazard_status,
             "track_counted": True if not self.counting_line else state.counted,
+            "track_start_center": {"x": start_center.get("x", 0), "y": start_center.get("y", 0)},
+            "track_end_center": {"x": end_center.get("x", 0), "y": end_center.get("y", 0)},
+            "track_avg_width": round(sum(widths) / len(widths), 6) if widths else 0,
+            "track_avg_height": round(sum(heights) / len(heights), 6) if heights else 0,
+            "track_avg_aspect_ratio": round(sum(aspects) / len(aspects), 6) if aspects else 0,
             "recyclable_status": recyclable_status,
             "contaminant_status": contaminant_status,
             **evaluate_material(final_category, max_confidence),
@@ -442,6 +504,7 @@ class VideoTrackAggregator:
             "bbox_width": round(_coerce_float(best_box.get("width")), 2),
             "bbox_height": round(_coerce_float(best_box.get("height")), 2),
             "best_box": state.best_observation.get("best_box"),
+            "best_bbox_norm": best_norm_box,
             "segmentation_mask": state.best_observation.get("mask"),
             "track_path": state.path,
             "track_debug": {
@@ -610,6 +673,7 @@ def scan_history_filters(
 
 
 def apply_scan_history_filters(query, filters: dict[str, str | None], status_override: str | None = None):
+    query = query.neq("source_type", "video_frame")
     if filters.get("start_date"):
         query = query.gte("created_at", filters["start_date"])
     if filters.get("end_date"):
@@ -1009,7 +1073,7 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "total_unique_objects": scan.get("total_unique_objects"),
         "counts_by_class": (scan.get("video_tracking_summary") or {}).get("counts_by_class") if isinstance(scan.get("video_tracking_summary"), dict) else None,
         "hazards": (scan.get("video_tracking_summary") or {}).get("hazards") if isinstance(scan.get("video_tracking_summary"), dict) else None,
-        "tracked_objects": materials if str(scan.get("result_kind") or "") == "tracked_video_object" else None,
+        "tracked_objects": materials if str(scan.get("result_kind") or "") in {"tracked_video_object", "video_track_object"} else None,
         "detected_materials": materials,
     }
 
@@ -1200,10 +1264,12 @@ def persist_scan(
     stored_material_keys = {
         "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
         "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category", "stable_object_id",
-        "track_id", "track_first_frame", "track_last_frame", "track_first_timestamp",
+        "object_uid", "source_track_ids", "track_id", "track_first_frame", "track_last_frame", "track_first_timestamp",
         "track_last_timestamp", "track_duration_seconds", "track_avg_confidence",
         "track_max_confidence", "track_frame_count", "track_hazard_status", "track_counted",
-        "track_debug", "track_path", "segmentation_mask", "best_box",
+        "track_start_center", "track_end_center", "track_avg_width", "track_avg_height",
+        "track_avg_aspect_ratio", "track_debug", "track_path", "segmentation_mask", "best_box",
+        "best_bbox_norm", "result_type",
     }
     legacy_material_keys = {
         "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
@@ -1215,7 +1281,7 @@ def persist_scan(
             key: value for key, value in item.items() if key in stored_material_keys
         } | {"scan_result_id": saved_scan_id}
         if scan_result_id:
-            linked["id"] = str(uuid5(scan_result_id, f"material:{index}"))
+            linked["id"] = str(uuid5(scan_result_id, f"material:{item.get('object_uid') or index}"))
         if frame_time_seconds is not None:
             linked["frame_time_seconds"] = frame_time_seconds
         linked_materials.append(linked)
@@ -1631,6 +1697,148 @@ def _video_tracking_summary(tracked_objects: list[dict]) -> dict:
     }
 
 
+def _track_time_overlap(first: dict, second: dict) -> bool:
+    return not (
+        _coerce_float(first.get("track_last_frame"), -1) < _coerce_float(second.get("track_first_frame"), 0)
+        or _coerce_float(second.get("track_last_frame"), -1) < _coerce_float(first.get("track_first_frame"), 0)
+    )
+
+
+def _track_temporal_gap(first: dict, second: dict) -> int:
+    return max(0, int(_coerce_float(second.get("track_first_frame"))) - int(_coerce_float(first.get("track_last_frame"))))
+
+
+def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
+    if first.get("category") != second.get("category"):
+        return False, "class mismatch"
+    if _track_time_overlap(first, second):
+        return False, "tracks overlap in time"
+    ordered = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    previous, current = ordered
+    gap = _track_temporal_gap(previous, current)
+    if gap > VIDEO_LOGICAL_MERGE_MAX_GAP:
+        return False, f"temporal gap {gap} exceeds {VIDEO_LOGICAL_MERGE_MAX_GAP}"
+    previous_end = previous.get("track_end_center") or {}
+    current_start = current.get("track_start_center") or {}
+    distance = math.hypot(
+        _coerce_float(previous_end.get("x")) - _coerce_float(current_start.get("x")),
+        _coerce_float(previous_end.get("y")) - _coerce_float(current_start.get("y")),
+    )
+    if distance > VIDEO_LOGICAL_MERGE_CENTER_DISTANCE:
+        return False, f"centre distance {distance:.3f} exceeds {VIDEO_LOGICAL_MERGE_CENTER_DISTANCE}"
+    width_a, width_b = _coerce_float(previous.get("track_avg_width")), _coerce_float(current.get("track_avg_width"))
+    height_a, height_b = _coerce_float(previous.get("track_avg_height")), _coerce_float(current.get("track_avg_height"))
+    aspect_a, aspect_b = _coerce_float(previous.get("track_avg_aspect_ratio")), _coerce_float(current.get("track_avg_aspect_ratio"))
+    width_ratio = min(width_a, width_b) / max(width_a, width_b) if max(width_a, width_b) > 0 else 1
+    height_ratio = min(height_a, height_b) / max(height_a, height_b) if max(height_a, height_b) > 0 else 1
+    aspect_ratio = min(aspect_a, aspect_b) / max(aspect_a, aspect_b) if max(aspect_a, aspect_b) > 0 else 1
+    if min(width_ratio, height_ratio, aspect_ratio) < VIDEO_LOGICAL_MERGE_SIZE_RATIO:
+        return False, "size/aspect mismatch"
+    return True, f"class compatible; gap={gap}; centre_distance={distance:.3f}; size ratios ok"
+
+
+def _merge_two_tracks(first: dict, second: dict) -> dict:
+    tracks = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    primary = max(tracks, key=lambda item: _coerce_float(item.get("track_max_confidence") or item.get("confidence")))
+    merged_observations = []
+    merged_path = []
+    class_votes: dict[str, float] = {}
+    source_track_ids = []
+    for track in tracks:
+        source_track_ids.extend([str(item) for item in track.get("source_track_ids") or str(track.get("track_id") or "").split(",") if item])
+        debug = track.get("track_debug") or {}
+        merged_observations.extend(pl for pl in debug.get("frame_observations", []) if isinstance(pl, dict))
+        merged_path.extend(pl for pl in track.get("track_path", []) if isinstance(pl, dict))
+        for category, value in (debug.get("class_votes") or {}).items():
+            class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
+    source_track_ids = sorted(set(source_track_ids), key=str)
+    first_frame = min(int(_coerce_float(track.get("track_first_frame"))) for track in tracks)
+    last_frame = max(int(_coerce_float(track.get("track_last_frame"))) for track in tracks)
+    first_timestamp = min(_coerce_float(track.get("track_first_timestamp")) for track in tracks)
+    last_timestamp = max(_coerce_float(track.get("track_last_timestamp")) for track in tracks)
+    frame_count = sum(int(_coerce_float(track.get("track_frame_count"))) for track in tracks)
+    max_confidence = max(_coerce_float(track.get("track_max_confidence") or track.get("confidence")) for track in tracks)
+    weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
+    avg_confidence = (
+        sum(_coerce_float(track.get("track_avg_confidence")) * int(_coerce_float(track.get("track_frame_count"))) for track in tracks) / frame_count
+        if frame_count else _coerce_float(primary.get("track_avg_confidence"))
+    )
+    recyclable_status, contaminant_status = material_status(weighted_category)
+    hazard_status = "hazard" if any(track.get("track_hazard_status") == "hazard" for track in tracks) or CATEGORY_CLASS_MAP.get(weighted_category) == "contaminant" else "clear"
+    merged = {
+        **primary,
+        "source_track_ids": source_track_ids,
+        "track_id": ",".join(source_track_ids),
+        "category": weighted_category,
+        "material_name": weighted_category,
+        "confidence": round(max_confidence, 4),
+        "track_avg_confidence": round(avg_confidence, 4),
+        "track_max_confidence": round(max_confidence, 4),
+        "track_first_frame": first_frame,
+        "track_last_frame": last_frame,
+        "track_first_timestamp": round(first_timestamp, 3),
+        "track_last_timestamp": round(last_timestamp, 3),
+        "track_duration_seconds": round(max(0.0, last_timestamp - first_timestamp), 3),
+        "track_frame_count": frame_count,
+        "track_hazard_status": hazard_status,
+        "recyclable_status": recyclable_status,
+        "contaminant_status": contaminant_status,
+        "track_path": sorted(merged_path, key=lambda point: int(_coerce_float(point.get("frame")))),
+        "track_debug": {
+            "frame_observations": sorted(merged_observations, key=lambda item: int(_coerce_float(item.get("frame")))),
+            "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
+            "raw_track_ids": source_track_ids,
+        },
+        **evaluate_material(weighted_category, max_confidence),
+    }
+    return merged
+
+
+def merge_track_fragments(raw_tracks: list[dict], upload_id: str) -> list[dict]:
+    logical = sorted(raw_tracks, key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    changed = True
+    merge_reasons = []
+    while changed:
+        changed = False
+        for i, first in enumerate(logical):
+            for j in range(i + 1, len(logical)):
+                second = logical[j]
+                should_merge, reason = _track_merge_score(first, second)
+                if not should_merge:
+                    continue
+                merged = _merge_two_tracks(first, second)
+                merge_reasons.append({
+                    "source_track_ids": merged.get("source_track_ids"),
+                    "reason": reason,
+                })
+                logical = [item for index, item in enumerate(logical) if index not in {i, j}] + [merged]
+                logical.sort(key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+                changed = True
+                break
+            if changed:
+                break
+    for index, item in enumerate(logical, start=1):
+        source_track_ids = item.get("source_track_ids") or [item.get("track_id") or index]
+        object_uid = f"{upload_id}-object-{index:04d}"
+        item["object_uid"] = object_uid
+        item["stable_object_id"] = object_uid
+        item["source_track_ids"] = source_track_ids
+        item.setdefault("track_debug", {})["merge_reasons"] = [
+            reason for reason in merge_reasons if set(reason.get("source_track_ids") or []).issubset(set(source_track_ids))
+        ]
+        _video_debug(
+            "logical_object_finalized",
+            scan_id=upload_id,
+            logical_object_id=object_uid,
+            source_track_ids=source_track_ids,
+            first_frame=item.get("track_first_frame"),
+            last_frame=item.get("track_last_frame"),
+            observations=item.get("track_frame_count"),
+            final_class=item.get("category"),
+        )
+    return logical
+
+
 def _persist_tracked_video_objects(
     *,
     tracked_objects: list[dict],
@@ -1649,9 +1857,10 @@ def _persist_tracked_video_objects(
         if not crop_bytes:
             continue
         public_material = {key: value for key, value in item.items() if not key.startswith("_")}
+        public_material["result_type"] = "video_track_object"
         object_summary = summarize([public_material])
         object_summary.update({
-            "result_kind": "tracked_video_object",
+            "result_kind": "video_track_object",
             "legacy_result": False,
             "total_unique_objects": 1,
             "video_tracking_summary": {
@@ -1663,7 +1872,14 @@ def _persist_tracked_video_objects(
         })
         scan_uuid = uuid5(namespace, stable_object_id)
         filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
-        print(f"[video-track] persisting object stable_object_id={stable_object_id} model_path={MODEL_PATH}")
+        _video_debug(
+            "database_write",
+            scan_id=str(scan_uuid),
+            logical_object_id=stable_object_id,
+            source_track_ids=public_material.get("source_track_ids"),
+            class_name=public_material.get("category"),
+            confidence=public_material.get("confidence"),
+        )
         result = persist_scan(
             crop_bytes,
             filename,
@@ -1689,7 +1905,6 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
     scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
     options = job.get("options") or {}
     aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
-    last_checkpoint_count = len(scan_ids)
     last_checkpoint_at = time.monotonic()
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
@@ -1698,6 +1913,11 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         capture = cv2.VideoCapture(tmp_path)
         fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
         frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        video_model = get_model()
+        tracker_path = str(APP_ROOT / VIDEO_TRACKER_CONFIG)
+        if not Path(tracker_path).exists():
+            tracker_path = VIDEO_TRACKER_CONFIG
+        _video_debug("video_tracking_started", scan_id=str(job["id"]), source_name=name, frame_total=frame_total, tracker=tracker_path, stride=1)
         _update_job(job["id"], database, total_count=None, result_summary={"mode": "tracked_video", "frame_total": frame_total})
         frame_index = 0
         while True:
@@ -1705,40 +1925,50 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             if not ok:
                 break
             timestamp = frame_index / fps if fps else 0.0
-            results = get_model().track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
+            results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False)
             result = results[0] if results else None
             detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
-            flushed = aggregator.observe(frame_index, timestamp, detections)
-            if flushed:
-                scan_ids.extend(_persist_tracked_video_objects(
-                    tracked_objects=flushed,
-                    source_name=name,
-                    file_id=file_id,
-                    job=job,
-                    principal=principal,
-                    database=database,
-                    existing_drive_metadata=existing,
-                ))
+            aggregator.observe(frame_index, timestamp, detections)
             now = time.monotonic()
-            if len(scan_ids) - last_checkpoint_count >= 5 or now - last_checkpoint_at >= 8:
+            if now - last_checkpoint_at >= 8:
                 summary = _video_tracking_summary(aggregator.finalized)
-                _update_job(job["id"], database, processed_count=len(scan_ids), scan_ids=scan_ids, result_summary=summary)
-                last_checkpoint_count = len(scan_ids)
+                summary["frame_detections"] = sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in aggregator.finalized)
+                summary["raw_track_count"] = len(aggregator.finalized) + len(aggregator.active)
+                _update_job(job["id"], database, processed_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
                 last_checkpoint_at = now
             frame_index += 1
         capture.release()
-        remaining = aggregator.finish(frame_index)
-        if remaining:
-            scan_ids.extend(_persist_tracked_video_objects(
-                tracked_objects=remaining,
-                source_name=name,
-                file_id=file_id,
-                job=job,
-                principal=principal,
-                database=database,
-                existing_drive_metadata=existing,
-            ))
-        summary = _video_tracking_summary(aggregator.finalized)
+        aggregator.finish(frame_index)
+        raw_tracks = aggregator.finalized
+        logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
+        scan_ids = _persist_tracked_video_objects(
+            tracked_objects=logical_objects,
+            source_name=name,
+            file_id=file_id,
+            job=job,
+            principal=principal,
+            database=database,
+            existing_drive_metadata=existing,
+        )
+        summary = _video_tracking_summary(logical_objects)
+        summary.update({
+            "scan_id": str(job["id"]),
+            "result_type": "video_tracking",
+            "frame_total": frame_total,
+            "frame_detections": sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in raw_tracks),
+            "raw_track_count": len(raw_tracks),
+            "filtered_tracks": max(0, len(raw_tracks) - len(logical_objects)),
+            "database_rows_written": len(scan_ids),
+        })
+        _video_debug(
+            "video_tracking_completed",
+            scan_id=str(job["id"]),
+            frame_total=frame_total,
+            frame_detections=summary["frame_detections"],
+            raw_track_count=len(raw_tracks),
+            final_logical_objects=len(logical_objects),
+            database_rows_written=len(scan_ids),
+        )
         _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
         return scan_ids
     finally:

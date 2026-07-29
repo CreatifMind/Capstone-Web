@@ -225,6 +225,9 @@ function plNormalizeMaterial(material) {
     track_counted: material?.track_counted,
     track_debug: material?.track_debug || null,
     track_path: plSafeArray(material?.track_path),
+    object_uid: material?.object_uid || material?.stable_object_id || "",
+    source_track_ids: plSafeArray(material?.source_track_ids),
+    result_type: material?.result_type || "",
     segmentation_mask: material?.segmentation_mask || null,
     best_box: material?.best_box || null,
     review_decision: material?.review_decision || null
@@ -266,7 +269,7 @@ function plNormalizeScan(scan) {
     review_status: scan.review_status || null,
     verified_category: scan.verified_category || null,
     reviewed_at: scan.reviewed_at || null,
-    result_kind: scan.result_kind || (sourceType === "tracked_video" ? "tracked_video_object" : sourceType === "video_frame" ? "legacy_video_frame" : "image"),
+    result_kind: scan.result_kind || (sourceType === "tracked_video" ? "video_track_object" : sourceType === "video_frame" ? "legacy_video_frame" : "image_detection"),
     legacy_result: Boolean(scan.legacy_result || sourceType === "video_frame"),
     total_unique_objects: Number(scan.total_unique_objects || (sourceType === "tracked_video" ? 1 : 0)),
     video_tracking_summary: scan.video_tracking_summary || {},
@@ -458,7 +461,7 @@ function plFormatScanTime(scan) {
 
 function plScanToLedger(scan, material = {}, index = 0) {
   const decision = plEvaluateMaterial(material, scan);
-  const isTrackedVideo = scan.result_kind === "tracked_video_object" || scan.source_type === "tracked_video" || Boolean(material?.stable_object_id);
+  const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(scan.result_kind) || scan.source_type === "tracked_video" || Boolean(material?.stable_object_id);
   const sourceTypeLabel = isTrackedVideo ? "Tracked video object" : scan.legacy_result ? "Legacy frame-based video" : "Image result";
   const duration = material?.track_duration_seconds !== null && material?.track_duration_seconds !== undefined ? `${Number(material.track_duration_seconds).toFixed(2)}s` : "";
   return {
@@ -2956,7 +2959,7 @@ function initResultPage() {
       activeBeltTitle.title = activeFile.name;
     }
     if (resultSourceState) {
-      resultSourceState.textContent = activeScan?.result_kind === "tracked_video_object" || activeScan?.source_type === "tracked_video"
+      resultSourceState.textContent = ["tracked_video_object", "video_track_object"].includes(activeScan?.result_kind) || activeScan?.source_type === "tracked_video"
         ? "Tracked video result"
         : activeScan?.legacy_result
           ? "Legacy frame-based video result"
@@ -3244,7 +3247,7 @@ function initResultPage() {
       const primaryValue = getEstimatedResaleValueRm(primaryDecision.category);
       const primaryRoute = PL_CATEGORY_ROUTES[primaryDecision.category] || "Route by material stream";
       const quantity = primaryMaterial?.quantity ?? primaryMaterial?.count ?? activeScan?.quantity ?? 1;
-      const isTrackedVideo = activeScan?.result_kind === "tracked_video_object" || activeScan?.source_type === "tracked_video" || Boolean(primaryMaterial?.stable_object_id);
+      const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan?.result_kind) || activeScan?.source_type === "tracked_video" || Boolean(primaryMaterial?.stable_object_id);
       const resultLabel = isTrackedVideo ? "Tracked video object" : activeScan?.legacy_result ? "Legacy frame-based video" : "Image result";
       const durationLabel = primaryMaterial?.track_duration_seconds !== null && primaryMaterial?.track_duration_seconds !== undefined
         ? `${Number(primaryMaterial.track_duration_seconds).toFixed(2)}s`

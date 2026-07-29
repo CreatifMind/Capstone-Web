@@ -1,4 +1,5 @@
 import unittest
+import os
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -69,8 +70,9 @@ def install_backend_dependency_shims():
 
 
 install_backend_dependency_shims()
+os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
-from backend.main import VideoTrackAggregator, _video_tracking_summary
+from backend.main import VideoTrackAggregator, _video_tracking_summary, merge_track_fragments
 
 
 def detection(track_id, category="plastic", confidence=0.8, x1=0.1, y1=0.1, x2=0.2, y2=0.2):
@@ -178,6 +180,71 @@ class VideoTrackAggregationTests(unittest.TestCase):
 
         self.assertEqual(len(aggregator.finalized), 0)
         self.assertEqual(len(aggregator.finish(3)), 1)
+
+    def test_fragmented_ids_merge_into_one_logical_object(self):
+        aggregator = VideoTrackAggregator("upload-10", recovery_center_distance=0)
+        for frame in range(3):
+            aggregator.observe(frame, frame / 10, [detection(1, "plastic", 0.9, 0.1 + frame * 0.01, 0.1, 0.2 + frame * 0.01, 0.2)])
+        aggregator.finish(3)
+        second = VideoTrackAggregator("upload-10")
+        for frame in range(5, 8):
+            second.observe(frame, frame / 10, [detection(7, "plastic", 0.91, 0.14 + frame * 0.005, 0.1, 0.24 + frame * 0.005, 0.2)])
+        second.finish(8)
+
+        merged = merge_track_fragments(aggregator.finalized + second.finalized, "upload-10")
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["object_uid"], "upload-10-object-0001")
+        self.assertEqual(merged[0]["source_track_ids"], ["1", "7"])
+
+    def test_separate_same_class_objects_do_not_merge(self):
+        aggregator = VideoTrackAggregator("upload-11")
+        for frame in range(3):
+            aggregator.observe(frame, frame / 10, [detection(1, "metal", 0.9, 0.1, 0.1, 0.2, 0.2)])
+        aggregator.finish(3)
+        second = VideoTrackAggregator("upload-11")
+        for frame in range(5, 8):
+            second.observe(frame, frame / 10, [detection(2, "metal", 0.9, 0.7, 0.1, 0.8, 0.2)])
+        second.finish(8)
+
+        merged = merge_track_fragments(aggregator.finalized + second.finalized, "upload-11")
+
+        self.assertEqual(len(merged), 2)
+
+    def test_six_physical_objects_can_remain_six_logical_objects(self):
+        tracks = []
+        for track_id in range(1, 7):
+            aggregator = VideoTrackAggregator("upload-12")
+            x = 0.08 * track_id
+            for frame in range(3):
+                aggregator.observe(frame, frame / 10, [detection(track_id, "plastic", 0.9, x, 0.1, x + 0.04, 0.18)])
+            aggregator.finish(4)
+            tracks.extend(aggregator.finalized)
+
+        merged = merge_track_fragments(tracks, "upload-12")
+
+        self.assertEqual(len(merged), 6)
+
+    def test_each_track_finalizes_once(self):
+        aggregator = VideoTrackAggregator("upload-13", lost_buffer=1)
+        for frame in range(3):
+            aggregator.observe(frame, frame / 10, [detection(1, "glass", 0.9)])
+        aggregator.observe(5, 0.5, [])
+        aggregator.observe(6, 0.6, [detection(1, "glass", 0.9)])
+        aggregator.finish(7)
+
+        self.assertEqual(len(aggregator.finalized), 1)
+
+    def test_video_processing_does_not_persist_inside_frame_loop(self):
+        with open("backend/main.py", "r", encoding="utf-8") as handle:
+            source = handle.read()
+        start = source.index("def _process_video_drive_file")
+        end = source.index("def _process_drive_file", start)
+        body = source[start:end]
+
+        loop_start = body.index("while True:")
+        loop_end = body.index("capture.release()", loop_start)
+        self.assertNotIn("_persist_tracked_video_objects", body[loop_start:loop_end])
 
 
 if __name__ == "__main__":
