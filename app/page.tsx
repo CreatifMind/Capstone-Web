@@ -16,16 +16,13 @@ const html = `
     <div class="nav-links">
       <a href="#hero" class="nav-link active">Home</a>
       <a href="#features" class="nav-link">Features</a>
-      <a href="#how" class="nav-link">How It Works</a>
       <a href="#analytics" class="nav-link">Platform</a>
-      <a href="#capstone" class="nav-link">Technology</a>
       <a href="#contact" class="nav-link">Contact</a>
     </div>
 
     <!-- Actions -->
     <div class="nav-actions">
       <div data-theme-slot="landing"></div>
-      <a href="#how" class="btn-outline" style="min-height:38px;padding:0 16px;font-size:0.875rem;">How It Works</a>
       <a href="/login" class="btn" style="min-height:38px;padding:0 18px;font-size:0.875rem;">Login</a>
       <button id="navBurger" class="nav-burger" aria-label="Toggle menu" aria-expanded="false">
         <span class="nav-burger-label">Menu</span>
@@ -49,11 +46,8 @@ const html = `
       <div data-theme-slot="landing-mobile"></div>
       <a href="#hero" class="nav-link" role="menuitem">Home</a>
       <a href="#features" class="nav-link" role="menuitem">Features</a>
-      <a href="#how" class="nav-link" role="menuitem">How It Works</a>
       <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
-      <a href="#capstone" class="nav-link" role="menuitem">Technology</a>
       <a href="/login" class="nav-link" role="menuitem">Login</a>
-      <a href="#how" class="nav-link" role="menuitem">How It Works</a>
     </div>
   </div>
 
@@ -86,9 +80,6 @@ const html = `
         </p>
 
         <div class="hero-btns">
-          <a href="#how" class="btn btn-lg">
-            <i class="fa-solid fa-circle-play"></i> How It Works
-          </a>
           <a href="/login" class="btn-outline btn-lg">
             Login
           </a>
@@ -233,72 +224,6 @@ const html = `
             commodity value.</p>
           <span class="problem-stat"><i class="fa-solid fa-arrow-up"></i> $842k untapped revenue</span>
         </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ══════════════════════════════════════
-       SECTION 4 — HOW IT WORKS
-  ══════════════════════════════════════ -->
-  <section id="how" class="section">
-    <div class="section-inner">
-      <div class="section-header centered" data-aos="fade-up">
-        <div class="section-tag"><i class="fa-solid fa-gears"></i> Process Flow</div>
-        <h2 class="section-headline">How PurityLoop AI Works</h2>
-        <p class="section-sub">A five-stage AI-powered pipeline that turns uploaded waste images into actionable
-          recycling intelligence.</p>
-      </div>
-
-      <div class="steps-flow" data-aos="fade-up" data-aos-delay="100">
-        <div class="step-item">
-          <div class="step-icon-wrap"><i class="fa-solid fa-image"></i></div>
-          <div class="step-num">1</div>
-          <h3>Capture Waste Image</h3>
-          <p>Upload single images, mixed batches, or ZIP files from the web platform.</p>
-        </div>
-
-        <div class="step-connector" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
-
-        <div class="step-item">
-          <div class="step-icon-wrap"><i class="fa-solid fa-brain"></i></div>
-          <div class="step-num">2</div>
-          <h3>YOLOv8 Inference</h3>
-          <p>Computer vision model runs in real-time, identifying 9 waste categories with confidence scoring.</p>
-        </div>
-
-        <div class="step-connector" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
-
-        <div class="step-item">
-          <div class="step-icon-wrap"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
-          <div class="step-num">3</div>
-          <h3>Bounding Box Audit</h3>
-          <p>Each detected item is boxed and labeled with material type, confidence interval, and risk level.</p>
-        </div>
-
-        <div class="step-connector" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
-
-        <div class="step-item">
-          <div class="step-icon-wrap"><i class="fa-solid fa-triangle-exclamation"></i></div>
-          <div class="step-num">4</div>
-          <h3>Hazard Quarantine</h3>
-          <p>Batteries and chemicals trigger alerts for operator quarantine and separation from recyclable streams.</p>
-        </div>
-
-        <div class="step-connector" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></div>
-
-        <div class="step-item">
-          <div class="step-icon-wrap"><i class="fa-solid fa-chart-line"></i></div>
-          <div class="step-num">5</div>
-          <h3>Operations Dashboard</h3>
-          <p>Material yields, purity rates, and commodity values flow into real-time analytics and audit ledger.</p>
-        </div>
-      </div>
-
-      <div class="workflow-methodology-link" data-aos="fade-up" data-aos-delay="160">
-        <a href="#methodology" class="btn-outline btn-lg" data-methodology-jump="1">
-          <i class="fa-solid fa-diagram-project"></i> View Detailed Business Process
-        </a>
       </div>
     </div>
   </section>
@@ -689,49 +614,6 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
-       SECTION 9 — CAPSTONE HIGHLIGHTS
-  ══════════════════════════════════════ -->
-  <section id="capstone" class="section">
-    <div class="section-inner">
-      <div class="section-header centered" data-aos="fade-up">
-        <div class="section-tag"><i class="fa-solid fa-graduation-cap"></i> Capstone 2026</div>
-        <h2 class="section-headline">Built with Cutting-Edge Technology</h2>
-        <p class="section-sub">A full-stack AI prototype designed for real Material Recovery Facility operations, built
-          as a final year capstone project.</p>
-        <div class="capstone-methodology-links" aria-label="Capstone methodology quick links">
-          <a href="#methodology" data-methodology-jump="0">View Project Methodology</a>
-          <a href="#methodology" data-methodology-jump="2">View AI Development Plan</a>
-          <a href="#methodology" data-methodology-jump="3">View Validation Criteria</a>
-        </div>
-      </div>
-
-      <div class="capstone-research-grid" data-aos="fade-up">
-        <article class="capstone-research-card">
-          <i class="fa-solid fa-recycle"></i>
-          <h3>WASTE STREAM CLASSIFICATION</h3>
-          <p>YOLO-based classification of waste categories for Material Recovery Facility operations.</p>
-        </article>
-        <article class="capstone-research-card">
-          <i class="fa-solid fa-shield-halved"></i>
-          <h3>HAZARD DETECTION &amp; ISOLATION</h3>
-          <p>Battery and contaminant identification with operator review and quarantine routing.</p>
-        </article>
-        <article class="capstone-research-card">
-          <i class="fa-solid fa-chart-line"></i>
-          <h3>PURITY &amp; YIELD ANALYTICS</h3>
-          <p>Material purity scoring, tonnage tracking, and recovery-value insights.</p>
-        </article>
-        <article class="capstone-research-card">
-          <i class="fa-solid fa-magnifying-glass-chart"></i>
-          <h3>AUDIT TRAIL &amp; QA WORKFLOW</h3>
-          <p>Human-in-the-loop verification with traceable scan history and review actions.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ══════════════════════════════════════
        SECTION 10 — FINAL CTA
   ══════════════════════════════════════ -->
   <section id="contact" class="section section-alt final-cta">
@@ -768,9 +650,7 @@ const html = `
     <div class="footer-links">
       <a href="#hero">Home</a>
       <a href="#features">Features</a>
-      <a href="#how">How It Works</a>
       <a href="#analytics">Analytics</a>
-      <a href="#capstone">Capstone</a>
       <a href="/login">Platform</a>
     </div>
     <p class="footer-copy">© 2026 PurityLoop AI | Capstone Presentation Project | Built with YOLOv8 +
