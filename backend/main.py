@@ -82,6 +82,8 @@ OAUTH_DRIVE_SCOPES = [
 CONFIRMATION_THRESHOLD = 0.85
 ANALYTICS_PAGE_SIZE = 500
 ANALYTICS_CHILD_PAGE_SIZE = 500
+SCAN_HISTORY_DEFAULT_LIMIT = 10
+SCAN_HISTORY_MAX_LIMIT = 100
 ANALYTICS_MALAYSIA_TZ = timezone(timedelta(hours=8))
 ANALYTICS_MATERIAL_ESTIMATES = {
     "general trash": {"label": "General Trash", "average_weight_kg": 0.100, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
@@ -102,6 +104,9 @@ BROWSER_INFERENCE_ENGINE = "browser-onnx"
 BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
+BROWSER_CONFIDENCE_DETAIL = f"Detection confidence must be between {BROWSER_CONFIDENCE_THRESHOLD:.2f} and 1."
+BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_CONFIDENCE_THRESHOLD:.2f}."
+BROWSER_NMS_CONTRACT_DETAIL = f"Browser NMS IoU threshold must be {BROWSER_NMS_IOU_THRESHOLD:.2f}."
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 SUPABASE_RETRY_ATTEMPTS = 6
 SUPABASE_TRANSIENT_ERRORS = (
@@ -557,7 +562,7 @@ def material_status(category: str) -> tuple[str, str]:
 
 def evaluate_material(category: str, confidence: float) -> dict:
     material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
-    review_required = confidence < CONFIRMATION_THRESHOLD
+    review_required = category == "general_trash" or confidence < CONFIRMATION_THRESHOLD
     decision_status = "review_needed" if review_required else "confirmed"
     if review_required:
         display_status = "Review Needed"
@@ -1049,7 +1054,7 @@ def validate_browser_detections(
         if detection.verified_class not in BROWSER_MODEL_CLASSES:
             raise HTTPException(status_code=400, detail="Verified class is outside the fixed model contract.")
         if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -1108,7 +1113,7 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
         if detection.model_class_name != category_name:
             raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
         if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -1676,9 +1681,9 @@ async def save_browser_detected_scan(
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
     if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+        raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+        raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)
     file_bytes = await file.read()
     if not file_bytes or len(file_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="Image must be non-empty and no larger than 10 MB.")
@@ -1730,9 +1735,9 @@ async def save_browser_verified_scan(
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
     if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+        raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+        raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)
     if verification_outcome != "verified":
         raise HTTPException(status_code=400, detail="Browser detections must be human verified before saving.")
 
@@ -1870,7 +1875,7 @@ def create_review(decision: ReviewDecisionInput, principal: Principal = Depends(
 
 @app.get("/api/scans")
 def get_scan_history(
-    limit: int = 50,
+    limit: int = SCAN_HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
     start_date: str | None = None,
     end_date: str | None = None,
@@ -1884,7 +1889,7 @@ def get_scan_history(
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     try:
-        limit = max(1, min(int(limit), 200))
+        limit = max(1, min(int(limit), SCAN_HISTORY_MAX_LIMIT))
         offset = max(0, int(offset))
         scan_query = supabase.table(SCAN_RESULTS_TABLE).select("*", count="exact")
         if start_date:
@@ -1908,29 +1913,35 @@ def get_scan_history(
             return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0}}
 
         if category_key:
-            candidate_scans = []
-            candidate_offset = 0
-            while True:
-                response = scoped_query(
-                    ordered_scan_query.range(candidate_offset, candidate_offset + 199), principal
-                ).execute()
-                batch = response.data or []
-                candidate_scans.extend(batch)
-                if len(batch) < 200:
-                    break
-                candidate_offset += len(batch)
-            candidate_ids = [str(scan.get("id")) for scan in candidate_scans if scan.get("id")]
-            candidate_materials, candidate_decisions = [], []
-            for start in range(0, len(candidate_ids), 200):
-                scan_ids = candidate_ids[start:start + 200]
-                candidate_materials.extend(supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
-                candidate_decisions.extend(supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
-            filtered_scans = filter_scans_by_final_category(candidate_scans, candidate_materials, candidate_decisions, category_key)
-            total = len(filtered_scans)
-            scans = filtered_scans[offset:offset + limit]
-            rejected = sum(str(scan.get("overall_status", "")).lower() in {"rejected", "quarantined"} for scan in filtered_scans)
-            needs_review = sum(bool(scan.get("human_review_required")) for scan in filtered_scans)
-            confirmed = max(0, total - rejected - needs_review)
+            def category_rpc(status_value: str | None, rpc_limit: int = limit, rpc_offset: int = offset):
+                return scoped_query(supabase.rpc("scan_history_page", {
+                    "p_limit": rpc_limit,
+                    "p_offset": rpc_offset,
+                    "p_start_date": start_date,
+                    "p_end_date": end_date,
+                    "p_search": search.strip() if search else None,
+                    "p_category_key": category_key,
+                    "p_status": status_value,
+                    "p_sort": "confidence" if sort == "confidence" else "timestamp",
+                    "p_direction": "asc" if not descending else "desc",
+                }), principal).execute()
+
+            def category_count(status_value: str | None) -> int:
+                rows = category_rpc(status_value, 1, 0).data or []
+                return int(rows[0].get("total_count") or 0) if rows else 0
+
+            rpc_response = category_rpc(normalized_status or None)
+            rpc_rows = rpc_response.data or []
+            scans = [row.get("scan") for row in rpc_rows if isinstance(row, dict) and row.get("scan")]
+            total = int(rpc_rows[0].get("total_count") or 0) if rpc_rows else 0
+            if normalized_status:
+                rejected = total if normalized_status == "rejected" else 0
+                needs_review = total if normalized_status == "review_needed" else 0
+                confirmed = total if normalized_status == "confirmed" else 0
+            else:
+                rejected = category_count("rejected")
+                needs_review = category_count("review_needed")
+                confirmed = max(0, total - rejected - needs_review)
         else:
             scan_response = scoped_query(
                 ordered_scan_query.range(offset, offset + limit - 1), principal

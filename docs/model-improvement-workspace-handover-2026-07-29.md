@@ -148,7 +148,7 @@ Source doc: `docs/ops-portal-master-plan/modules/web-team.md`.
 Current approved browser model contract:
 
 - model file: `public/models/purityloop/best.onnx`
-- expected sha256: `9dc80d62c76f43326ea217b00e97441a2a9b4740a26ff1c930c237ba7626bb6b`
+- expected sha256: `ff866a7c3154286de6bf5bef72984f584066eda1c9a1cc7643186a1a81fe3ff0`
 - classes: 9 fixed classes
 - input: `1 x 3 x 640 x 640`
 - preprocessing: letterbox to 640 with grey 114 padding, RGB, divide by 255, NCHW

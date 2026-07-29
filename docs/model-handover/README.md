@@ -19,9 +19,9 @@ it is stale, and §4 in particular has since been reversed.
 1. **Letterboxing** (handover §2). Resize preserving aspect ratio and pad with grey 114 — do not
    stretch to square. Get this wrong and every box lands in the wrong place. Check it on day one,
    not the week of the demo.
-2. **Confidence and IoU.** Ship `conf = 0.32`, `NMS IoU = 0.7`. One value each, hard-coded.
+2. **Confidence and IoU.** Ship `conf = 0.32`, `NMS IoU = 0.7`. One configurable constant each.
 3. **Verify the file you are holding.** `sha256sum best.onnx` must give
-   `9dc80d62c76f43326ea217b00e97441a2a9b4740a26ff1c930c237ba7626bb6b`. An older, wrong export of
+   `ff866a7c3154286de6bf5bef72984f584066eda1c9a1cc7643186a1a81fe3ff0`. An older, wrong export of
    a different checkpoint is nearly the same size and looks identical — the hash is the only way
    to tell them apart, and it already reached one person by mistake.
 

@@ -40,11 +40,12 @@ function plSafeFiles(files) {
 const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
 const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
 const PL_UPLOADS_KEY = "purityloop_uploads";
-const PL_SCAN_PAGE_SIZE = 200;
+const PL_SCAN_BOOTSTRAP_PAGE_SIZE = 10;
+const PL_SCAN_EXPORT_CHUNK_SIZE = 100;
 const PL_SCAN_META_KEY = "purityloop_scan_meta";
 let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
   total: null,
-  limit: PL_SCAN_PAGE_SIZE,
+  limit: PL_SCAN_BOOTSTRAP_PAGE_SIZE,
   offset: 0,
   summary: { confirmed: null, needs_review: null, rejected: null }
 });
@@ -262,7 +263,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
   }
   plScanHistoryRefreshPromise = (async () => {
     try {
-      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
+      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
       const body = await response.text();
       if (!response.ok) {
         console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
@@ -280,7 +281,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
         .filter(Boolean);
       plScanHistoryMeta = {
         total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
-        limit: Number(payload?.limit) || PL_SCAN_PAGE_SIZE,
+        limit: Number(payload?.limit) || PL_SCAN_BOOTSTRAP_PAGE_SIZE,
         offset: Number(payload?.offset) || 0,
         summary: {
           confirmed: Number.isFinite(Number(payload?.summary?.confirmed)) ? Number(payload.summary.confirmed) : null,
@@ -310,6 +311,16 @@ function plSetScanResults(scans) {
   const safeScans = plSafeArray(scans).filter(scan => scan && scan.id);
   plSetJson(PL_SCAN_LOGS_KEY, safeScans);
   if (safeScans[0]) plSetJson(PL_LATEST_SCAN_KEY, safeScans[0]);
+}
+
+function plMergeScanResults(scans) {
+  const incoming = plSafeArray(scans).map(plNormalizeScan).filter(scan => scan?.id);
+  if (!incoming.length) return plGetScanResults();
+  const byId = new Map(plGetScanResults().map(scan => [scan.id, scan]));
+  incoming.forEach(scan => byId.set(scan.id, scan));
+  const merged = [...byId.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  plSetScanResults(merged);
+  return merged;
 }
 
 function plSaveScanResult(scan) {
@@ -1788,6 +1799,7 @@ function initUploadPage() {
         originalWidth: image.naturalWidth || image.width,
         originalHeight: image.naturalHeight || image.height,
         browserDetections: [],
+        browserReviewDetections: [],
         errorMessage: "",
         scanId: ""
       };
@@ -2022,6 +2034,7 @@ function initUploadPage() {
     item.browserState = "decoding";
     item.browserFailurePhase = "";
     item.browserDetections = [];
+    item.browserReviewDetections = [];
     renderQueue();
     await new Promise(resolve => window.requestAnimationFrame(resolve));
     item.browserState = "loading-model";
@@ -2044,6 +2057,7 @@ function initUploadPage() {
       item.originalWidth = result.originalWidth;
       item.originalHeight = result.originalHeight;
       item.browserDetections = result.detections;
+      item.browserReviewDetections = result.reviewDetections || result.detections;
       await saveBrowserDetectedResult(item);
     } catch (error) {
       item.browserState = "failed";
@@ -2066,7 +2080,7 @@ function initUploadPage() {
     item.browserFailurePhase = "";
     item.errorMessage = "";
     renderQueue();
-    const detections = item.browserDetections.map((detection, index) => ({
+    const detections = (item.browserReviewDetections || item.browserDetections).map((detection, index) => ({
       detection_index: index,
       class_id: detection.classId,
       model_class_name: detection.className,
@@ -2718,6 +2732,7 @@ function initResultPage() {
   };
   window.addEventListener('resize', onResultResize);
   window.addEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
+  window.addEventListener("purityloop:scan-cache-updated", onResultHistoryRefresh);
   window.addEventListener("purityloop:theme-change", onResultThemeChange);
   if (isReviewWorkspace) window.addEventListener("purityloop:review-select-scan", onReviewScanSelection);
   if (isReviewWorkspace) window.addEventListener("purityloop:review-navigation-state", onReviewNavigationState);
@@ -2741,6 +2756,7 @@ function initResultPage() {
     stopAutoScanSimulation();
     window.removeEventListener('resize', onResultResize);
     window.removeEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
+    window.removeEventListener("purityloop:scan-cache-updated", onResultHistoryRefresh);
     window.removeEventListener("purityloop:theme-change", onResultThemeChange);
     if (isReviewWorkspace) window.removeEventListener("purityloop:review-select-scan", onReviewScanSelection);
     if (isReviewWorkspace) window.removeEventListener("purityloop:review-navigation-state", onReviewNavigationState);
@@ -3435,7 +3451,7 @@ function initReviewWorkspace() {
   const status = document.getElementById("historyStatus");
   const range = document.getElementById("historyRange");
   const pager = document.getElementById("historyPageButtons");
-  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "" };
+  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "", items: [], total: 0, loading: false, requestId: 0 };
   const pageSize = 10;
   const escape = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const selectedId = () => state.selectedId;
@@ -3445,19 +3461,50 @@ function initReviewWorkspace() {
     const categoryKey = plCategoryKey(scan.verified_category || material.review_decision?.chosen_category || material.category || material.material_name);
     return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
   };
-  const rows = () => plGetScanResults().map(scanRow);
   const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
-  const matches = row => {
-    const query = String(search?.value || "").trim().toLowerCase();
-    const selectedCategory = plCategoryKey(category?.value);
-    const selectedStatus = String(status?.value || "");
-    const selectedDate = String(date?.value || "");
-    const day = new Date(row.timestamp);
-    const rowDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-    const statusMatch = !selectedStatus || row.status === selectedStatus || (selectedStatus.startsWith("Confirmed") && row.decisionStatus === "confirmed");
-    return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!selectedDate || rowDate === selectedDate) && (!category?.value || row.categoryKey === selectedCategory) && statusMatch && (!state.bucket || state.bucket === "total" || row.decisionStatus === state.bucket);
+  const reviewStatusParam = () => {
+    const selectedStatus = labelForBucket(state.bucket) || String(status?.value || "");
+    if (selectedStatus === "Review Needed") return "review_needed";
+    if (selectedStatus === "Rejected") return "rejected";
+    if (selectedStatus.startsWith("Confirmed") || selectedStatus === "Verified") return "confirmed";
+    return "";
   };
-  const sortedRows = () => rows().filter(matches).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
+  const reviewHistoryParams = (limit, offset) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      sort: state.sort,
+      direction: state.direction === -1 ? "desc" : "asc"
+    });
+    const statusValue = reviewStatusParam();
+    if (search?.value.trim()) params.set("search", search.value.trim());
+    if (category?.value) params.set("category", category.value);
+    if (statusValue) params.set("status", statusValue);
+    if (date?.value) {
+      const start = new Date(`${date.value}T00:00:00+08:00`);
+      const end = new Date(start.getTime() + 86400000);
+      params.set("start_date", start.toISOString());
+      params.set("end_date", end.toISOString());
+    }
+    return params;
+  };
+  const currentRows = () => state.items.map(scanRow);
+  const fetchAllReviewHistory = async () => {
+    const collected = [];
+    let offset = 0;
+    let total = 0;
+    do {
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(PL_SCAN_EXPORT_CHUNK_SIZE, offset)}`, { headers: await plAuthHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || "Unable to export scan history.");
+      const items = (payload.items || []).map(plNormalizeScan).filter(Boolean);
+      collected.push(...items);
+      total = Number(payload.total) || 0;
+      offset += items.length;
+      if (!items.length) break;
+    } while (offset < total);
+    return collected.map(scanRow);
+  };
   const clearSelection = () => {
     if (!state.selectedId) return;
     state.selectedId = "";
@@ -3486,38 +3533,91 @@ function initReviewWorkspace() {
   };
   const updateSummary = () => {
     const summary = plScanHistoryMeta.summary || {};
-    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows().length;
+    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total;
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? rows().filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? rows().filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? rows().filter(row => row.decisionStatus === "rejected").length);
+    const pageRows = currentRows();
+    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? pageRows.filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? pageRows.filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? pageRows.filter(row => row.decisionStatus === "rejected").length);
   };
   const render = () => {
     updateSummary();
-    const all = sortedRows();
-    const pages = Math.max(1, Math.ceil(all.length / pageSize));
+    const visible = currentRows();
+    const pages = Math.max(1, Math.ceil(state.total / pageSize));
     state.page = Math.min(state.page, pages);
-    const visible = all.slice((state.page - 1) * pageSize, state.page * pageSize);
-    if (state.selectedId && !all.some(row => row.id === state.selectedId)) {
-      if (visible[0]) select(visible[0].id);
-      else clearSelection();
-    }
-    list.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+    if (state.selectedId && !state.total) clearSelection();
+    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>');
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
-    if (range) range.textContent = `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, all.length)} loaded results of ${all.length} total`;
-    renderPager(pager, state.page, pages, page => { state.page = page; render(); });
-    const index = all.findIndex(row => row.id === selectedId());
-    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: index > 0, hasNext: index >= 0 && index < all.length - 1 } }));
+    if (range) range.textContent = state.loading ? "Loading scans" : `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, state.total)} loaded results of ${state.total} total`;
+    renderPager(pager, state.page, pages, page => fetchReviewPage(page));
+    const index = visible.findIndex(row => row.id === selectedId());
+    const absoluteIndex = index >= 0 ? (state.page - 1) * pageSize + index : -1;
+    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: absoluteIndex > 0, hasNext: absoluteIndex >= 0 && absoluteIndex < state.total - 1 } }));
+  };
+  const fetchReviewPage = async (page = state.page, options = {}) => {
+    const requestId = ++state.requestId;
+    state.page = Math.max(1, page);
+    state.loading = true;
+    render();
+    try {
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(pageSize, (state.page - 1) * pageSize)}`, { headers: await plAuthHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || "Unable to load scan history.");
+      if (requestId !== state.requestId) return;
+      state.items = (payload.items || []).map(plNormalizeScan).filter(Boolean);
+      plMergeScanResults(state.items);
+      window.dispatchEvent(new Event("purityloop:scan-cache-updated"));
+      state.total = Number(payload.total) || 0;
+      const pages = Math.max(1, Math.ceil(state.total / pageSize));
+      if (state.page > pages) {
+        state.loading = false;
+        return fetchReviewPage(pages, options);
+      }
+      if (payload.summary && !search?.value.trim() && !category?.value && !date?.value && !reviewStatusParam()) {
+        plScanHistoryMeta = {
+          ...plScanHistoryMeta,
+          total: state.total,
+          limit: Number(payload.limit) || pageSize,
+          offset: Number(payload.offset) || 0,
+          summary: payload.summary
+        };
+        plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
+      }
+      if (options.selectEdge && state.items.length) {
+        select(options.selectEdge === "last" ? state.items[state.items.length - 1].id : state.items[0].id);
+      }
+    } catch (error) {
+      if (requestId === state.requestId) {
+        state.items = [];
+        state.total = 0;
+        showToast(error.message || "Unable to load scan history.", "error");
+      }
+    } finally {
+      if (requestId === state.requestId) {
+        state.loading = false;
+        render();
+      }
+    }
   };
   window.plReviewNavigateScan = direction => {
-    const all = sortedRows(); const index = all.findIndex(row => row.id === selectedId()); const target = all[index + direction];
-    if (!target) return false;
-    state.page = Math.floor((index + direction) / pageSize) + 1; select(target.id); render(); return true;
+    const all = currentRows();
+    const index = all.findIndex(row => row.id === selectedId());
+    const target = all[index + direction];
+    if (target) {
+      select(target.id);
+      render();
+      return true;
+    }
+    const pages = Math.max(1, Math.ceil(state.total / pageSize));
+    const targetPage = direction < 0 ? state.page - 1 : state.page + 1;
+    if (targetPage < 1 || targetPage > pages) return false;
+    fetchReviewPage(targetPage, { selectEdge: direction < 0 ? "last" : "first" });
+    return true;
   };
-  const applyFilters = () => { state.page = 1; render(); };
+  const applyFilters = () => { state.page = 1; fetchReviewPage(1); };
   [search, date].forEach(input => input?.addEventListener("input", () => { state.bucket = ""; applyFilters(); }));
   category?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   status?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
-    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); activateTab("history"); };
+    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; fetchReviewPage(1); activateTab("history"); };
     card.addEventListener("click", activate); card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
   });
   document.querySelectorAll(".review-tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
@@ -3578,7 +3678,7 @@ function initReviewWorkspace() {
     auditSubmitting = true; auditFeedback.textContent = ""; auditVerify.disabled = true; auditReject.disabled = true; auditCategory.disabled = true;
     try {
       const savedReview = await plSaveReview(auditScan, auditMaterial, auditCategory.value, outcome);
-      render(); await closeAuditReview(true, true); showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
+      await fetchReviewPage(state.page); await closeAuditReview(true, true); showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
     } catch (error) { auditFeedback.textContent = error.message || "Unable to save review."; }
     finally { auditSubmitting = false; auditVerify.disabled = false; auditReject.disabled = false; auditCategory.disabled = false; }
   };
@@ -3604,7 +3704,7 @@ function initReviewWorkspace() {
   const fetchAllFullHistory = async () => {
     const collected = []; let offset = 0; let total = 0;
     do {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?${fullHistoryParams(200, offset)}`, { headers: await plAuthHeaders() });
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?${fullHistoryParams(PL_SCAN_EXPORT_CHUNK_SIZE, offset)}`, { headers: await plAuthHeaders() });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || "Unable to export history.");
       const items = (payload.items || []).map(plNormalizeScan).filter(Boolean); collected.push(...items); total = Number(payload.total) || 0; offset += items.length;
@@ -3631,8 +3731,8 @@ function initReviewWorkspace() {
     modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory();
   };
   document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
-  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", () => plPrintHistoryPdf(sortedRows(), "PurityLoop Scan History"));
-  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", () => plDownloadHistoryExcel(sortedRows(), "purityloop-scan-history.csv"));
+  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", async () => { try { plPrintHistoryPdf(await fetchAllReviewHistory(), "PurityLoop Scan History"); } catch (error) { showToast(error.message || "Unable to export scan history.", "error"); } });
+  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", async () => { try { plDownloadHistoryExcel(await fetchAllReviewHistory(), "purityloop-scan-history.csv"); } catch (error) { showToast(error.message || "Unable to export scan history.", "error"); } });
   document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", () => exportAuditHistory("pdf"));
   document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", () => exportAuditHistory("excel"));
   modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
@@ -3643,8 +3743,8 @@ function initReviewWorkspace() {
   document.getElementById("fullHistorySortConfidence")?.addEventListener("click", () => { modalState.sort = "confidence"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.addEventListener("keydown", event => { if (!modal.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeFullHistory(); return; } if (event.key !== "Tab") return; const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
   document.addEventListener("keydown", event => { if (!auditModal?.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeAuditReview(); return; } if (event.key !== "Tab") return; const focusable = [...auditModal.querySelectorAll('button:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
-  window.addEventListener("purityloop:scan-history-refreshed", render); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open", "audit-review-modal-open"); });
-  render();
+  window.addEventListener("purityloop:scan-history-refreshed", () => fetchReviewPage(state.page)); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open", "audit-review-modal-open"); });
+  fetchReviewPage(1);
 }
 
 function initReviewModal() {

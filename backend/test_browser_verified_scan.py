@@ -149,6 +149,15 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertFalse(materials[0]["review_required"])
         self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
 
+    def test_machine_detected_high_confidence_general_trash_requires_review(self):
+        materials = main.validate_browser_detected_detections([
+            detected(class_id=8, model_class_name="general_trash", confidence=0.98)
+        ], 640, 480)
+        self.assertTrue(materials[0]["review_required"])
+        self.assertEqual(materials[0]["display_status"], "Review Needed")
+        self.assertEqual(materials[0]["disposal_route"], "Manual Audit Queue")
+        self.assertEqual(main.summarize(materials)["overall_status"], "review_required")
+
     def test_repeated_submission_reuses_scan_material_and_review_rows(self):
         client = FakeClient()
         database = main.SupabaseExecutor(client=client, attempts=1)

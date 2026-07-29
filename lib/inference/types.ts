@@ -29,6 +29,7 @@ export type PostprocessResult = {
   rawCandidates: number;
   confidenceCandidates: number;
   detections: Detection[];
+  reviewDetections: Detection[];
 };
 
 export type ModelSessionInfo = {
