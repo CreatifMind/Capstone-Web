@@ -41,7 +41,6 @@ const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
 const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
 const PL_UPLOADS_KEY = "purityloop_uploads";
 const PL_SCAN_BOOTSTRAP_PAGE_SIZE = 10;
-const PL_SCAN_EXPORT_CHUNK_SIZE = 100;
 const PL_SCAN_META_KEY = "purityloop_scan_meta";
 let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
   total: null,
@@ -3593,21 +3592,37 @@ function initReviewWorkspace() {
     return params;
   };
   const currentRows = () => state.items.map(scanRow);
-  const fetchAllReviewHistory = async () => {
-    const collected = [];
-    let offset = 0;
-    let total = 0;
-    do {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(PL_SCAN_EXPORT_CHUNK_SIZE, offset)}`, { headers: await plAuthHeaders() });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || "Unable to export scan history.");
-      const items = (payload.items || []).map(plNormalizeScan).filter(Boolean);
-      collected.push(...items);
-      total = Number(payload.total) || 0;
-      offset += items.length;
-      if (!items.length) break;
-    } while (offset < total);
-    return collected.map(scanRow);
+  const exportParams = (params, format, scope) => { params.delete("limit"); params.delete("offset"); params.set("format", format); params.set("scope", scope); return params; };
+  const filenameFromDisposition = (value, fallback) => {
+    const match = String(value || "").match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+  };
+  const downloadHistoryExport = async (button, format, params, fallbackName) => {
+    if (!button || button.dataset.exporting === "true") return;
+    const original = button.innerHTML;
+    button.dataset.exporting = "true";
+    button.disabled = true;
+    button.textContent = format === "pdf" ? "Preparing PDF..." : "Preparing Excel...";
+    try {
+      const response = await fetch(`${plApiBaseUrl()}/api/history/export?${params}`, { headers: await plAuthHeaders() });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "Unable to export history.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filenameFromDisposition(response.headers.get("content-disposition"), fallbackName);
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      showToast(error.message || "Unable to export history.", "error");
+    } finally {
+      button.innerHTML = original;
+      button.disabled = false;
+      delete button.dataset.exporting;
+    }
   };
   const activateTab = name => {
     const tab = name === "history" ? "history" : "selected";
@@ -3799,25 +3814,6 @@ function initReviewWorkspace() {
     if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
     return params;
   };
-  const fetchAllFullHistory = async () => {
-    const collected = []; let offset = 0; let total = 0;
-    do {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?${fullHistoryParams(PL_SCAN_EXPORT_CHUNK_SIZE, offset)}`, { headers: await plAuthHeaders() });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || "Unable to export history.");
-      const items = (payload.items || []).map(plNormalizeScan).filter(Boolean); collected.push(...items); total = Number(payload.total) || 0; offset += items.length;
-      if (!items.length) break;
-    } while (offset < total);
-    return collected.map(scanRow);
-  };
-  const setExporting = (ids, exporting) => ids.forEach(id => { const button = document.getElementById(id); if (button) button.disabled = exporting; });
-  const exportAuditHistory = async kind => {
-    const ids = ["exportAuditHistoryPdf", "exportAuditHistoryExcel"]; const popup = kind === "pdf" ? window.open("", "_blank", "width=1000,height=760") : null;
-    setExporting(ids, true);
-    try { const historyRows = await fetchAllFullHistory(); kind === "pdf" ? plPrintHistoryPdf(historyRows, "PurityLoop Audit History", popup) : plDownloadHistoryExcel(historyRows, "purityloop-audit-history.csv"); }
-    catch (error) { popup?.close(); showToast(error.message || "Unable to export history.", "error"); }
-    finally { setExporting(ids, false); }
-  };
   const openFullHistory = event => {
     modalOpener = event.currentTarget;
     if (fullSearch) fullSearch.value = search?.value || "";
@@ -3829,10 +3825,10 @@ function initReviewWorkspace() {
     modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory();
   };
   document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
-  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", async () => { try { plPrintHistoryPdf(await fetchAllReviewHistory(), "PurityLoop Scan History"); } catch (error) { showToast(error.message || "Unable to export scan history.", "error"); } });
-  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", async () => { try { plDownloadHistoryExcel(await fetchAllReviewHistory(), "purityloop-scan-history.csv"); } catch (error) { showToast(error.message || "Unable to export scan history.", "error"); } });
-  document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", () => exportAuditHistory("pdf"));
-  document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", () => exportAuditHistory("excel"));
+  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "pdf", exportParams(reviewHistoryParams(1, 0), "pdf", "scan"), "purityloop-scan-history.pdf"));
+  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "excel", exportParams(reviewHistoryParams(1, 0), "excel", "scan"), "purityloop-scan-history.xlsx"));
+  document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "pdf", exportParams(fullHistoryParams(1, 0), "pdf", "audit"), "purityloop-audit-history.pdf"));
+  document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "excel", exportParams(fullHistoryParams(1, 0), "excel", "audit"), "purityloop-audit-history.xlsx"));
   modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
   auditModal?.querySelectorAll("[data-audit-review-close]").forEach(button => button.addEventListener("click", closeAuditReview)); auditModal?.addEventListener("click", event => { if (event.target === auditModal) closeAuditReview(); });
   auditVerify?.addEventListener("click", () => saveAuditReview("confirmed")); auditReject?.addEventListener("click", () => saveAuditReview("rejected"));

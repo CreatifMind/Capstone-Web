@@ -7,19 +7,22 @@ import traceback
 import threading
 import time
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
+from urllib.parse import unquote
 from uuid import UUID, uuid4, uuid5
 from typing import Any, Callable, TypeVar
+from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from supabase import create_client
@@ -84,7 +87,14 @@ ANALYTICS_PAGE_SIZE = 500
 ANALYTICS_CHILD_PAGE_SIZE = 500
 SCAN_HISTORY_DEFAULT_LIMIT = 10
 SCAN_HISTORY_MAX_LIMIT = 100
-ANALYTICS_MALAYSIA_TZ = timezone(timedelta(hours=8))
+SCAN_HISTORY_EXPORT_BATCH_SIZE = 500
+SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE = 200
+SCAN_HISTORY_THUMBNAIL_SIZE = (80, 80)
+SCAN_HISTORY_THUMBNAIL_WORKERS = 8
+SCAN_HISTORY_IMAGE_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+SCAN_HISTORY_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+MALAYSIA_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
+ANALYTICS_MALAYSIA_TZ = MALAYSIA_TIMEZONE
 ANALYTICS_MATERIAL_ESTIMATES = {
     "general trash": {"label": "General Trash", "average_weight_kg": 0.100, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
     "food organic": {"label": "Food Organic", "average_weight_kg": 0.080, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
@@ -688,6 +698,427 @@ def apply_scan_history_filters(query, filters: dict[str, str | None], status_ove
     elif normalized_status == "confirmed":
         query = query.eq("human_review_required", False)
     return query
+
+
+def display_label(value: Any) -> str:
+    text = re.sub(r"[_-]+", " ", str(value or "Unknown")).strip()
+    return " ".join(word[:1].upper() + word[1:] for word in text.split()) or "Unknown"
+
+
+def confidence_percent(value: Any) -> float:
+    try:
+        numeric = float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return numeric * 100 if numeric <= 1 else numeric
+
+
+def latest_decisions_by_material(decisions: list[dict]) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+        latest[str(decision.get("detected_material_id", ""))] = decision
+    return latest
+
+
+def attach_scan_children(scans: list[dict], materials: list[dict], decisions: list[dict]) -> list[dict]:
+    latest = latest_decisions_by_material(decisions)
+    materials_by_scan: dict[str, list[dict]] = {}
+    for material in sorted(materials, key=lambda item: str(item.get("created_at", ""))):
+        materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
+            **material,
+            "review_decision": latest.get(str(material.get("id", ""))),
+        })
+    return [{**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])} for scan in scans]
+
+
+def export_material_decision(scan: dict) -> tuple[dict, dict | None]:
+    material = (scan.get("detected_materials") or [{}])[0] or {}
+    decision = material.get("review_decision") or None
+    return material, decision
+
+
+def export_final_category(scan: dict) -> str:
+    material, decision = export_material_decision(scan)
+    return canonical_category_key(scan.get("verified_category") or (decision or {}).get("chosen_category") or material.get("category") or material.get("material_name"))
+
+
+def export_display_status(scan: dict, material: dict, decision: dict | None) -> tuple[str, str, str]:
+    category = export_final_category(scan)
+    material_class = (decision or {}).get("disposition") or material.get("material_class") or CATEGORY_CLASS_MAP.get(category, "unknown")
+    confidence = confidence_percent(material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"))
+    review_outcome = str((decision or {}).get("outcome") or (decision or {}).get("review_outcome") or "confirmed").strip().lower().replace("-", "_").replace(" ", "_")
+    scan_status = str(scan.get("review_status") or scan.get("overall_status") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    rejected = scan_status in {"rejected", "quarantined"} or (decision is not None and review_outcome == "rejected")
+    verified = scan_status == "verified"
+    review_required = not verified and not rejected and decision is None and (confidence < CONFIRMATION_THRESHOLD * 100 or material_class == "unknown")
+    if rejected:
+        return "Rejected", "rejected", material_class
+    if verified:
+        return "Verified", "verified", material_class
+    if review_required:
+        return "Review Needed", "review_needed", material_class
+    if material_class == "recyclable":
+        return "Confirmed Recyclable", "confirmed", material_class
+    if material_class == "contaminant":
+        return "Confirmed Contaminant", "confirmed", material_class
+    return "Review Needed", "review_needed", material_class
+
+
+def export_weight(scan: dict, material: dict) -> str:
+    for value in (
+        material.get("estimated_weight_kg"), material.get("estimated_weight"), material.get("weight_kg"), material.get("weight"),
+        scan.get("estimated_weight_kg"), scan.get("estimated_weight"), scan.get("weight_kg"), scan.get("weight"),
+    ):
+        if value not in (None, ""):
+            try:
+                return f"{float(value):.3f} kg"
+            except (TypeError, ValueError):
+                return str(value)
+    category = material.get("category") or material.get("material_name")
+    if category:
+        key = analytics_category(category)
+        estimate = ANALYTICS_MATERIAL_ESTIMATES.get(key)
+        if estimate and estimate.get("average_weight_kg") is not None:
+            return f"{float(estimate['average_weight_kg']):.3f} kg"
+    return "-"
+
+
+def export_quantity(scan: dict, material: dict) -> str:
+    value = material.get("quantity", material.get("count", scan.get("quantity", "")))
+    return "-" if value in (None, "") else str(value)
+
+
+def export_reviewer(decision: dict | None) -> str:
+    if not decision:
+        return "-"
+    return str(decision.get("reviewer") or decision.get("reviewer_id") or decision.get("reviewed_by") or "-")
+
+
+def format_malaysia_datetime(value: Any) -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return "-"
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return "-"
+    else:
+        return "-"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    malaysia_datetime = parsed.astimezone(MALAYSIA_TIMEZONE)
+    weekday = malaysia_datetime.strftime("%a")
+    day = malaysia_datetime.day
+    month = malaysia_datetime.strftime("%b")
+    hour = malaysia_datetime.strftime("%I").lstrip("0") or "0"
+    minute = malaysia_datetime.strftime("%M")
+    period = malaysia_datetime.strftime("%p")
+    return f"{weekday} {day} {month} {hour}:{minute} {period}"
+
+
+def export_scan_row(scan: dict) -> dict[str, str]:
+    material, decision = export_material_decision(scan)
+    category = export_final_category(scan)
+    status, review_status, material_class = export_display_status(scan, material, decision)
+    confidence = confidence_percent(scan.get("overall_confidence") if scan.get("overall_confidence") is not None else material.get("confidence"))
+    image_url = scan.get("preview_image_url") or scan.get("image_url") or scan.get("drive_web_url") or ""
+    return {
+        "scan_id": str(scan.get("id") or ""),
+        "datetime": format_malaysia_datetime(scan.get("created_at")),
+        "file_name": str(scan.get("source_name") or "Uploaded image"),
+        "predicted_category": display_label(material.get("category") or material.get("material_name")),
+        "corrected_category": display_label(scan.get("verified_category") or (decision or {}).get("chosen_category") or category),
+        "confidence": f"{confidence:.0f}%",
+        "status": status,
+        "quantity": export_quantity(scan, material),
+        "estimated_weight": export_weight(scan, material),
+        "recommended_route": (CATEGORY_ROUTES.get(category) or "Manual Audit Queue") if review_status != "review_needed" else "Manual Audit Queue",
+        "review_status": review_status,
+        "reviewer": export_reviewer(decision),
+        "image_url": str(image_url),
+        "material_class": display_label(material_class),
+    }
+
+
+def fetch_history_export_rows(
+    start_date: str | None,
+    end_date: str | None,
+    search: str | None,
+    category: str | None,
+    status: str | None,
+    sort: str,
+    direction: str,
+    principal: Principal,
+) -> list[dict[str, str]]:
+    filters = scan_history_filters(start_date, end_date, search, status)
+    category_key = canonical_category_key(category) if category else ""
+    if category and category_key == "unknown":
+        return []
+    order_column = "overall_confidence" if sort == "confidence" else "created_at"
+    descending = str(direction).lower() != "asc"
+    database = SupabaseExecutor(client_factory=_new_supabase_client, attempts=2)
+    rows: list[dict[str, str]] = []
+    offset = 0
+    while True:
+        def scan_query(client, offset=offset):
+            query = client.table(SCAN_RESULTS_TABLE).select("*")
+            query = apply_scan_history_filters(query, filters)
+            return scoped_query(query.order(order_column, desc=descending).range(offset, offset + SCAN_HISTORY_EXPORT_BATCH_SIZE - 1), principal).execute()
+
+        scans = database.execute(scan_query).data or []
+        if not scans:
+            break
+        scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
+        materials: list[dict] = []
+        decisions: list[dict] = []
+        for index in range(0, len(scan_ids), SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE):
+            ids = scan_ids[index:index + SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE]
+            materials.extend(database.execute(lambda client, ids=ids: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", ids).execute()).data or [])
+            decisions.extend(database.execute(lambda client, ids=ids: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", ids).execute()).data or [])
+        for scan in attach_scan_children(scans, materials, decisions):
+            if category_key and export_final_category(scan) != category_key:
+                continue
+            rows.append(export_scan_row(scan))
+        if len(scans) < SCAN_HISTORY_EXPORT_BATCH_SIZE:
+            break
+        offset += SCAN_HISTORY_EXPORT_BATCH_SIZE
+    return rows
+
+
+EXPORT_COLUMNS = [
+    ("scan_id", "Scan ID"),
+    ("datetime", "Date and time"),
+    ("corrected_category", "Category"),
+    ("confidence", "Confidence"),
+    ("status", "Status"),
+    ("recommended_route", "Recommended route"),
+    ("image_preview", "Image Preview"),
+]
+
+PDF_EXPORT_COLUMNS = ["Scan ID", "Date/time", "Category", "Confidence", "Status", "Route", "Preview"]
+EXCEL_COLUMN_WIDTHS = {
+    "Scan ID": 18,
+    "Date and time": 24,
+    "Category": 20,
+    "Confidence": 12,
+    "Status": 22,
+    "Recommended route": 30,
+    "Image Preview": 14,
+}
+
+
+@dataclass(frozen=True)
+class ThumbnailResult:
+    url: str
+    data: bytes | None = None
+    error: str | None = None
+
+
+def storage_signed_url(url: str) -> str | None:
+    if not supabase or not SUPABASE_URL or not url.startswith(SUPABASE_URL):
+        return None
+    match = re.search(r"/storage/v1/object/(?:public|sign)/([^/]+)/(.+)$", url)
+    if not match:
+        return None
+    bucket, object_path = match.group(1), unquote(match.group(2).split("?")[0])
+    try:
+        signed = supabase.storage.from_(bucket).create_signed_url(object_path, 3600)
+        return signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+    except Exception as exc:
+        print(f"[history-export] signed URL fallback failed: {type(exc).__name__}")
+        return None
+
+
+def transformed_storage_url(url: str) -> str:
+    if not SUPABASE_URL or not url.startswith(SUPABASE_URL):
+        return url
+    match = re.search(r"/storage/v1/object/public/([^/]+)/(.+)$", url)
+    if not match:
+        return url
+    bucket, object_path = match.group(1), match.group(2).split("?")[0]
+    return (
+        f"{SUPABASE_URL}/storage/v1/render/image/public/{bucket}/{object_path}"
+        f"?width={SCAN_HISTORY_THUMBNAIL_SIZE[0]}&height={SCAN_HISTORY_THUMBNAIL_SIZE[1]}"
+        "&resize=contain&quality=50&format=origin"
+    )
+
+
+def fetch_image_bytes(client: httpx.Client, url: str) -> bytes:
+    request_url = transformed_storage_url(url)
+    for attempt in range(2):
+        try:
+            response = client.get(request_url, follow_redirects=True)
+            if response.status_code >= 500 and attempt == 0:
+                continue
+            break
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt == 0:
+                continue
+            raise
+    if response.status_code in {403, 404}:
+        signed_url = storage_signed_url(url)
+        if signed_url and signed_url != url:
+            response = client.get(signed_url, follow_redirects=True)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "").lower()
+    if content_type and not any(kind in content_type for kind in ("image/jpeg", "image/jpg", "image/png", "image/webp")):
+        raise ValueError("unsupported image content type")
+    content = response.content
+    if len(content) > SCAN_HISTORY_IMAGE_MAX_BYTES:
+        raise ValueError("source image too large")
+    return content
+
+
+def thumbnail_png(image_bytes: bytes) -> bytes:
+    with Image.open(BytesIO(image_bytes)) as image:
+        image.thumbnail(SCAN_HISTORY_THUMBNAIL_SIZE)
+        canvas = Image.new("RGB", SCAN_HISTORY_THUMBNAIL_SIZE, "white")
+        if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+            image = image.convert("RGBA")
+            x = (SCAN_HISTORY_THUMBNAIL_SIZE[0] - image.width) // 2
+            y = (SCAN_HISTORY_THUMBNAIL_SIZE[1] - image.height) // 2
+            canvas.paste(image, (x, y), image)
+        else:
+            image = image.convert("RGB")
+            x = (SCAN_HISTORY_THUMBNAIL_SIZE[0] - image.width) // 2
+            y = (SCAN_HISTORY_THUMBNAIL_SIZE[1] - image.height) // 2
+            canvas.paste(image, (x, y))
+        output = BytesIO()
+        canvas.save(output, format="PNG", optimize=True)
+        return output.getvalue()
+
+
+def load_thumbnail(client: httpx.Client, url: str) -> ThumbnailResult:
+    if not url:
+        return ThumbnailResult(url, error="missing URL")
+    try:
+        return ThumbnailResult(url, data=thumbnail_png(fetch_image_bytes(client, url)))
+    except Exception as exc:
+        return ThumbnailResult(url, error=type(exc).__name__)
+
+
+def fetch_history_thumbnails(rows: list[dict[str, str]]) -> tuple[dict[str, bytes], dict[str, int]]:
+    urls = [row.get("image_url", "") for row in rows if row.get("image_url")]
+    unique_urls = list(dict.fromkeys(urls))
+    stats = {"requested": len(urls), "unique": len(unique_urls), "cache_hits": max(0, len(urls) - len(unique_urls)), "failed": 0, "processed": 0}
+    if not unique_urls:
+        return {}, stats
+    thumbnails: dict[str, bytes] = {}
+    limits = httpx.Limits(max_connections=SCAN_HISTORY_THUMBNAIL_WORKERS, max_keepalive_connections=SCAN_HISTORY_THUMBNAIL_WORKERS)
+    with httpx.Client(timeout=SCAN_HISTORY_IMAGE_TIMEOUT, limits=limits) as client:
+        with ThreadPoolExecutor(max_workers=SCAN_HISTORY_THUMBNAIL_WORKERS) as executor:
+            futures = [executor.submit(load_thumbnail, client, url) for url in unique_urls]
+            for future in as_completed(futures):
+                result = future.result()
+                stats["processed"] += 1
+                if result.data:
+                    thumbnails[result.url] = result.data
+                else:
+                    stats["failed"] += 1
+                if stats["processed"] == stats["unique"] or stats["processed"] % 250 == 0:
+                    print(
+                        "[history-export] image progress "
+                        f"processed={stats['processed']}/{stats['unique']} failed={stats['failed']} "
+                        f"cache_hits={stats['cache_hits']}"
+                    )
+    return thumbnails, stats
+
+
+def build_history_excel(rows: list[dict[str, str]], thumbnails: dict[str, bytes] | None = None) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as ExcelImage
+    from openpyxl.styles import Alignment
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "PurityLoop History"
+    worksheet.append([label for _, label in EXPORT_COLUMNS])
+    preview_col = len(EXPORT_COLUMNS)
+    for index, (_, label) in enumerate(EXPORT_COLUMNS, start=1):
+        worksheet.column_dimensions[get_column_letter(index)].width = EXCEL_COLUMN_WIDTHS.get(label, 16)
+    for row in rows:
+        worksheet.append(["" if key == "image_preview" else row.get(key, "") for key, _ in EXPORT_COLUMNS])
+        excel_row = worksheet.max_row
+        worksheet.row_dimensions[excel_row].height = 64
+        image_bytes = (thumbnails or {}).get(row.get("image_url", ""))
+        if image_bytes:
+            image = ExcelImage(BytesIO(image_bytes))
+            image.width = SCAN_HISTORY_THUMBNAIL_SIZE[0]
+            image.height = SCAN_HISTORY_THUMBNAIL_SIZE[1]
+            worksheet.add_image(image, f"{get_column_letter(preview_col)}{excel_row}")
+        else:
+            cell = worksheet.cell(excel_row, preview_col)
+            cell.value = "Image unavailable"
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    workbook.save(output)
+    return output.getvalue()
+
+
+def build_history_pdf(rows: list[dict[str, str]], filters: dict[str, str | None], thumbnails: dict[str, bytes] | None = None) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Image as PdfImage
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=10 * mm, rightMargin=10 * mm, topMargin=10 * mm, bottomMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    body = styles["BodyText"]
+    body.fontSize = 7
+    body.leading = 8
+    applied = ", ".join(f"{key}: {value}" for key, value in filters.items() if value) or "None"
+    data = [PDF_EXPORT_COLUMNS]
+    for row in rows:
+        image_bytes = (thumbnails or {}).get(row.get("image_url", ""))
+        preview = PdfImage(BytesIO(image_bytes), width=18 * mm, height=18 * mm) if image_bytes else Paragraph("Image unavailable", body)
+        data.append([
+            row["scan_id"][:8],
+            row["datetime"],
+            row["corrected_category"],
+            row["confidence"],
+            row["status"],
+            row["recommended_route"],
+            preview,
+        ])
+    if len(data) == 1:
+        data.append(["No scans to export.", "", "", "", "", "", ""])
+    table_data = [[cell if hasattr(cell, "wrapOn") else Paragraph(str(cell), body) for cell in record] for record in data]
+    table = Table(table_data, repeatRows=1, colWidths=[24 * mm, 44 * mm, 34 * mm, 24 * mm, 42 * mm, 77 * mm, 28 * mm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf5f0")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#17251e")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d9e4dc")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fbfdfb")]),
+    ]))
+
+    def page_number(canvas, document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(document.pagesize[0] - 10 * mm, 6 * mm, f"Page {document.page}")
+        canvas.restoreState()
+
+    story = [
+        Paragraph("PurityLoop AI Audit History", styles["Title"]),
+        Paragraph(f"Exported {format_malaysia_datetime(datetime.now(timezone.utc))} · {len(rows)} records", styles["Normal"]),
+        Paragraph(f"Applied filters: {applied}", styles["Normal"]),
+        Spacer(1, 6 * mm),
+        table,
+    ]
+    doc.build(story, onFirstPage=page_number, onLaterPages=page_number)
+    return output.getvalue()
 
 
 def config_path(env_name: str, default_relative: str) -> Path:
@@ -2747,6 +3178,84 @@ def get_scan_history(
         if not isinstance(exc, (SupabaseTemporarilyUnavailable, RuntimeError)):
             print(f"[scans] history response failed: {type(exc).__name__}: {safe_error_message(exc)}")
         raise HTTPException(status_code=500, detail="Unable to load scan history.") from exc
+
+
+@app.get("/api/history/export")
+def export_scan_history(
+    format: str = "excel",
+    scope: str = "audit",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    search: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
+    sort: str = "timestamp",
+    direction: str = "desc",
+    principal: Principal = Depends(require_scope("scan:read")),
+):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    export_format = str(format or "").strip().lower()
+    if export_format not in {"pdf", "excel"}:
+        raise HTTPException(status_code=400, detail="Export format must be pdf or excel.")
+    normalized_scope = "scan" if str(scope or "").strip().lower() == "scan" else "audit"
+    filters = {
+        "scope": normalized_scope,
+        "search": search.strip() if search and search.strip() else None,
+        "start_date": start_date,
+        "end_date": end_date,
+        "category": category,
+        "status": status,
+        "sort": "confidence" if sort == "confidence" else "timestamp",
+        "direction": "asc" if str(direction).lower() == "asc" else "desc",
+    }
+    try:
+        started = time.perf_counter()
+        rows = fetch_history_export_rows(
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            category=category,
+            status=status,
+            sort=filters["sort"] or "timestamp",
+            direction=filters["direction"] or "desc",
+            principal=principal,
+        )
+        print(f"[history-export] records fetched rows={len(rows)}")
+        thumbnail_started = time.perf_counter()
+        thumbnails, thumbnail_stats = fetch_history_thumbnails(rows)
+        print(
+            "[history-export] images processed "
+            f"requested={thumbnail_stats['requested']} unique={thumbnail_stats['unique']} "
+            f"cache_hits={thumbnail_stats['cache_hits']} failed={thumbnail_stats['failed']} "
+            f"duration={time.perf_counter() - thumbnail_started:.2f}s"
+        )
+        stamp = datetime.now(ANALYTICS_MALAYSIA_TZ).strftime("%Y%m%d-%H%M%S")
+        prefix = "purityloop-scan-history" if normalized_scope == "scan" else "purityloop-audit-history"
+        if export_format == "excel":
+            content = build_history_excel(rows, thumbnails)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            filename = f"{prefix}-{stamp}.xlsx"
+        else:
+            content = build_history_pdf(rows, filters, thumbnails)
+            media_type = "application/pdf"
+            filename = f"{prefix}-{stamp}.pdf"
+        print(f"[history-export] report generated format={export_format} bytes={len(content)}")
+        print(f"[history-export] {export_format} scope={normalized_scope} rows={len(rows)} duration={time.perf_counter() - started:.2f}s")
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except ImportError as exc:
+        print(f"[history-export] dependency missing: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="History export dependency is not installed.") from exc
+    except Exception as exc:
+        print(f"[history-export] failed: {type(exc).__name__}: {safe_error_message(exc)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Unable to export history.") from exc
 
 
 @app.get("/api/scans/{scan_result_id}")
