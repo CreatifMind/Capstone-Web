@@ -309,6 +309,51 @@ def safe_error_message(exc: Exception) -> str:
     return message[:300]
 
 
+def log_scan_stage_failure(stage: str, exc: Exception) -> None:
+    print(f"[scans] {stage} failed: {type(exc).__name__}: {safe_error_message(exc)}")
+    traceback.print_exc()
+
+
+def execute_scan_read(stage: str, operation: Callable[[Any], T]) -> T:
+    try:
+        return SupabaseExecutor(client_factory=_new_supabase_client, attempts=2).execute(operation)
+    except Exception as exc:
+        log_scan_stage_failure(stage, exc)
+        raise
+
+
+def scan_history_filters(
+    start_date: str | None,
+    end_date: str | None,
+    search: str | None,
+    status: str | None,
+) -> dict[str, str | None]:
+    normalized_status = str(status or "").lower()
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "search": search.strip() if search and search.strip() else None,
+        "status": normalized_status or None,
+    }
+
+
+def apply_scan_history_filters(query, filters: dict[str, str | None], status_override: str | None = None):
+    if filters.get("start_date"):
+        query = query.gte("created_at", filters["start_date"])
+    if filters.get("end_date"):
+        query = query.lt("created_at", filters["end_date"])
+    if filters.get("search"):
+        query = query.ilike("source_name", f"%{filters['search']}%")
+    normalized_status = str(status_override if status_override is not None else filters.get("status") or "").lower()
+    if normalized_status == "review_needed":
+        query = query.eq("human_review_required", True)
+    elif normalized_status == "rejected":
+        query = query.in_("overall_status", ["rejected", "quarantined"])
+    elif normalized_status == "confirmed":
+        query = query.eq("human_review_required", False)
+    return query
+
+
 def config_path(env_name: str, default_relative: str) -> Path:
     raw_path = os.getenv(env_name, default_relative)
     path = Path(raw_path).expanduser()
@@ -1891,40 +1936,27 @@ def get_scan_history(
     try:
         limit = max(1, min(int(limit), SCAN_HISTORY_MAX_LIMIT))
         offset = max(0, int(offset))
-        scan_query = supabase.table(SCAN_RESULTS_TABLE).select("*", count="exact")
-        if start_date:
-            scan_query = scan_query.gte("created_at", start_date)
-        if end_date:
-            scan_query = scan_query.lt("created_at", end_date)
-        if search:
-            scan_query = scan_query.ilike("source_name", f"%{search.strip()}%")
-        normalized_status = str(status or "").lower()
-        if normalized_status == "review_needed":
-            scan_query = scan_query.eq("human_review_required", True)
-        elif normalized_status == "rejected":
-            scan_query = scan_query.in_("overall_status", ["rejected", "quarantined"])
-        elif normalized_status == "confirmed":
-            scan_query = scan_query.eq("human_review_required", False)
+        filters = scan_history_filters(start_date, end_date, search, status)
+        normalized_status = filters["status"] or ""
         order_column = "overall_confidence" if sort == "confidence" else "created_at"
         descending = str(direction).lower() != "asc"
-        ordered_scan_query = scan_query.order(order_column, desc=descending)
         category_key = canonical_category_key(category) if category else ""
         if category and category_key == "unknown":
             return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0}}
 
         if category_key:
             def category_rpc(status_value: str | None, rpc_limit: int = limit, rpc_offset: int = offset):
-                return scoped_query(supabase.rpc("scan_history_page", {
+                return execute_scan_read(f"category {status_value or 'page'} query", lambda client: scoped_query(client.rpc("scan_history_page", {
                     "p_limit": rpc_limit,
                     "p_offset": rpc_offset,
-                    "p_start_date": start_date,
-                    "p_end_date": end_date,
-                    "p_search": search.strip() if search else None,
+                    "p_start_date": filters["start_date"],
+                    "p_end_date": filters["end_date"],
+                    "p_search": filters["search"],
                     "p_category_key": category_key,
                     "p_status": status_value,
                     "p_sort": "confidence" if sort == "confidence" else "timestamp",
                     "p_direction": "asc" if not descending else "desc",
-                }), principal).execute()
+                }), principal).execute())
 
             def category_count(status_value: str | None) -> int:
                 rows = category_rpc(status_value, 1, 0).data or []
@@ -1943,34 +1975,46 @@ def get_scan_history(
                 needs_review = category_count("review_needed")
                 confirmed = max(0, total - rejected - needs_review)
         else:
-            scan_response = scoped_query(
-                ordered_scan_query.range(offset, offset + limit - 1), principal
-            ).execute()
+            def build_page_query(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("*")
+                query = apply_scan_history_filters(query, filters)
+                return scoped_query(query.order(order_column, desc=descending).range(offset, offset + limit - 1), principal).execute()
+
+            def build_count_query(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+                query = apply_scan_history_filters(query, filters)
+                return scoped_query(query, principal).execute()
+
+            scan_response = execute_scan_read("page data query", build_page_query)
             scans = scan_response.data or []
-            count_value = getattr(scan_response, "count", None)
+            count_response = execute_scan_read("count query", build_count_query)
+            count_value = getattr(count_response, "count", None)
             if count_value is None:
                 raise RuntimeError("Supabase did not return an exact scan count")
             total = int(count_value)
-        def exact_count(query):
-            response = scoped_query(query, principal).execute()
+
+        def exact_count(status_value: str) -> int:
+            def run(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+                query = apply_scan_history_filters(query, filters, status_value)
+                return scoped_query(query, principal).execute()
+            response = execute_scan_read(f"{status_value} count query", run)
             value = getattr(response, "count", None)
             return int(value) if value is not None else 0
 
         if not category_key:
-            rejected_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-            needs_review_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-            for query in (rejected_query, needs_review_query):
-                if start_date:
-                    query.gte("created_at", start_date)
-                if end_date:
-                    query.lt("created_at", end_date)
-            rejected = exact_count(rejected_query.in_("overall_status", ["rejected", "quarantined"]))
-            needs_review = exact_count(needs_review_query.eq("human_review_required", True))
-            confirmed = max(0, total - rejected - needs_review)
+            if normalized_status:
+                rejected = total if normalized_status == "rejected" else 0
+                needs_review = total if normalized_status == "review_needed" else 0
+                confirmed = total if normalized_status == "confirmed" else 0
+            else:
+                rejected = exact_count("rejected")
+                needs_review = exact_count("review_needed")
+                confirmed = max(0, total - rejected - needs_review)
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
         if scan_ids:
-            materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
-            decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
+            materials = execute_scan_read("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+            decisions = execute_scan_read("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
         else:
             materials = []
             decisions = []
@@ -2006,7 +2050,8 @@ def get_scan_history(
             },
         }
     except Exception as exc:
-        print(f"[scans] Supabase history fetch failed: {safe_error_message(exc)}")
+        if not isinstance(exc, (SupabaseTemporarilyUnavailable, RuntimeError)):
+            print(f"[scans] history response failed: {type(exc).__name__}: {safe_error_message(exc)}")
         raise HTTPException(status_code=500, detail="Unable to load scan history.") from exc
 
 
@@ -2015,11 +2060,30 @@ def get_scan_result(scan_result_id: str, principal: Principal = Depends(require_
     """Return the persisted material IDs needed to review a previously loaded scan."""
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    scan_response = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute()
-    if not scan_response.data:
-        raise HTTPException(status_code=404, detail="Scan result was not found.")
-    materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
-    decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
+    try:
+        UUID(scan_result_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Scan result was not found.") from exc
+    try:
+        scan_response = execute_scan_read(
+            "selected scan query",
+            lambda client: scoped_query(client.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute(),
+        )
+        if not scan_response.data:
+            raise HTTPException(status_code=404, detail="Scan result was not found.")
+        materials = execute_scan_read(
+            "selected scan materials query",
+            lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute(),
+        ).data or []
+        decisions = execute_scan_read(
+            "selected scan decisions query",
+            lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute(),
+        ).data or []
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[scans] selected scan query failed for {scan_result_id[:8]}…: {type(exc).__name__}: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="Unable to load selected scan.") from exc
     latest_decisions = {}
     for item in sorted(decisions, key=lambda entry: str(entry.get("created_at", ""))):
         latest_decisions[str(item.get("detected_material_id", ""))] = item

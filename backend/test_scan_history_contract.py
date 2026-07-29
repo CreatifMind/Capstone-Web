@@ -1,6 +1,10 @@
 import unittest
+from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import httpx
+from fastapi import HTTPException
 
 from backend import main
 
@@ -10,12 +14,16 @@ class FakeQuery:
         self.table = table
         self.rows = rows
         self.count = None
+        self.head = None
+        self.columns = None
         self.filters = {}
         self.range_args = None
         self.order_args = None
 
     def select(self, *_args, **kwargs):
+        self.columns = _args
         self.count = kwargs.get("count")
+        self.head = kwargs.get("head")
         return self
 
     def order(self, *args, **kwargs):
@@ -56,6 +64,10 @@ class FakeQuery:
             else:
                 count = 4312
         rows = self.rows
+        if self.filters.get("id") == "missing":
+            rows = []
+        elif self.filters.get("id"):
+            rows = [row for row in rows if row.get("id") == self.filters["id"]]
         if self.range_args:
             start, end = self.range_args
             rows = rows[start:end + 1]
@@ -96,9 +108,15 @@ class FakeSupabase:
 
 
 class ScanHistoryContractTests(unittest.TestCase):
+    def fake_backend(self, fake):
+        stack = ExitStack()
+        stack.enter_context(patch.object(main, "supabase", fake))
+        stack.enter_context(patch.object(main, "_new_supabase_client", return_value=fake))
+        return stack
+
     def test_scan_history_returns_one_page_and_exact_total(self):
         fake = FakeSupabase()
-        with patch.object(main, "supabase", fake):
+        with self.fake_backend(fake):
             payload = main.get_scan_history(limit=10, offset=0, principal=main.require_principal())
 
         self.assertEqual(payload["total"], 4312)
@@ -106,12 +124,18 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["offset"], 0)
         self.assertEqual(len(payload["items"]), 10)
         self.assertEqual(fake.queries[0].range_args, (0, 9))
+        self.assertEqual(fake.queries[0].columns, ("*",))
+        self.assertIsNone(fake.queries[0].count)
+        self.assertEqual(fake.queries[1].columns, ("id",))
+        self.assertEqual(fake.queries[1].count, "exact")
+        self.assertIs(fake.queries[1].head, True)
+        self.assertIsNone(fake.queries[1].range_args)
         self.assertEqual(payload["summary"], {"confirmed": 4195, "needs_review": 107, "rejected": 10})
         self.assertNotIn("scans", payload)
 
     def test_scan_history_review_page_uses_ten_row_ranges(self):
         fake = FakeSupabase()
-        with patch.object(main, "supabase", fake):
+        with self.fake_backend(fake):
             payload = main.get_scan_history(limit=10, offset=10, principal=main.require_principal())
 
         self.assertEqual(payload["total"], 4312)
@@ -122,7 +146,7 @@ class ScanHistoryContractTests(unittest.TestCase):
 
     def test_scan_history_accepts_review_filters_and_confidence_sort(self):
         fake = FakeSupabase()
-        with patch.object(main, "supabase", fake):
+        with self.fake_backend(fake):
             payload = main.get_scan_history(
                 limit=10, offset=10, search="bottle", status="review_needed", sort="confidence", direction="asc",
                 principal=main.require_principal(),
@@ -134,6 +158,8 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["direction"], "asc")
         self.assertEqual(fake.queries[0].filters["source_name"], "%bottle%")
         self.assertIs(fake.queries[0].filters["human_review_required"], True)
+        self.assertEqual(fake.queries[1].filters["source_name"], "%bottle%")
+        self.assertIs(fake.queries[1].filters["human_review_required"], True)
         self.assertEqual(fake.queries[0].order_args[0], ("overall_confidence",))
         self.assertEqual(fake.queries[0].range_args, (10, 19))
 
@@ -156,7 +182,7 @@ class ScanHistoryContractTests(unittest.TestCase):
 
     def test_scan_history_accepts_category_filter(self):
         fake = FakeSupabase()
-        with patch.object(main, "supabase", fake):
+        with self.fake_backend(fake):
             payload = main.get_scan_history(limit=10, offset=0, category="plastic", principal=main.require_principal())
 
         self.assertEqual(payload["category"], "plastic")
@@ -166,6 +192,45 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(fake.rpc_calls[0][1]["p_limit"], 10)
         self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 0)
         self.assertEqual(fake.rpc_calls[0][1]["p_category_key"], "plastic")
+
+    def test_scan_history_search_filter_applies_to_summary_counts(self):
+        fake = FakeSupabase()
+        with self.fake_backend(fake):
+            main.get_scan_history(limit=10, offset=0, search="missing", principal=main.require_principal())
+
+        self.assertEqual(fake.queries[1].filters["source_name"], "%missing%")
+        self.assertEqual(fake.queries[2].filters["source_name"], "%missing%")
+        self.assertEqual(fake.queries[3].filters["source_name"], "%missing%")
+
+    def test_scan_lookup_rejects_invalid_uuid_safely(self):
+        fake = FakeSupabase()
+        with self.fake_backend(fake):
+            with self.assertRaises(HTTPException) as raised:
+                main.get_scan_result("not-a-uuid", principal=main.require_principal())
+
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertFalse(fake.queries)
+
+    def test_scan_read_retries_one_transient_error_with_fresh_client(self):
+        class FlakyClient:
+            def __init__(self):
+                self.calls = 0
+
+        first = FlakyClient()
+        second = FlakyClient()
+        clients = [first, second]
+
+        def operation(client):
+            client.calls += 1
+            if client is first:
+                raise httpx.RemoteProtocolError("Server disconnected")
+            return "ok"
+
+        with patch.object(main, "_new_supabase_client", side_effect=clients):
+            self.assertEqual(main.execute_scan_read("test query", operation), "ok")
+
+        self.assertEqual(first.calls, 1)
+        self.assertEqual(second.calls, 1)
 
 
 if __name__ == "__main__":

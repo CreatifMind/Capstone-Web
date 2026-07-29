@@ -357,7 +357,7 @@ async function plFetchScanResultById(scanId) {
     throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
   }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 404 ? "The deployed backend is missing the scan lookup route. Restart or deploy the updated FastAPI backend." : (payload.detail || "Unable to retrieve the persisted scan for review."));
+  if (!response.ok) throw new Error(response.status === 404 ? "Scan result was not found." : (payload.detail || "Unable to retrieve the persisted scan for review."));
   return plNormalizeScan(payload.scan_result);
 }
 
@@ -372,7 +372,8 @@ function plGetLatestScanResult() {
 
 function plGetRequestedScanResult() {
   const params = new URLSearchParams(window.location.search);
-  return plGetScanResultById(params.get("scanId")) || plGetLatestScanResult();
+  const requestedId = params.get("scanId");
+  return requestedId ? plGetScanResultById(requestedId) : plGetLatestScanResult();
 }
 
 function plNumberFromPercent(value) {
@@ -2619,7 +2620,6 @@ function initResultPage() {
   let reviewNavigationState = null;
   let reviewSelectionCleared = false;
 
-  const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
   const findCachedUploadPreview = sourceName => {
     const key = String(sourceName || "");
@@ -2629,7 +2629,7 @@ function initResultPage() {
     });
     return match?.dataUrl || "";
   };
-  let uploads = scans.map(scan => {
+  const scanUploads = scanList => scanList.map(scan => {
     const previewUrl = scan.preview_image_url || "";
     const hasScanImage = Boolean(previewUrl);
     const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
@@ -2642,8 +2642,11 @@ function initResultPage() {
       scanId: scan.id
     };
   });
+  const scans = plGetScanResults();
+  let uploads = scanUploads(scans);
+  const requestedScanId = new URLSearchParams(window.location.search).get("scanId") || "";
   const requestedScan = plGetRequestedScanResult();
-  console.info("[result] scanId from URL", new URLSearchParams(window.location.search).get("scanId") || "");
+  console.info("[result] scanId from URL", requestedScanId);
 
   let activeIndex = 0;
   if (requestedScan) {
@@ -2689,14 +2692,9 @@ function initResultPage() {
   };
   const onResultHistoryRefresh = () => {
     const refreshedScans = plGetScanResults();
-    uploads = refreshedScans.map(scan => {
-      const previewUrl = scan.preview_image_url || "";
-      const hasScanImage = Boolean(previewUrl);
-      const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
-      return { name: scan.source_name || scan.id, size: scan.source_size || 0, thumbnailSrc: previewUrl, dataUrl: hasScanImage ? "" : cachedPreview, assetPath: previewUrl, scanId: scan.id };
-    });
+    uploads = scanUploads(refreshedScans);
     const refreshedActive = activeScan ? plGetScanResultById(activeScan.id) : null;
-    activeScan = refreshedActive || (isReviewWorkspace && reviewSelectionCleared ? null : refreshedScans[0]) || null;
+    activeScan = refreshedActive || (isReviewWorkspace && requestedScanId ? activeScan : (isReviewWorkspace && reviewSelectionCleared ? null : refreshedScans[0])) || null;
     activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === activeScan?.id));
     renderFinderGrid();
     if (activeScan) {
@@ -2705,6 +2703,34 @@ function initResultPage() {
         window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
       }
     } else renderEmptyResult();
+  };
+  const loadReviewScanById = async scanId => {
+    if (!isReviewWorkspace || !scanId) return false;
+    let scan = plGetScanResultById(scanId);
+    if (!scan) {
+      if (resultSourceState) resultSourceState.textContent = "Loading selected scan";
+      try {
+        scan = await plFetchScanResultById(scanId);
+        plMergeScanResults([scan]);
+      } catch (error) {
+        reviewSelectionCleared = true;
+        activeScan = null;
+        activeIndex = -1;
+        if (resultSourceState) resultSourceState.textContent = "Selected scan unavailable";
+        renderEmptyResult();
+        if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">${plEscapeHtml(error.message || "Unable to load selected scan.")}</div>`;
+        return false;
+      }
+    }
+    const refreshedScans = plGetScanResults();
+    uploads = scanUploads(refreshedScans);
+    activeScan = scan;
+    activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === scan.id));
+    reviewSelectionCleared = false;
+    renderFinderGrid();
+    loadActiveImage();
+    window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: scan.id } }));
+    return true;
   };
   const onResultThemeChange = () => {
     if (activeImageObj) drawCanvasFrame();
@@ -2724,6 +2750,8 @@ function initResultPage() {
     if (selectedIndex >= 0) {
       reviewSelectionCleared = false;
       selectScan(selectedIndex);
+    } else {
+      loadReviewScanById(scanId);
     }
   };
   const onReviewNavigationState = event => {
@@ -2817,6 +2845,7 @@ function initResultPage() {
 
   if (previousScanBtn) previousScanBtn.addEventListener("click", () => navigateScan(-1));
   if (nextScanBtn) nextScanBtn.addEventListener("click", () => navigateScan(1));
+  if (requestedScanId && !requestedScan) loadReviewScanById(requestedScanId);
 
   function renderFinderGrid() {
     const grid = document.getElementById("finderGrid");
@@ -3451,7 +3480,7 @@ function initReviewWorkspace() {
   const status = document.getElementById("historyStatus");
   const range = document.getElementById("historyRange");
   const pager = document.getElementById("historyPageButtons");
-  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "", items: [], total: 0, loading: false, requestId: 0 };
+  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "", items: [], total: 0, loading: false, error: "", requestId: 0 };
   const pageSize = 10;
   const escape = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const selectedId = () => state.selectedId;
@@ -3505,12 +3534,6 @@ function initReviewWorkspace() {
     } while (offset < total);
     return collected.map(scanRow);
   };
-  const clearSelection = () => {
-    if (!state.selectedId) return;
-    state.selectedId = "";
-    history.replaceState(null, "", location.pathname);
-    window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: null } }));
-  };
   const activateTab = name => {
     const tab = name === "history" ? "history" : "selected";
     document.getElementById("reviewHistoryPanel")?.classList.toggle("is-active-tab", tab === "history");
@@ -3543,8 +3566,7 @@ function initReviewWorkspace() {
     const visible = currentRows();
     const pages = Math.max(1, Math.ceil(state.total / pageSize));
     state.page = Math.min(state.page, pages);
-    if (state.selectedId && !state.total) clearSelection();
-    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>');
+    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (state.error ? `<div class="feed-empty">${escape(state.error)}</div>` : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>'));
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
     if (range) range.textContent = state.loading ? "Loading scans" : `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, state.total)} loaded results of ${state.total} total`;
     renderPager(pager, state.page, pages, page => fetchReviewPage(page));
@@ -3562,6 +3584,7 @@ function initReviewWorkspace() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || "Unable to load scan history.");
       if (requestId !== state.requestId) return;
+      state.error = "";
       state.items = (payload.items || []).map(plNormalizeScan).filter(Boolean);
       plMergeScanResults(state.items);
       window.dispatchEvent(new Event("purityloop:scan-cache-updated"));
@@ -3587,7 +3610,7 @@ function initReviewWorkspace() {
     } catch (error) {
       if (requestId === state.requestId) {
         state.items = [];
-        state.total = 0;
+        state.error = error.message || "Unable to load history.";
         showToast(error.message || "Unable to load scan history.", "error");
       }
     } finally {
