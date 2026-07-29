@@ -3249,13 +3249,6 @@ function initResultPage() {
       const quantity = primaryMaterial?.quantity ?? primaryMaterial?.count ?? activeScan?.quantity ?? 1;
       const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan?.result_kind) || activeScan?.source_type === "tracked_video" || Boolean(primaryMaterial?.stable_object_id);
       const resultLabel = isTrackedVideo ? "Tracked video object" : activeScan?.legacy_result ? "Legacy frame-based video" : "Image result";
-      const durationLabel = primaryMaterial?.track_duration_seconds !== null && primaryMaterial?.track_duration_seconds !== undefined
-        ? `${Number(primaryMaterial.track_duration_seconds).toFixed(2)}s`
-        : "-";
-      const firstLastLabel = primaryMaterial?.track_first_timestamp !== null && primaryMaterial?.track_last_timestamp !== null && primaryMaterial?.track_first_timestamp !== undefined && primaryMaterial?.track_last_timestamp !== undefined
-        ? `${Number(primaryMaterial.track_first_timestamp).toFixed(2)}s - ${Number(primaryMaterial.track_last_timestamp).toFixed(2)}s`
-        : "-";
-      const hazardLabel = primaryMaterial?.track_hazard_status ? plNormalizeCategory(primaryMaterial.track_hazard_status) : (primaryDecision.materialClass === "contaminant" ? "Hazard" : "Clear");
       const materialIcon = {
         battery: "fa-battery-full", plastic: "fa-bottle-water", metal: "fa-cube", glass: "fa-wine-bottle",
         paper: "fa-file-lines", cardboard: "fa-box", textile: "fa-shirt", food_organics: "fa-leaf", general_trash: "fa-trash-can"
@@ -3267,7 +3260,7 @@ function initResultPage() {
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
         <div class="review-material-identity">
           <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
-          <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel} | ${resultLabel}</span>
+          <span class="review-material-class ${primaryDecision.materialClass}" title="${resultLabel}">${materialClassLabel}</span>
         </div>
       ` : `
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
@@ -3283,9 +3276,8 @@ function initResultPage() {
       metrics.className = "material-metrics";
       metrics.innerHTML = isReviewWorkspace ? `
         <div><dt>Confidence</dt><dd>${Math.round(primaryDecision.confidence)}%</dd></div>
-        <div><dt>Duration</dt><dd>${durationLabel}</dd></div>
-        <div><dt>First / Last Seen</dt><dd>${firstLastLabel}</dd></div>
-        <div><dt>Hazard Status</dt><dd>${hazardLabel}</dd></div>
+        <div><dt>Estimated Weight</dt><dd>${plDisplayWeight(primaryMaterial, activeScan)}</dd></div>
+        <div><dt>Quantity</dt><dd>${quantity}</dd></div>
       ` : `
         <div><dt>Estimated Weight</dt><dd>${plFormatKg(primaryWeight)}</dd></div>
         <div><dt>Illustrative Recovery Value</dt><dd>${plFormatRm(primaryValue)}</dd></div>
