@@ -3464,8 +3464,18 @@ function initReviewWorkspace() {
     history.replaceState(null, "", location.pathname);
     window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: null } }));
   };
+  const activateTab = name => {
+    const tab = name === "history" ? "history" : "selected";
+    document.getElementById("reviewHistoryPanel")?.classList.toggle("is-active-tab", tab === "history");
+    document.getElementById("reviewSelectedPanel")?.classList.toggle("is-active-tab", tab === "selected");
+    document.getElementById("reviewTabHistory")?.classList.toggle("active", tab === "history");
+    document.getElementById("reviewTabSelected")?.classList.toggle("active", tab === "selected");
+    document.getElementById("reviewTabHistory")?.setAttribute("aria-selected", String(tab === "history"));
+    document.getElementById("reviewTabSelected")?.setAttribute("aria-selected", String(tab === "selected"));
+  };
   const select = id => {
     state.selectedId = id;
+    activateTab("selected");
     window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: id } }));
   };
   const renderPager = (root, page, pages, onPage) => {
@@ -3507,9 +3517,10 @@ function initReviewWorkspace() {
   category?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   status?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
-    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); };
+    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); activateTab("history"); };
     card.addEventListener("click", activate); card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
   });
+  document.querySelectorAll(".review-tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
   document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort || (button.id.includes("Confidence") ? "confidence" : "timestamp"); state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".review-filter-toolbar .history-sort").forEach(item => item.classList.toggle("active", item.dataset.sort === next)); applyFilters(); }));
   let modalOpener = null; let modalState = { page: 1, sort: "timestamp", direction: "desc" }; let remote = { items: [], total: 0 };
   const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullCategory = document.getElementById("fullHistoryCategory"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
