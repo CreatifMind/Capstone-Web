@@ -12287,6 +12287,15 @@ body[data-page="result"] .annotated-video-note {
   color: var(--muted);
   font-size: .72rem;
 }
+body[data-page="result"] .annotated-video-download {
+  width: fit-content;
+  color: var(--primary);
+  font-size: .74rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+body[data-page="result"] .annotated-video-download:hover { text-decoration: underline; }
+body[data-page="result"] .annotated-video-download:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 42%, transparent); outline-offset: 3px; }
 body[data-page="result"] .human-review-panel select:focus-visible,
 body[data-page="result"] .human-review-panel button:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 42%, transparent); outline-offset: 2px; }
 body[data-page="result"] .stream-canvas-wrap {

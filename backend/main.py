@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import json
@@ -7,6 +9,9 @@ import traceback
 import threading
 import time
 import random
+import shutil
+import subprocess
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -74,7 +79,7 @@ DETECTED_MATERIALS_TABLE = "detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
-PREVIEW_BUCKET = "mock_uploaded_images"
+PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 # The upload folder is configured server-side, not selected with Google Picker.
 # OAuth therefore needs access to that existing folder and its idempotency search.
@@ -577,6 +582,10 @@ def require_principal() -> Principal:
     return Principal("public", "public", frozenset({"scan:read", "scan:write", "job:read", "review:write"}))
 
 
+def _api_key_digest(value: str) -> str:
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+
 def require_scope(scope: str):
     def dependency(principal: Principal = Depends(require_principal)) -> Principal:
         if scope not in principal.scopes:
@@ -598,6 +607,20 @@ def get_model():
             raise HTTPException(status_code=500, detail="YOLO model file not found.")
         model = YOLO(str(MODEL_PATH))
     return model
+
+
+def safe_startup_diagnostics() -> dict:
+    return {
+        "model_path": str(MODEL_PATH),
+        "model_available": MODEL_PATH.exists(),
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
+        "storage_bucket": PREVIEW_BUCKET,
+        "storage_private": os.getenv("SUPABASE_STORAGE_PRIVATE", "false").lower() == "true",
+        "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
+        "ffmpeg_available": bool(shutil.which("ffmpeg")),
+        "ffprobe_available": bool(shutil.which("ffprobe")),
+        "allowed_origins": ALLOWED_ORIGINS,
+    }
 
 
 def safe_drive_filename(original_filename: str | None) -> str:
@@ -637,9 +660,7 @@ def upload_original_to_supabase_storage(
             raise
         # Deterministic browser paths make an existing object a successful retry.
         print(f"[Supabase Storage] Reusing deterministic object: {path}")
-    public_url = database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).get_public_url(path))
-    if isinstance(public_url, dict):
-        public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
+    public_url = supabase_storage_url(database, path)
     if not public_url:
         raise RuntimeError("Supabase Storage public URL is empty")
     return {"path": path, "public_url": str(public_url or "")}
@@ -669,6 +690,19 @@ def upload_file_to_supabase_storage(
     if not public_url:
         raise RuntimeError("Supabase Storage public URL is empty")
     return {"path": path, "public_url": str(public_url or "")}
+
+
+def supabase_storage_url(database: SupabaseExecutor, object_path: str, *, expires_in: int = 60 * 60 * 24 * 7) -> str:
+    bucket = database.client.storage.from_(PREVIEW_BUCKET)
+    private_bucket = os.getenv("SUPABASE_STORAGE_PRIVATE", "false").lower() == "true"
+    if private_bucket and hasattr(bucket, "create_signed_url"):
+        signed = database.execute(lambda _client: bucket.create_signed_url(object_path, expires_in))
+        if isinstance(signed, dict):
+            return str(signed.get("signedURL") or signed.get("signedUrl") or signed.get("url") or "")
+    public_url = database.execute(lambda _client: bucket.get_public_url(object_path))
+    if isinstance(public_url, dict):
+        public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
+    return str(public_url or "")
 
 
 def safe_error_message(exc: Exception) -> str:
@@ -1532,8 +1566,10 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "counts_by_class": video_summary.get("counts_by_class"),
         "hazards": video_summary.get("hazards"),
         "annotated_video_url": scan.get("annotated_video_url") or video_summary.get("annotated_video_url"),
+        "annotated_video_storage_path": scan.get("annotated_video_storage_path") or video_summary.get("annotated_video_storage_path"),
         "annotated_video_status": scan.get("annotated_video_status") or video_summary.get("annotated_video_status"),
         "annotated_video_error": scan.get("annotated_video_error") or video_summary.get("annotated_video_error"),
+        "annotated_video_probe": video_summary.get("annotated_video_probe"),
         "tracked_objects": materials if str(scan.get("result_kind") or "") in {"tracked_video_object", "video_track_object"} else None,
         "detected_materials": materials,
     }
@@ -2022,9 +2058,7 @@ def health():
     return {
         "ok": True,
         "mode": "public_demo",
-        "model_available": MODEL_PATH.exists(),
-        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
-        "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
+        **safe_startup_diagnostics(),
     }
 
 
@@ -2220,6 +2254,63 @@ def _annotate_video_frame(frame, detections: list[dict]):
     if has_mask:
         annotated = cv2.addWeighted(mask_layer, 0.28, annotated, 0.72, 0)
     return annotated
+
+
+def _require_executable(name: str) -> str:
+    path = shutil.which(name)
+    if not path:
+        raise RuntimeError(f"{name} is not installed or is not available on PATH")
+    return path
+
+
+def _encode_browser_mp4(input_path: str | Path, output_path: str | Path) -> list[str]:
+    ffmpeg = _require_executable("ffmpeg")
+    command = [
+        ffmpeg,
+        "-y",
+        "-i", str(input_path),
+        "-an",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=900)
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout or "FFmpeg H.264 encoding failed").strip()[-500:])
+    return command
+
+
+def _ffprobe_mp4(path: str | Path) -> dict:
+    ffprobe = _require_executable("ffprobe")
+    command = [
+        ffprobe,
+        "-v", "error",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        str(path),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout or "ffprobe validation failed").strip()[-500:])
+    payload = json.loads(completed.stdout or "{}")
+    streams = payload.get("streams") or []
+    video = next((stream for stream in streams if stream.get("codec_type") == "video"), {})
+    audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), {})
+    diagnostics = {
+        "container": (payload.get("format") or {}).get("format_name"),
+        "video_codec": video.get("codec_name"),
+        "pixel_format": video.get("pix_fmt"),
+        "dimensions": f"{video.get('width')}x{video.get('height')}" if video.get("width") and video.get("height") else None,
+        "frame_rate": video.get("avg_frame_rate") or video.get("r_frame_rate"),
+        "duration": (payload.get("format") or {}).get("duration") or video.get("duration"),
+        "audio_codec": audio.get("codec_name") if audio else None,
+    }
+    print(f"[video-annotation] ffprobe {json.dumps(diagnostics, sort_keys=True)}")
+    if diagnostics["video_codec"] != "h264" or diagnostics["pixel_format"] != "yuv420p":
+        raise RuntimeError(f"Annotated MP4 is not browser-compatible H.264/yuv420p: {diagnostics}")
+    return diagnostics
 
 
 def _video_tracking_summary(tracked_objects: list[dict]) -> dict:
@@ -2450,10 +2541,12 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
     import cv2
     tmp_path = None
     annotated_tmp_path = None
+    encoded_tmp_path = None
     annotated_writer = None
     capture = None
     annotated_video_metadata = {
         "annotated_video_url": None,
+        "annotated_video_storage_path": None,
         "annotated_video_status": "unavailable",
         "annotated_video_error": None,
     }
@@ -2525,15 +2618,21 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             annotated_writer = None
         if annotated_tmp_path and annotated_video_metadata.get("annotated_video_status") != "failed":
             try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as encoded_tmp:
+                    encoded_tmp_path = encoded_tmp.name
+                _encode_browser_mp4(annotated_tmp_path, encoded_tmp_path)
+                _ffprobe_mp4(encoded_tmp_path)
+                storage_path = f"annotated-videos/{job['id']}/result.mp4"
                 upload = upload_file_to_supabase_storage(
-                    annotated_tmp_path,
-                    f"annotated-videos/{job['id']}-annotated.mp4",
+                    encoded_tmp_path,
+                    storage_path,
                     "video/mp4",
                     database,
                 )
                 annotated_video_metadata.update({
                     "annotated_video_url": upload["public_url"],
-                    "annotated_video_status": "uploaded",
+                    "annotated_video_storage_path": storage_path,
+                    "annotated_video_status": "ready",
                     "annotated_video_error": None,
                 })
             except Exception as exc:
@@ -2593,6 +2692,8 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             Path(tmp_path).unlink(missing_ok=True)
         if annotated_tmp_path:
             Path(annotated_tmp_path).unlink(missing_ok=True)
+        if encoded_tmp_path:
+            Path(encoded_tmp_path).unlink(missing_ok=True)
 
 
 def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
@@ -2729,6 +2830,7 @@ def _worker_loop() -> None:
 
 @app.on_event("startup")
 def start_worker() -> None:
+    print(f"[startup] diagnostics {json.dumps(safe_startup_diagnostics(), sort_keys=True)}")
     if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and os.getenv("DISABLE_WORKER", "false").lower() != "true":
         try:
             startup_database = SupabaseExecutor()

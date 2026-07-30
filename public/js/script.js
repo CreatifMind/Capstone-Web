@@ -274,8 +274,10 @@ function plNormalizeScan(scan) {
     total_unique_objects: Number(scan.total_unique_objects || (sourceType === "tracked_video" ? 1 : 0)),
     video_tracking_summary: videoSummary,
     annotated_video_url: scan.annotated_video_url || videoSummary.annotated_video_url || "",
+    annotated_video_storage_path: scan.annotated_video_storage_path || videoSummary.annotated_video_storage_path || "",
     annotated_video_status: scan.annotated_video_status || videoSummary.annotated_video_status || "",
     annotated_video_error: scan.annotated_video_error || videoSummary.annotated_video_error || "",
+    annotated_video_probe: scan.annotated_video_probe || videoSummary.annotated_video_probe || null,
     created_at: scan.created_at || new Date().toISOString(),
     detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
   };
@@ -3074,22 +3076,32 @@ function initResultPage() {
     annotatedVideoPanel.hidden = false;
     if (annotatedVideoStatus) {
       annotatedVideoStatus.textContent = ({
+        ready: "Ready",
         uploaded: "Ready",
         processing: "Processing",
         failed: "Failed",
+        expired: "Expired",
         unavailable: "Unavailable"
       })[status] || plNormalizeCategory(status || "unavailable");
     }
-    if (videoUrl && status === "uploaded") {
+    if (videoUrl && (status === "ready" || status === "uploaded")) {
       annotatedVideoBody.innerHTML = `
-        <video class="annotated-result-video" controls preload="metadata" playsinline>
+        <video class="annotated-result-video" controls preload="metadata" playsinline poster="${plEscapeHtml(scan.preview_image_url || "")}">
           <source src="${plEscapeHtml(videoUrl)}" type="video/mp4">
           Your browser does not support MP4 video playback.
         </video>
+        <a class="annotated-video-download" href="${plEscapeHtml(videoUrl)}" download>Download annotated MP4</a>
         <p class="annotated-video-note">Annotated video output. Frame results remain available below.</p>
       `;
+      const video = annotatedVideoBody.querySelector("video");
+      video?.addEventListener("error", () => {
+        if (annotatedVideoStatus) annotatedVideoStatus.textContent = "Expired";
+        annotatedVideoBody.querySelector(".annotated-video-note").textContent = "The annotated video URL could not be loaded. It may be expired; refresh the scan result to request a fresh URL.";
+      }, { once: true });
     } else if (status === "processing") {
       annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video is still being generated. Refresh this result shortly.</p>`;
+    } else if (status === "expired") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video URL has expired. Refresh this result to request a fresh signed URL.</p>`;
     } else if (status === "failed") {
       annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video generation failed${scan.annotated_video_error ? `: ${plEscapeHtml(scan.annotated_video_error)}` : "."} Frame results were preserved.</p>`;
     } else {
@@ -4192,10 +4204,6 @@ function initReviewModal() {
  * 4. OPERATIONS DASHBOARD PAGE           *
  ******************************************/
 const plOverviewCharts = {};
-
-function plEscapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
-}
 
 function plFormatReviewTurnaround(milliseconds) {
   if (!Number.isFinite(milliseconds)) return "No completed reviews";
