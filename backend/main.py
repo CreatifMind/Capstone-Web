@@ -82,6 +82,8 @@ PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
 VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
 DEFAULT_VIDEO_FPS = float(os.getenv("DEFAULT_VIDEO_FPS", "30") or 30)
+UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024
+MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", "0") or 0)
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 # The upload folder is configured server-side, not selected with Google Picker.
 # OAuth therefore needs access to that existing folder and its idempotency search.
@@ -2049,6 +2051,110 @@ class UploadStartInput(BaseModel):
     mime: str
 
 
+class UploadStartFailure(RuntimeError):
+    def __init__(self, code: str, message: str, *, status_code: int = 500, stage: str = "unknown"):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+        self.stage = stage
+
+
+def _upload_start_log(event: str, **fields) -> None:
+    safe_fields = {}
+    for key, value in fields.items():
+        lowered = key.lower()
+        if lowered in {"token", "authorization", "upload_url", "signed_url", "service_role_key", "api_key", "password"}:
+            safe_fields[key] = "[redacted]"
+        elif isinstance(value, Path):
+            safe_fields[key] = str(value)
+        else:
+            safe_fields[key] = value
+    print(f"[upload-start] {event} {json.dumps(safe_fields, sort_keys=True, default=str)}")
+
+
+def _upload_start_error_response(exc: UploadStartFailure) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={
+            "code": exc.code,
+            "message": str(exc),
+            "stage": exc.stage,
+        },
+    )
+
+
+def _validate_upload_start_payload(payload: UploadStartInput) -> tuple[str, int, str]:
+    filename = str(payload.filename or "").strip()
+    mime = str(payload.mime or "").strip().lower()
+    try:
+        size_bytes = int(payload.size_bytes)
+    except Exception as exc:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "Upload size must be an integer.", status_code=400, stage="validate_payload") from exc
+    if not filename:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "Filename is required.", status_code=400, stage="validate_payload")
+    if size_bytes <= 0:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "MP4 upload must be non-empty.", status_code=400, stage="validate_payload")
+    if MAX_VIDEO_UPLOAD_BYTES and size_bytes > MAX_VIDEO_UPLOAD_BYTES:
+        raise UploadStartFailure("UPLOAD_TOO_LARGE", "MP4 upload exceeds the configured size limit.", status_code=413, stage="validate_payload")
+    if mime != "video/mp4":
+        raise UploadStartFailure("UNSUPPORTED_MEDIA_TYPE", "Only video/mp4 uploads are supported by /api/uploads/start.", status_code=415, stage="validate_payload")
+    return filename, size_bytes, mime
+
+
+def _create_drive_resumable_upload(filename: str, size_bytes: int, mime: str) -> str:
+    if not GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID:
+        raise UploadStartFailure(
+            "MISSING_ENVIRONMENT_VARIABLE",
+            "GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID is not configured.",
+            status_code=503,
+            stage="validate_environment",
+        )
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+        credentials = oauth_drive_credentials()
+        session = AuthorizedSession(credentials)
+    except UploadStartFailure:
+        raise
+    except Exception as exc:
+        raise UploadStartFailure(
+            "MISSING_ENVIRONMENT_VARIABLE",
+            safe_error_message(exc) or "Google Drive OAuth credentials are not configured.",
+            status_code=503,
+            stage="load_drive_credentials",
+        ) from exc
+
+    try:
+        response = session.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+            headers={
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": mime,
+                "X-Upload-Content-Length": str(size_bytes),
+            },
+            json={"name": filename, "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID]},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None) or getattr(locals().get("response", None), "status_code", None)
+        raise UploadStartFailure(
+            "STORAGE_UPLOAD_INIT_FAILED",
+            f"Google Drive resumable upload session failed{f' with status {status_code}' if status_code else ''}.",
+            status_code=502,
+            stage="create_drive_resumable_upload",
+        ) from exc
+
+    upload_url = response.headers.get("Location")
+    if not upload_url:
+        raise UploadStartFailure(
+            "STORAGE_UPLOAD_INIT_FAILED",
+            "Google Drive did not return a resumable upload URL.",
+            status_code=502,
+            stage="create_drive_resumable_upload",
+        )
+    return upload_url
+
+
 class IngestInput(BaseModel):
     source: str
     ref: str
@@ -2978,32 +3084,40 @@ def start_worker() -> None:
 
 @app.post("/api/uploads/start")
 def start_upload(payload: UploadStartInput, principal: Principal = Depends(require_scope("scan:write"))):
-    if payload.mime != "video/mp4" or payload.size_bytes <= 0:
-        raise HTTPException(status_code=400, detail="Only non-empty MP4 uploads are supported.")
+    upload_id = None
     try:
-        from google.auth.transport.requests import AuthorizedSession
-        credentials = oauth_drive_credentials()
-        session = AuthorizedSession(credentials)
-        name = safe_drive_filename(payload.filename)
-        response = session.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
-            headers={
-                "Content-Type": "application/json; charset=UTF-8",
-                "X-Upload-Content-Type": payload.mime,
-                "X-Upload-Content-Length": str(payload.size_bytes),
-            },
-            json={"name": name, "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID]},
-            timeout=30,
+        filename, size_bytes, mime = _validate_upload_start_payload(payload)
+        name = safe_drive_filename(filename)
+        _upload_start_log(
+            "request_validated",
+            filename=filename,
+            safe_filename=name,
+            mime_type=mime,
+            size_bytes=size_bytes,
+            upload_type="video/mp4",
+            principal_kind=getattr(principal, "kind", None),
+            principal_id=getattr(principal, "id", None),
+            drive_folder_configured=bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
         )
-        response.raise_for_status()
-        upload_url = response.headers.get("Location")
-        if not upload_url:
-            raise RuntimeError("Google Drive did not return a resumable upload URL")
+        _upload_start_log("drive_resumable_init_started", filename=name, mime_type=mime, size_bytes=size_bytes, storage_operation="google_drive_resumable_upload")
+        upload_url = _create_drive_resumable_upload(name, size_bytes, mime)
         upload_id = str(uuid4())
         UPLOAD_SESSIONS[upload_id] = upload_url
-        return {"upload_id": upload_id, "filename": name, "chunk_size": 8 * 1024 * 1024}
+        _upload_start_log("drive_resumable_init_completed", upload_id=upload_id, filename=name, chunk_size=UPLOAD_CHUNK_SIZE_BYTES, storage_operation="google_drive_resumable_upload")
+        return {"upload_id": upload_id, "filename": name, "chunk_size": UPLOAD_CHUNK_SIZE_BYTES}
+    except UploadStartFailure as exc:
+        _upload_start_log("failed", upload_id=upload_id, code=exc.code, stage=exc.stage, status_code=exc.status_code, error_type=type(exc.__cause__ or exc).__name__, error=safe_error_message(exc))
+        traceback.print_exc()
+        raise _upload_start_error_response(exc) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Unable to start Google Drive upload.") from exc
+        _upload_start_log("failed", upload_id=upload_id, code="UPLOAD_START_INTERNAL_ERROR", stage="unexpected", status_code=500, error_type=type(exc).__name__, error=safe_error_message(exc))
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "UPLOAD_START_INTERNAL_ERROR", "message": "Unexpected upload-start failure.", "stage": "unexpected"},
+        ) from exc
 
 
 @app.put("/api/uploads/{upload_id}")

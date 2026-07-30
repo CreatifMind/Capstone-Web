@@ -109,6 +109,8 @@ curl -X POST http://127.0.0.1:8000/api/predict \
 ### Annotated MP4 video scans
 
 MP4 video uploads are queued through `/api/uploads/start`, `/api/uploads/{upload_id}`, and `/api/ingest`.
+`/api/uploads/start` only validates the MP4 request and creates the Google Drive source-upload session. It does not create annotated-output storage, run YOLO, initialize OpenCV, or check FFmpeg.
+
 During the existing sequential YOLOv8 tracking pass, the backend writes an annotated intermediate video frame by frame, then encodes the final browser-compatible MP4 with:
 
 ```bash
@@ -154,6 +156,7 @@ SUPABASE_STORAGE_BUCKET
 SUPABASE_STORAGE_PRIVATE
 VIDEO_WORK_ROOT
 DEFAULT_VIDEO_FPS
+MAX_VIDEO_UPLOAD_BYTES
 MODEL_PATH
 MODEL_VERSION
 ALLOWED_ORIGINS
