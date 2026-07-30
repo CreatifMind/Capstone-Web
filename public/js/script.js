@@ -255,6 +255,7 @@ function plNormalizeScan(scan) {
   if (!scan || !scan.id) return null;
   const sourceName = scan.source_name || scan.drive_file_name || "Uploaded image";
   const sourceType = scan.source_type || "image";
+  const videoSummary = scan.video_tracking_summary && typeof scan.video_tracking_summary === "object" ? scan.video_tracking_summary : {};
   return {
     ...scan,
     image_url: String(scan.image_url || ""),
@@ -271,7 +272,10 @@ function plNormalizeScan(scan) {
     result_kind: scan.result_kind || (sourceType === "tracked_video" ? "video_track_object" : sourceType === "video_frame" ? "legacy_video_frame" : "image_detection"),
     legacy_result: Boolean(scan.legacy_result || sourceType === "video_frame"),
     total_unique_objects: Number(scan.total_unique_objects || (sourceType === "tracked_video" ? 1 : 0)),
-    video_tracking_summary: scan.video_tracking_summary || {},
+    video_tracking_summary: videoSummary,
+    annotated_video_url: scan.annotated_video_url || videoSummary.annotated_video_url || "",
+    annotated_video_status: scan.annotated_video_status || videoSummary.annotated_video_status || "",
+    annotated_video_error: scan.annotated_video_error || videoSummary.annotated_video_error || "",
     created_at: scan.created_at || new Date().toISOString(),
     detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
   };
@@ -2636,6 +2640,9 @@ function initResultPage() {
   const actionText = document.getElementById("liveActionText");
   const actionBadge = document.getElementById("liveActionBadge");
   const activeBeltTitle = document.getElementById("liveStreamTitle");
+  const annotatedVideoPanel = document.getElementById("annotatedVideoPanel");
+  const annotatedVideoBody = document.getElementById("annotatedVideoBody");
+  const annotatedVideoStatus = document.getElementById("annotatedVideoStatus");
   const previousScanBtn = document.getElementById("previousScanBtn");
   const nextScanBtn = document.getElementById("nextScanBtn");
   const navigationStatus = document.getElementById("finderNavigationStatus");
@@ -2964,6 +2971,7 @@ function initResultPage() {
           ? "Legacy frame-based video result"
           : "Image result";
     }
+    renderAnnotatedVideoPanel(activeScan);
 
     activeImageObj = new Image();
     activeImageObj.onload = function () {
@@ -3018,6 +3026,7 @@ function initResultPage() {
 
   function renderEmptyResult() {
     activeImageObj = null;
+    renderAnnotatedVideoPanel(null);
     if (activeBeltTitle) {
       activeBeltTitle.textContent = "No scan selected";
       activeBeltTitle.title = "No scan selected";
@@ -3049,6 +3058,43 @@ function initResultPage() {
       const element = document.getElementById(id);
       if (element) element.textContent = "-";
     });
+  }
+
+  function renderAnnotatedVideoPanel(scan) {
+    if (!annotatedVideoPanel || !annotatedVideoBody) return;
+    const isVideoScan = ["tracked_video_object", "video_track_object"].includes(scan?.result_kind) || scan?.source_type === "tracked_video" || Boolean(scan?.annotated_video_status || scan?.annotated_video_url);
+    if (!scan || !isVideoScan) {
+      annotatedVideoPanel.hidden = true;
+      annotatedVideoBody.innerHTML = "";
+      if (annotatedVideoStatus) annotatedVideoStatus.textContent = "Unavailable";
+      return;
+    }
+    const status = plNormalizeStatus(scan.annotated_video_status || "unavailable");
+    const videoUrl = plDisplayableImageUrl(scan.annotated_video_url || "");
+    annotatedVideoPanel.hidden = false;
+    if (annotatedVideoStatus) {
+      annotatedVideoStatus.textContent = ({
+        uploaded: "Ready",
+        processing: "Processing",
+        failed: "Failed",
+        unavailable: "Unavailable"
+      })[status] || plNormalizeCategory(status || "unavailable");
+    }
+    if (videoUrl && status === "uploaded") {
+      annotatedVideoBody.innerHTML = `
+        <video class="annotated-result-video" controls preload="metadata" playsinline>
+          <source src="${plEscapeHtml(videoUrl)}" type="video/mp4">
+          Your browser does not support MP4 video playback.
+        </video>
+        <p class="annotated-video-note">Annotated video output. Frame results remain available below.</p>
+      `;
+    } else if (status === "processing") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video is still being generated. Refresh this result shortly.</p>`;
+    } else if (status === "failed") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video generation failed${scan.annotated_video_error ? `: ${plEscapeHtml(scan.annotated_video_error)}` : "."} Frame results were preserved.</p>`;
+    } else {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video is unavailable for this scan. Frame results are shown below.</p>`;
+    }
   }
 
   function setReviewWorkspaceControls(materials) {

@@ -645,6 +645,32 @@ def upload_original_to_supabase_storage(
     return {"path": path, "public_url": str(public_url or "")}
 
 
+def upload_file_to_supabase_storage(
+    file_path: str | Path,
+    object_path: str,
+    content_type: str,
+    database: SupabaseExecutor | None = None,
+) -> dict:
+    database = database or SupabaseExecutor(supabase)
+    if not database.client:
+        raise RuntimeError("Supabase backend env is not configured")
+
+    path = str(object_path).lstrip("/")
+    source = Path(file_path)
+    with source.open("rb") as file:
+        database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).upload(
+            path=path,
+            file=file,
+            file_options={"content-type": content_type, "upsert": "true"},
+        ))
+    public_url = database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).get_public_url(path))
+    if isinstance(public_url, dict):
+        public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
+    if not public_url:
+        raise RuntimeError("Supabase Storage public URL is empty")
+    return {"path": path, "public_url": str(public_url or "")}
+
+
 def safe_error_message(exc: Exception) -> str:
     message = str(exc).replace(os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "\0", "[redacted]")
     message = re.sub(r"[\w./ -]*google-service-account\.json", "[google-service-account.json]", message)
@@ -1483,6 +1509,7 @@ def _load_review_decisions(database: SupabaseExecutor, scan_result_id: UUID | st
 
 
 def _scan_response(scan: dict, materials: list[dict]) -> dict:
+    video_summary = scan.get("video_tracking_summary") if isinstance(scan.get("video_tracking_summary"), dict) else {}
     return {
         "scan_result_id": scan["id"],
         "overall_status": scan.get("overall_status"),
@@ -1502,8 +1529,11 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "result_kind": scan.get("result_kind"),
         "legacy_result": scan.get("legacy_result"),
         "total_unique_objects": scan.get("total_unique_objects"),
-        "counts_by_class": (scan.get("video_tracking_summary") or {}).get("counts_by_class") if isinstance(scan.get("video_tracking_summary"), dict) else None,
-        "hazards": (scan.get("video_tracking_summary") or {}).get("hazards") if isinstance(scan.get("video_tracking_summary"), dict) else None,
+        "counts_by_class": video_summary.get("counts_by_class"),
+        "hazards": video_summary.get("hazards"),
+        "annotated_video_url": scan.get("annotated_video_url") or video_summary.get("annotated_video_url"),
+        "annotated_video_status": scan.get("annotated_video_status") or video_summary.get("annotated_video_status"),
+        "annotated_video_error": scan.get("annotated_video_error") or video_summary.get("annotated_video_error"),
         "tracked_objects": materials if str(scan.get("result_kind") or "") in {"tracked_video_object", "video_track_object"} else None,
         "detected_materials": materials,
     }
@@ -2108,6 +2138,90 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
     return detections
 
 
+def _video_class_color(category: str) -> tuple[int, int, int]:
+    palette = {
+        "plastic": (40, 180, 99),
+        "metal": (245, 158, 11),
+        "glass": (14, 165, 233),
+        "paper": (234, 179, 8),
+        "cardboard": (168, 85, 247),
+        "battery": (37, 99, 235),
+        "textile": (236, 72, 153),
+        "food_organics": (34, 197, 94),
+        "general_trash": (239, 68, 68),
+    }
+    return palette.get(material_category(category), (20, 184, 166))
+
+
+def _mask_to_points(mask, width: int, height: int):
+    import numpy as np
+    if not mask:
+        return None
+    points = []
+    for point in mask:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        x = _coerce_float(point[0])
+        y = _coerce_float(point[1])
+        if x <= 1 and y <= 1:
+            x *= width
+            y *= height
+        points.append([max(0, min(width - 1, int(round(x)))), max(0, min(height - 1, int(round(y))))])
+    if len(points) < 3:
+        return None
+    return np.array(points, dtype=np.int32)
+
+
+def _annotate_video_frame(frame, detections: list[dict]):
+    import cv2
+    height, width = frame.shape[:2]
+    if not detections:
+        return frame
+    annotated = frame.copy()
+    mask_layer = annotated.copy()
+    has_mask = False
+    line_width = max(2, round(min(width, height) / 360))
+    font_scale = max(0.45, min(1.1, min(width, height) / 900))
+    label_padding = max(4, round(line_width * 2))
+    for detection in detections:
+        category = material_category(detection.get("category") or detection.get("material_name"))
+        color_rgb = _video_class_color(category)
+        color = (color_rgb[2], color_rgb[1], color_rgb[0])
+        box = detection.get("best_box", {}).get("xyxy") if isinstance(detection.get("best_box"), dict) else None
+        if not box:
+            norm = detection.get("bbox") or []
+            box = [
+                _coerce_float(norm[0]) * width if len(norm) > 0 else 0,
+                _coerce_float(norm[1]) * height if len(norm) > 1 else 0,
+                _coerce_float(norm[2]) * width if len(norm) > 2 else 0,
+                _coerce_float(norm[3]) * height if len(norm) > 3 else 0,
+            ]
+        x1, y1, x2, y2 = _clip_box(box, width, height)
+        mask_points = _mask_to_points(detection.get("mask"), width, height)
+        if mask_points is not None:
+            cv2.fillPoly(mask_layer, [mask_points], color)
+            has_mask = True
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, line_width)
+        confidence = _coerce_float(detection.get("confidence"))
+        track_id = detection.get("track_id")
+        hazard = " | HAZARD" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else ""
+        label = f"{display_label(category)} | {confidence:.2f} | ID {track_id or '-'}{hazard}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (label_width, label_height), baseline = cv2.getTextSize(label, font, font_scale, line_width)
+        label_width = min(label_width + label_padding * 2, width)
+        label_height = label_height + baseline + label_padding * 2
+        label_x = max(0, min(x1, width - label_width))
+        label_y = y1 - label_height if y1 - label_height >= 0 else min(height - label_height, y2 + line_width)
+        label_y = max(0, label_y)
+        cv2.rectangle(annotated, (label_x, label_y), (label_x + label_width, label_y + label_height), color, -1)
+        text_x = label_x + label_padding
+        text_y = label_y + label_padding + label_height - baseline - label_padding
+        cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (255, 255, 255), max(1, line_width - 1), cv2.LINE_AA)
+    if has_mask:
+        annotated = cv2.addWeighted(mask_layer, 0.28, annotated, 0.72, 0)
+    return annotated
+
+
 def _video_tracking_summary(tracked_objects: list[dict]) -> dict:
     counts_by_class: dict[str, int] = {}
     hazards = []
@@ -2279,6 +2393,7 @@ def _persist_tracked_video_objects(
     principal: Principal | None,
     database: SupabaseExecutor,
     existing_drive_metadata: dict,
+    annotated_video_metadata: dict | None = None,
 ) -> list[str]:
     scan_ids: list[str] = []
     namespace = UUID(str(job["id"]))
@@ -2299,6 +2414,7 @@ def _persist_tracked_video_objects(
                 "counts_by_class": {public_material["category"]: 1},
                 "hazards": [public_material] if public_material.get("track_hazard_status") == "hazard" else [],
                 "tracked_objects": [public_material],
+                **(annotated_video_metadata or {}),
             },
         })
         scan_uuid = uuid5(namespace, stable_object_id)
@@ -2333,6 +2449,14 @@ def _persist_tracked_video_objects(
 def _process_video_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor, existing: dict, payload: bytes, name: str) -> list[str]:
     import cv2
     tmp_path = None
+    annotated_tmp_path = None
+    annotated_writer = None
+    capture = None
+    annotated_video_metadata = {
+        "annotated_video_url": None,
+        "annotated_video_status": "unavailable",
+        "annotated_video_error": None,
+    }
     scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
     options = job.get("options") or {}
     aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
@@ -2344,6 +2468,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         capture = cv2.VideoCapture(tmp_path)
         fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
         frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        annotated_fps = fps if fps and fps > 0 else 30.0
         video_model = get_model()
         tracker_path = str(APP_ROOT / VIDEO_TRACKER_CONFIG)
         if not Path(tracker_path).exists():
@@ -2360,15 +2485,64 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             result = results[0] if results else None
             detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
             aggregator.observe(frame_index, timestamp, detections)
+            if annotated_video_metadata.get("annotated_video_status") != "failed":
+                try:
+                    if annotated_writer is None:
+                        height, width = frame.shape[:2]
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as annotated_tmp:
+                            annotated_tmp_path = annotated_tmp.name
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        annotated_writer = cv2.VideoWriter(annotated_tmp_path, fourcc, annotated_fps, (width, height))
+                        if not annotated_writer.isOpened():
+                            raise RuntimeError("OpenCV VideoWriter could not open annotated MP4 output")
+                        annotated_video_metadata["annotated_video_status"] = "processing"
+                    annotated_writer.write(_annotate_video_frame(frame, detections) if detections else frame)
+                except Exception as exc:
+                    annotated_video_metadata.update({
+                        "annotated_video_status": "failed",
+                        "annotated_video_error": safe_error_message(exc),
+                    })
+                    print(f"[video-annotation] frame annotation failed: {type(exc).__name__}: {safe_error_message(exc)}")
+                    if annotated_writer is not None:
+                        annotated_writer.release()
+                        annotated_writer = None
+                    if annotated_tmp_path:
+                        Path(annotated_tmp_path).unlink(missing_ok=True)
+                        annotated_tmp_path = None
             now = time.monotonic()
             if now - last_checkpoint_at >= 8:
                 summary = _video_tracking_summary(aggregator.finalized)
                 summary["frame_detections"] = sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in aggregator.finalized)
                 summary["raw_track_count"] = len(aggregator.finalized) + len(aggregator.active)
+                summary.update(annotated_video_metadata)
                 _update_job(job["id"], database, processed_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
                 last_checkpoint_at = now
             frame_index += 1
         capture.release()
+        capture = None
+        if annotated_writer is not None:
+            annotated_writer.release()
+            annotated_writer = None
+        if annotated_tmp_path and annotated_video_metadata.get("annotated_video_status") != "failed":
+            try:
+                upload = upload_file_to_supabase_storage(
+                    annotated_tmp_path,
+                    f"annotated-videos/{job['id']}-annotated.mp4",
+                    "video/mp4",
+                    database,
+                )
+                annotated_video_metadata.update({
+                    "annotated_video_url": upload["public_url"],
+                    "annotated_video_status": "uploaded",
+                    "annotated_video_error": None,
+                })
+            except Exception as exc:
+                annotated_video_metadata.update({
+                    "annotated_video_url": None,
+                    "annotated_video_status": "failed",
+                    "annotated_video_error": safe_error_message(exc),
+                })
+                print(f"[video-annotation] annotated MP4 upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
         aggregator.finish(frame_index)
         raw_tracks = aggregator.finalized
         logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
@@ -2380,6 +2554,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             principal=principal,
             database=database,
             existing_drive_metadata=existing,
+            annotated_video_metadata=annotated_video_metadata,
         )
         summary = _video_tracking_summary(logical_objects)
         summary.update({
@@ -2390,6 +2565,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             "raw_track_count": len(raw_tracks),
             "filtered_tracks": max(0, len(raw_tracks) - len(logical_objects)),
             "database_rows_written": len(scan_ids),
+            **annotated_video_metadata,
         })
         _video_debug(
             "video_tracking_completed",
@@ -2403,8 +2579,20 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
         return scan_ids
     finally:
+        try:
+            if annotated_writer is not None:
+                annotated_writer.release()
+        except Exception:
+            pass
+        try:
+            if capture is not None:
+                capture.release()
+        except Exception:
+            pass
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
+        if annotated_tmp_path:
+            Path(annotated_tmp_path).unlink(missing_ok=True)
 
 
 def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
