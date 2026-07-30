@@ -30,3 +30,13 @@ test("annotated video panel remains scoped to video scans and keeps frame result
   assert.match(styles, /\.annotated-result-video/);
   assert.match(styles, /max-width: 100%/);
 });
+
+test("MP4 upload flow surfaces structured backend errors", () => {
+  assert.match(script, /function plApiErrorMessage/);
+  assert.match(script, /detail\.code/);
+  assert.match(script, /detail\.stage/);
+  assert.match(script, /plApiErrorMessage\(startPayload, "Unable to start MP4 upload\."\)/);
+  assert.match(script, /plApiErrorMessage\(payload, `MP4 chunk upload failed/);
+  assert.match(script, /plApiErrorMessage\(ingestPayload, "Unable to queue MP4 processing\."\)/);
+  assert.match(script, /plApiErrorMessage\(job, "Unable to read MP4 job status\."\)/);
+});

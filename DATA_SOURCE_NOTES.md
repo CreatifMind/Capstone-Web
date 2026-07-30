@@ -17,7 +17,7 @@ Use this setup when preparing the real Google Drive + Supabase flow:
 NEXT_PUBLIC_DEMO_MODE=false
 NEXT_PUBLIC_USE_SUPABASE=true
 NEXT_PUBLIC_USE_MOCK_DB=false
-NEXT_PUBLIC_API_BASE_URL=https://capstone-web-backend.onrender.com
+NEXT_PUBLIC_API_BASE_URL=https://your-fastapi-backend.example.com
 ```
 
 In this mode:
@@ -33,7 +33,7 @@ In this mode:
 
 ```text
 User uploads one image from `https://purityloop-ai.vercel.app`
--> frontend sends image to backend `https://capstone-web-backend.onrender.com/api/predict`
+-> frontend sends image to the configured FastAPI backend, for example `${NEXT_PUBLIC_API_BASE_URL}/api/predict`
 -> backend creates scan_results row in Supabase
 -> YOLOv8 backend processes file using best.pt
 -> backend inserts detected_materials rows

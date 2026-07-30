@@ -49,7 +49,7 @@ SUPABASE_STORAGE_PRIVATE=false
 GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID=1oLPhVOBqflPjzQ6wQFq2FVZEj35PFhVd
 GOOGLE_OAUTH_CLIENT_SECRET_FILE=backend/google-oauth-client.json
 GOOGLE_OAUTH_TOKEN_FILE=backend/google-oauth-token.json
-GOOGLE_OAUTH_REDIRECT_URI=https://capstone-web-backend.onrender.com/api/google/callback
+GOOGLE_OAUTH_REDIRECT_URI=https://your-fastapi-backend.example.com/api/google/callback
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-side only. Do not expose it in frontend code.
@@ -59,10 +59,10 @@ GOOGLE_OAUTH_REDIRECT_URI=https://capstone-web-backend.onrender.com/api/google/c
 For the deployed frontend, set Vercel `NEXT_PUBLIC_API_BASE_URL` to:
 
 ```text
-https://capstone-web-backend.onrender.com
+https://your-fastapi-backend.example.com
 ```
 
-Use the backend base URL only. Do not include `/docs`; `/docs` is only the Swagger UI page.
+Use the current FastAPI backend base URL only. Do not include `/docs`; `/docs` is only the Swagger UI page. Do not point this at Vercel unless Vercel is only proxying to a separate long-running FastAPI service.
 
 ## Run Locally
 
@@ -136,18 +136,20 @@ FFprobe compatibility details are logged during processing, but only URL/path/st
 
 If FFmpeg, FFprobe, encoding, validation, or upload fails, the scan and frame/object results are still preserved and `annotated_video_status` becomes `failed`.
 
-## Render Deployment
+## Backend Deployment
 
-Use the backend Dockerfile for Render so FFmpeg is reliably available:
+The frontend on Vercel only hosts the Next.js UI. Keep YOLO/FFmpeg video inference in this FastAPI backend on a host that supports long-running Python processes, large uploads, local job-scoped temporary files, the bundled model file, and FFmpeg.
+
+Use the backend Dockerfile for the selected Python host so FFmpeg is reliably available:
 
 ```text
 Root Directory: backend
-Environment: Docker
+Environment: Docker / long-running Python service
 Port: 7860
 Start command: built into Dockerfile
 ```
 
-Required Render environment variables:
+Required backend environment variables:
 
 ```text
 SUPABASE_URL
@@ -173,7 +175,7 @@ Do not commit real secret values.
 Set the frontend environment variable:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=https://capstone-web-backend.onrender.com
+NEXT_PUBLIC_API_BASE_URL=https://your-fastapi-backend.example.com
 ```
 
 Redeploy Vercel after changing the value.

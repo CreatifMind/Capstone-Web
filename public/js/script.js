@@ -62,6 +62,19 @@ function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
 }
 
+function plApiErrorMessage(payload, fallback) {
+  const detail = payload?.detail ?? payload?.error;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "object") {
+    const code = detail.code ? `${detail.code}: ` : "";
+    const message = detail.message || detail.detail || fallback;
+    const stage = detail.stage ? ` (${detail.stage})` : "";
+    return `${code}${message}${stage}`;
+  }
+  return fallback;
+}
+
 function plVideoPollingDelay(transientFailures) {
   return Math.min(15000, 1000 * (2 ** Math.min(4, Math.max(0, transientFailures - 1)))) + Math.round(Math.random() * 250);
 }
@@ -1631,7 +1644,7 @@ function initUploadPage() {
         await new Promise(resolve => setTimeout(resolve, plVideoPollingDelay(transientFailures)));
         continue;
       }
-      if (!response.ok) throw new Error(job.detail || "Unable to read MP4 job status.");
+      if (!response.ok) throw new Error(plApiErrorMessage(job, "Unable to read MP4 job status."));
       transientFailures = 0;
       if (job.status === "complete" || job.status === "completed") {
         plSetUploadProgress(100, "MP4 processing complete");
@@ -2432,7 +2445,7 @@ function initUploadPage() {
     if (!apiBase) throw new Error("Backend API URL is not configured.");
     const startResponse = await fetch(`${apiBase}/api/uploads/start`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ filename: item.file.name, size_bytes: item.file.size, mime: "video/mp4" }) });
     const startPayload = await startResponse.json().catch(() => ({}));
-    if (!startResponse.ok || !startPayload.upload_id) throw new Error(startPayload.detail || "Unable to start MP4 upload.");
+    if (!startResponse.ok || !startPayload.upload_id) throw new Error(plApiErrorMessage(startPayload, "Unable to start MP4 upload."));
     const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
     let offset = 0;
     let driveFile = null;
@@ -2440,7 +2453,7 @@ function initUploadPage() {
       const end = Math.min(item.file.size, offset + chunkSize);
       const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, { method: "PUT", headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${item.file.size}` }), body: item.file.slice(offset, end) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || `MP4 chunk upload failed (${response.status}).`);
+      if (!response.ok) throw new Error(plApiErrorMessage(payload, `MP4 chunk upload failed (${response.status}).`));
       if (payload.complete) driveFile = payload.drive_file || null;
       offset = end;
       plSetUploadProgress((offset / item.file.size) * 90, `Uploading ${item.file.name}`);
@@ -2448,7 +2461,7 @@ function initUploadPage() {
     if (!driveFile?.id) throw new Error("Google Drive did not return the uploaded file id.");
     const ingestResponse = await fetch(`${apiBase}/api/ingest`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ source: "drive_file", ref: driveFile.id, options: { vid_stride: 30 } }) });
     const ingestPayload = await ingestResponse.json().catch(() => ({}));
-    if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(ingestPayload.detail || "Unable to queue MP4 processing.");
+    if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(plApiErrorMessage(ingestPayload, "Unable to queue MP4 processing."));
     const job = await pollVideoJob(apiBase, ingestPayload.job_id, item.file.name);
     item.scanId = job.scan_ids?.[0] || "";
     return job;
