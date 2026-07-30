@@ -2,6 +2,8 @@ import shutil
 import sys
 import importlib.util
 import json
+import tempfile
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import cv2
@@ -230,3 +232,165 @@ def test_temp_file_cleanup_pattern(tmp_path):
     temp_file.write_bytes(b"temporary")
     temp_file.unlink(missing_ok=True)
     assert not temp_file.exists()
+
+
+class NoopQuery:
+    data = [{"id": "scan-1"}]
+
+    def update(self, *_args, **_kwargs):
+        return self
+
+    def eq(self, *_args, **_kwargs):
+        return self
+
+    def execute(self):
+        return self
+
+
+class NoopClient:
+    def table(self, *_args, **_kwargs):
+        return NoopQuery()
+
+
+class NoopDatabase:
+    client = NoopClient()
+
+    def execute(self, operation, recover=None):
+        return operation(self.client)
+
+
+class FakeModel:
+    def track(self, *_args, **_kwargs):
+        return [object()]
+
+
+def video_bytes(width=96, height=64, frames=4, fps=10):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as handle:
+        path = Path(handle.name)
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+    assert writer.isOpened()
+    for index in range(frames):
+        frame = np.full((height, width, 3), 50 + index * 20, dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
+    data = path.read_bytes()
+    path.unlink(missing_ok=True)
+    return data
+
+
+def tracked_detection(track_id=4, category="plastic", confidence=0.91):
+    return {
+        "track_id": track_id,
+        "category": category,
+        "material_name": category,
+        "confidence": confidence,
+        "bbox": [0.2, 0.2, 0.7, 0.7],
+        "bbox_percent": {"x": 20, "y": 20, "width": 50, "height": 50},
+        "mask": [[0.25, 0.25], [0.65, 0.25], [0.65, 0.65], [0.25, 0.65]],
+    }
+
+
+def test_zero_byte_video_source_is_rejected_and_cleaned(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "VIDEO_WORK_ROOT", tmp_path)
+
+    with pytest.raises(main.VideoDecodeError, match="empty"):
+        main._process_video_drive_file("drive-1", {"id": "11111111-1111-4111-8111-111111111111"}, None, NoopDatabase(), {"drive_mime_type": "video/mp4"}, b"", "empty.mp4")
+
+    assert not (tmp_path / "11111111-1111-4111-8111-111111111111").exists()
+
+
+def test_video_dimensions_are_normalized_to_even_values():
+    assert main._even_video_dimensions(101, 75) == (100, 74)
+    assert main._even_video_dimensions(1, 1) == (2, 2)
+
+
+def test_annotation_writer_failure_preserves_processing_and_persists_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "VIDEO_WORK_ROOT", tmp_path)
+    monkeypatch.setattr(main, "get_model", lambda: FakeModel())
+    monkeypatch.setattr(main, "_result_track_observations", lambda *_args, **_kwargs: [tracked_detection()])
+    persisted = {}
+    source = video_bytes(frames=3)
+
+    def fake_persist(**kwargs):
+        persisted["metadata"] = kwargs["annotated_video_metadata"]
+        return ["scan-1"]
+
+    monkeypatch.setattr(main, "_persist_tracked_video_objects", fake_persist)
+
+    class ClosedWriter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def isOpened(self):
+            return False
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(cv2, "VideoWriter", ClosedWriter)
+
+    result = main._process_video_drive_file("drive-1", {"id": "22222222-2222-4222-8222-222222222222"}, None, NoopDatabase(), {"drive_mime_type": "video/mp4"}, source, "writer-fail.mp4")
+
+    assert result == ["scan-1"]
+    assert persisted["metadata"]["annotated_video_status"] == "failed"
+    assert "VideoWriter" in persisted["metadata"]["annotated_video_error"]
+    assert not (tmp_path / "22222222-2222-4222-8222-222222222222").exists()
+
+
+def test_ffmpeg_failure_preserves_frame_results_and_stderr(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "VIDEO_WORK_ROOT", tmp_path)
+    monkeypatch.setattr(main, "get_model", lambda: FakeModel())
+    monkeypatch.setattr(main, "_result_track_observations", lambda *_args, **_kwargs: [tracked_detection()])
+    persisted = {}
+
+    def fake_persist(**kwargs):
+        persisted["metadata"] = kwargs["annotated_video_metadata"]
+        return ["scan-1"]
+
+    monkeypatch.setattr(main, "_persist_tracked_video_objects", fake_persist)
+
+    def fail_encode(_input_path, _output_path):
+        raise RuntimeError("FFmpeg H.264 encoding failed with exit code 1: simulated stderr")
+
+    monkeypatch.setattr(main, "_encode_browser_mp4", fail_encode)
+
+    result = main._process_video_drive_file("drive-1", {"id": "33333333-3333-4333-8333-333333333333"}, None, NoopDatabase(), {"drive_mime_type": "video/mp4"}, video_bytes(frames=3), "ffmpeg-fail.mp4")
+
+    assert result == ["scan-1"]
+    assert persisted["metadata"]["annotated_video_status"] == "failed"
+    assert "simulated stderr" in persisted["metadata"]["annotated_video_error"]
+    assert not (tmp_path / "33333333-3333-4333-8333-333333333333").exists()
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
+def test_successful_video_processing_uploads_encoded_mp4_and_cleans_temp(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "VIDEO_WORK_ROOT", tmp_path)
+    monkeypatch.setattr(main, "get_model", lambda: FakeModel())
+    monkeypatch.setattr(main, "_result_track_observations", lambda *_args, **_kwargs: [tracked_detection()])
+    persisted = {}
+    uploaded = {}
+
+    def fake_persist(**kwargs):
+        persisted["metadata"] = kwargs["annotated_video_metadata"]
+        return ["scan-1"]
+
+    monkeypatch.setattr(main, "_persist_tracked_video_objects", fake_persist)
+
+    def fake_upload(path, storage_path, content_type, _database):
+        uploaded["path"] = Path(path)
+        uploaded["size"] = Path(path).stat().st_size
+        uploaded["storage_path"] = storage_path
+        uploaded["content_type"] = content_type
+        return {"path": storage_path, "public_url": "https://example.test/result.mp4"}
+
+    monkeypatch.setattr(main, "upload_file_to_supabase_storage", fake_upload)
+
+    result = main._process_video_drive_file("drive-1", {"id": "44444444-4444-4444-8444-444444444444"}, None, NoopDatabase(), {"drive_mime_type": "video/mp4"}, video_bytes(width=95, height=63, frames=3), "portrait-ish.mp4")
+
+    assert result == ["scan-1"]
+    assert uploaded["content_type"] == "video/mp4"
+    assert uploaded["storage_path"] == "annotated-videos/44444444-4444-4444-8444-444444444444/result.mp4"
+    assert uploaded["size"] > 0
+    assert persisted["metadata"]["annotated_video_status"] == "ready"
+    assert persisted["metadata"]["annotated_video_url"].endswith("result.mp4")
+    assert not (tmp_path / "44444444-4444-4444-8444-444444444444").exists()

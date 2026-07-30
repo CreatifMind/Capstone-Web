@@ -80,6 +80,8 @@ REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
+VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
+DEFAULT_VIDEO_FPS = float(os.getenv("DEFAULT_VIDEO_FPS", "30") or 30)
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 # The upload folder is configured server-side, not selected with Google Picker.
 # OAuth therefore needs access to that existing folder and its idempotency search.
@@ -2256,6 +2258,52 @@ def _annotate_video_frame(frame, detections: list[dict]):
     return annotated
 
 
+class VideoDecodeError(RuntimeError):
+    pass
+
+
+def _video_processing_log(event: str, **fields) -> None:
+    safe_fields = {}
+    for key, value in fields.items():
+        if key.lower() in {"token", "authorization", "api_key", "service_role_key", "password"}:
+            safe_fields[key] = "[redacted]"
+        elif isinstance(value, Path):
+            safe_fields[key] = str(value)
+        else:
+            safe_fields[key] = value
+    print(f"[video-processing] {event} {json.dumps(safe_fields, sort_keys=True, default=str)}")
+
+
+def _video_job_dir(scan_id: str) -> Path:
+    safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", str(scan_id or "scan")).strip("._") or "scan"
+    path = VIDEO_WORK_ROOT / safe_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _source_video_path(job_dir: Path, filename: str | None) -> Path:
+    safe_name = safe_drive_filename(filename or "source.mp4")
+    if not safe_name.lower().endswith(".mp4"):
+        safe_name = f"{safe_name}.mp4"
+    return job_dir / f"source-{safe_name}"
+
+
+def _even_video_dimensions(width: int, height: int) -> tuple[int, int]:
+    return max(2, int(width) - int(width) % 2), max(2, int(height) - int(height) % 2)
+
+
+def _normalize_video_frame(frame, width: int, height: int):
+    import cv2
+    normalized = frame
+    if normalized.shape[1] != width or normalized.shape[0] != height:
+        normalized = cv2.resize(normalized, (width, height), interpolation=cv2.INTER_AREA)
+    if len(normalized.shape) == 2:
+        normalized = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
+    elif normalized.shape[2] == 4:
+        normalized = cv2.cvtColor(normalized, cv2.COLOR_BGRA2BGR)
+    return normalized
+
+
 def _require_executable(name: str) -> str:
     path = shutil.which(name)
     if not path:
@@ -2275,9 +2323,22 @@ def _encode_browser_mp4(input_path: str | Path, output_path: str | Path) -> list
         "-movflags", "+faststart",
         str(output_path),
     ]
+    _video_processing_log("ffmpeg_started", ffmpeg_path=ffmpeg, arguments=command[1:], input_path=str(input_path), output_path=str(output_path))
     completed = subprocess.run(command, capture_output=True, text=True, timeout=900)
+    output_exists = Path(output_path).exists()
+    output_size = Path(output_path).stat().st_size if output_exists else 0
+    _video_processing_log(
+        "ffmpeg_completed",
+        exit_code=completed.returncode,
+        stderr=(completed.stderr or "")[-1200:],
+        stdout=(completed.stdout or "")[-400:],
+        output_exists=output_exists,
+        output_size=output_size,
+    )
     if completed.returncode != 0:
-        raise RuntimeError((completed.stderr or completed.stdout or "FFmpeg H.264 encoding failed").strip()[-500:])
+        raise RuntimeError(f"FFmpeg H.264 encoding failed with exit code {completed.returncode}: {(completed.stderr or completed.stdout or '').strip()[-1200:]}")
+    if not output_exists or output_size <= 0:
+        raise RuntimeError("FFmpeg H.264 encoding produced an empty output file.")
     return command
 
 
@@ -2539,9 +2600,11 @@ def _persist_tracked_video_objects(
 
 def _process_video_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor, existing: dict, payload: bytes, name: str) -> list[str]:
     import cv2
-    tmp_path = None
-    annotated_tmp_path = None
-    encoded_tmp_path = None
+    scan_id = str(job["id"])
+    job_dir = _video_job_dir(scan_id)
+    tmp_path = _source_video_path(job_dir, name)
+    annotated_tmp_path = job_dir / "annotated-intermediate.mp4"
+    encoded_tmp_path = job_dir / "result.mp4"
     annotated_writer = None
     capture = None
     annotated_video_metadata = {
@@ -2554,25 +2617,74 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
     options = job.get("options") or {}
     aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
     last_checkpoint_at = time.monotonic()
+    annotated_frames_written = 0
+    frame_total = 0
+    fps = DEFAULT_VIDEO_FPS
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp.write(payload)
-            tmp_path = tmp.name
-        capture = cv2.VideoCapture(tmp_path)
-        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+        payload_size = len(payload or b"")
+        _video_processing_log(
+            "upload_received",
+            scan_id=scan_id,
+            file_id=file_id,
+            filename=name,
+            mime_type=existing.get("drive_mime_type") or "video/mp4",
+            upload_size=payload_size,
+        )
+        if payload_size <= 0:
+            raise VideoDecodeError("Downloaded MP4 source is empty.")
+        tmp_path.write_bytes(payload)
+        source_size = tmp_path.stat().st_size if tmp_path.exists() else 0
+        _video_processing_log("source_saved", scan_id=scan_id, input_path=tmp_path, input_exists=tmp_path.exists(), input_size=source_size)
+        if source_size <= 0:
+            raise VideoDecodeError("Saved MP4 source is empty.")
+        capture = cv2.VideoCapture(str(tmp_path))
+        capture_opened = bool(capture.isOpened())
+        raw_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        raw_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        raw_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
         frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        annotated_fps = fps if fps and fps > 0 else 30.0
+        fps = raw_fps if math.isfinite(raw_fps) and raw_fps > 0 else DEFAULT_VIDEO_FPS
+        fps_fallback_used = fps != raw_fps
+        _video_processing_log(
+            "capture_opened",
+            scan_id=scan_id,
+            is_opened=capture_opened,
+            metadata_width=raw_width,
+            metadata_height=raw_height,
+            metadata_fps=raw_fps,
+            fps=fps,
+            fps_fallback_used=fps_fallback_used,
+            frame_count=frame_total,
+        )
+        if not capture_opened:
+            raise VideoDecodeError("OpenCV could not open the MP4 source.")
+        first_ok, first_frame = capture.read()
+        _video_processing_log("first_frame_decoded", scan_id=scan_id, ok=bool(first_ok), has_frame=first_frame is not None)
+        if not first_ok or first_frame is None:
+            raise VideoDecodeError("Unable to decode the first video frame.")
+        frame_height, frame_width = first_frame.shape[:2]
+        width, height = _even_video_dimensions(frame_width, frame_height)
+        if width <= 0 or height <= 0:
+            raise VideoDecodeError(f"Invalid decoded video dimensions: {frame_width}x{frame_height}")
+        annotated_tmp_path = job_dir / "annotated-intermediate.mp4"
+        encoded_tmp_path = job_dir / "result.mp4"
         video_model = get_model()
         tracker_path = str(APP_ROOT / VIDEO_TRACKER_CONFIG)
         if not Path(tracker_path).exists():
             tracker_path = VIDEO_TRACKER_CONFIG
-        _video_debug("video_tracking_started", scan_id=str(job["id"]), source_name=name, frame_total=frame_total, tracker=tracker_path, stride=1)
+        _video_debug("video_tracking_started", scan_id=scan_id, source_name=name, frame_total=frame_total, tracker=tracker_path, stride=1)
         _update_job(job["id"], database, total_count=None, result_summary={"mode": "tracked_video", "frame_total": frame_total})
         frame_index = 0
+        pending_frame = first_frame
         while True:
-            ok, frame = capture.read()
-            if not ok:
-                break
+            if pending_frame is None:
+                ok, frame = capture.read()
+                if not ok:
+                    break
+            else:
+                frame = pending_frame
+                pending_frame = None
+            frame = _normalize_video_frame(frame, width, height)
             timestamp = frame_index / fps if fps else 0.0
             results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False)
             result = results[0] if results else None
@@ -2581,27 +2693,36 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             if annotated_video_metadata.get("annotated_video_status") != "failed":
                 try:
                     if annotated_writer is None:
-                        height, width = frame.shape[:2]
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as annotated_tmp:
-                            annotated_tmp_path = annotated_tmp.name
                         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                        annotated_writer = cv2.VideoWriter(annotated_tmp_path, fourcc, annotated_fps, (width, height))
-                        if not annotated_writer.isOpened():
+                        annotated_writer = cv2.VideoWriter(str(annotated_tmp_path), fourcc, fps, (width, height))
+                        writer_opened = bool(annotated_writer.isOpened())
+                        _video_processing_log(
+                            "writer_opened",
+                            scan_id=scan_id,
+                            writer_path=annotated_tmp_path,
+                            codec="mp4v",
+                            fps=fps,
+                            width=width,
+                            height=height,
+                            is_opened=writer_opened,
+                        )
+                        if not writer_opened:
                             raise RuntimeError("OpenCV VideoWriter could not open annotated MP4 output")
                         annotated_video_metadata["annotated_video_status"] = "processing"
-                    annotated_writer.write(_annotate_video_frame(frame, detections) if detections else frame)
+                    output_frame = _annotate_video_frame(frame, detections) if detections else frame
+                    output_frame = _normalize_video_frame(output_frame, width, height)
+                    annotated_writer.write(output_frame)
+                    annotated_frames_written += 1
                 except Exception as exc:
                     annotated_video_metadata.update({
                         "annotated_video_status": "failed",
                         "annotated_video_error": safe_error_message(exc),
                     })
-                    print(f"[video-annotation] frame annotation failed: {type(exc).__name__}: {safe_error_message(exc)}")
+                    _video_processing_log("annotation_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                    traceback.print_exc()
                     if annotated_writer is not None:
                         annotated_writer.release()
                         annotated_writer = None
-                    if annotated_tmp_path:
-                        Path(annotated_tmp_path).unlink(missing_ok=True)
-                        annotated_tmp_path = None
             now = time.monotonic()
             if now - last_checkpoint_at >= 8:
                 summary = _video_tracking_summary(aggregator.finalized)
@@ -2616,10 +2737,19 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         if annotated_writer is not None:
             annotated_writer.release()
             annotated_writer = None
+        _video_processing_log(
+            "annotation_completed",
+            scan_id=scan_id,
+            annotated_status=annotated_video_metadata.get("annotated_video_status"),
+            annotated_frames_written=annotated_frames_written,
+            intermediate_path=annotated_tmp_path,
+            intermediate_exists=Path(annotated_tmp_path).exists() if annotated_tmp_path else False,
+            intermediate_size=Path(annotated_tmp_path).stat().st_size if annotated_tmp_path and Path(annotated_tmp_path).exists() else 0,
+        )
         if annotated_tmp_path and annotated_video_metadata.get("annotated_video_status") != "failed":
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as encoded_tmp:
-                    encoded_tmp_path = encoded_tmp.name
+                if annotated_frames_written <= 0:
+                    raise RuntimeError("Annotated writer did not write any frames.")
                 _encode_browser_mp4(annotated_tmp_path, encoded_tmp_path)
                 _ffprobe_mp4(encoded_tmp_path)
                 storage_path = f"annotated-videos/{job['id']}/result.mp4"
@@ -2635,13 +2765,15 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                     "annotated_video_status": "ready",
                     "annotated_video_error": None,
                 })
+                _video_processing_log("supabase_upload_completed", scan_id=scan_id, storage_path=storage_path, content_type="video/mp4", has_url=bool(upload.get("public_url")))
             except Exception as exc:
                 annotated_video_metadata.update({
                     "annotated_video_url": None,
                     "annotated_video_status": "failed",
                     "annotated_video_error": safe_error_message(exc),
                 })
-                print(f"[video-annotation] annotated MP4 upload failed: {type(exc).__name__}: {safe_error_message(exc)}")
+                _video_processing_log("annotated_mp4_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                traceback.print_exc()
         aggregator.finish(frame_index)
         raw_tracks = aggregator.finalized
         logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
@@ -2676,7 +2808,12 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             database_rows_written=len(scan_ids),
         )
         _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
+        _video_processing_log("scan_completed", scan_id=scan_id, final_scan_ids=scan_ids, annotated_video_status=annotated_video_metadata.get("annotated_video_status"))
         return scan_ids
+    except Exception:
+        _video_processing_log("scan_failed", scan_id=scan_id, final_status="failed")
+        traceback.print_exc()
+        raise
     finally:
         try:
             if annotated_writer is not None:
@@ -2688,12 +2825,8 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 capture.release()
         except Exception:
             pass
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
-        if annotated_tmp_path:
-            Path(annotated_tmp_path).unlink(missing_ok=True)
-        if encoded_tmp_path:
-            Path(encoded_tmp_path).unlink(missing_ok=True)
+        shutil.rmtree(job_dir, ignore_errors=True)
+        _video_processing_log("temp_cleanup_completed", scan_id=scan_id, job_dir=job_dir, exists=job_dir.exists())
 
 
 def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
@@ -2704,6 +2837,7 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
         "storage_provider": "google_drive_and_supabase_storage",
         "drive_file_id": info.get("id"),
         "drive_file_name": info.get("name"),
+        "drive_mime_type": info.get("mimeType"),
         "drive_web_url": info.get("webViewLink"),
         "image_url": info.get("webViewLink"),
     }

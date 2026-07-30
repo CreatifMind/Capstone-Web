@@ -128,8 +128,9 @@ annotated_video_url
 annotated_video_storage_path
 annotated_video_status
 annotated_video_error
-annotated_video_probe
 ```
+
+FFprobe compatibility details are logged during processing, but only URL/path/status/error metadata is persisted with the scan.
 
 If FFmpeg, FFprobe, encoding, validation, or upload fails, the scan and frame/object results are still preserved and `annotated_video_status` becomes `failed`.
 
@@ -151,6 +152,8 @@ SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_STORAGE_BUCKET
 SUPABASE_STORAGE_PRIVATE
+VIDEO_WORK_ROOT
+DEFAULT_VIDEO_FPS
 MODEL_PATH
 MODEL_VERSION
 ALLOWED_ORIGINS
