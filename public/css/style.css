@@ -13940,6 +13940,39 @@ body.audit-review-modal-open { overflow: hidden; }
   letter-spacing: 0.08em;
 }
 
+.methodology-target-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.methodology-target-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
+.methodology-target-list dt {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.methodology-target-list dd {
+  margin: 0;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 .methodology-evidence {
   min-width: 0;
   display: grid;
@@ -14035,7 +14068,7 @@ body.audit-review-modal-open { overflow: hidden; }
 
 .measured-model-facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -14061,7 +14094,7 @@ body.audit-review-modal-open { overflow: hidden; }
 .measured-model-facts dd {
   margin: 5px 0 0;
   color: var(--text-primary);
-  font-size: 0.82rem;
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
   font-weight: 900;
   line-height: 1.25;
 }
@@ -14124,7 +14157,7 @@ body.audit-review-modal-open { overflow: hidden; }
 
 .measured-bar-row {
   display: grid;
-  grid-template-columns: minmax(118px, 0.9fr) minmax(90px, 1fr) auto;
+  grid-template-columns: minmax(142px, 0.9fr) minmax(90px, 1fr) minmax(86px, auto);
   gap: 8px;
   align-items: center;
 }
@@ -14152,8 +14185,10 @@ body.audit-review-modal-open { overflow: hidden; }
 
 .measured-bar-row strong {
   color: var(--primary);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 950;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .measured-selection-card p {
@@ -14222,7 +14257,6 @@ body.audit-review-modal-open { overflow: hidden; }
   .dark-landing .hdc-capability-grid,
   .capstone-research-grid,
   .measured-performance-grid,
-  .measured-model-facts,
   .measured-insight-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -14235,6 +14269,7 @@ body.audit-review-modal-open { overflow: hidden; }
 @media (max-width: 640px) {
   .capstone-research-grid,
   .measured-performance-grid,
+  .methodology-target-list,
   .measured-model-facts,
   .measured-insight-grid {
     grid-template-columns: 1fr;

@@ -300,6 +300,12 @@ const html = `
               <h3>Model Acceptance Targets &amp; Routing Rules</h3>
               <p>Proposed performance targets and operational confidence thresholds. These values are validation criteria, not final measured results.</p>
               <span class="methodology-target-badge">TARGETS — NOT FINAL RESULTS</span>
+              <dl class="methodology-target-list" aria-label="Validation target values">
+                <div><dt>mAP@0.5</dt><dd>&ge; 0.85</dd></div>
+                <div><dt>mAP@0.5:0.95</dt><dd>&ge; 0.70</dd></div>
+                <div><dt>Battery Recall</dt><dd>&ge; 80%</dd></div>
+                <div><dt>Inference Speed</dt><dd>&lt; 50ms</dd></div>
+              </dl>
             </div>
             <div class="methodology-evidence">
               <figure class="methodology-figure">
@@ -323,10 +329,9 @@ const html = `
                   </dl>
                 </div>
                 <dl class="measured-model-facts">
-                  <div><dt>Model</dt><dd>remask200_40ep</dd></div>
-                  <div><dt>Architecture</dt><dd>YOLOv8m-seg</dd></div>
-                  <div><dt>Validation set</dt><dd>8,453 images</dd></div>
-                  <div><dt>Deployment</dt><dd>best.onnx, 54.6 MB fp16</dd></div>
+                  <div><dt>Model</dt><dd>YOLOv8m-seg</dd></div>
+                  <div><dt>Validation Set</dt><dd>8K+ images</dd></div>
+                  <div><dt>Deployment</dt><dd>best.onnx</dd></div>
                 </dl>
                 <div class="measured-class-results" aria-label="Detected waste classes">
                   <p>9 fixed waste classes</p>
@@ -345,28 +350,28 @@ const html = `
                 </div>
                 <div class="measured-insight-grid">
                   <div class="measured-reliability-chart" aria-label="Detection reliability by scene complexity">
-                    <h5>Confusion / Error Insight</h5>
+                    <h5>Detection Performance by Scene Complexity</h5>
                     <div class="measured-bar-row">
                       <span>One close-up object</span>
                       <div><i style="width: 85%"></i></div>
-                      <strong>~85%</strong>
+                      <strong>~85% detected</strong>
                     </div>
                     <div class="measured-bar-row">
                       <span>2-5 objects</span>
                       <div><i style="width: 56%"></i></div>
-                      <strong>~56%</strong>
+                      <strong>~56% detected</strong>
                     </div>
                     <div class="measured-bar-row">
                       <span>6+ cluttered objects</span>
                       <div><i style="width: 42%"></i></div>
-                      <strong>~42%</strong>
+                      <strong>~42% detected</strong>
                     </div>
-                    <small>Small objects and cluttered scenes are the hardest cases.</small>
+                    <small>Small objects and cluttered scenes remain the hardest cases.</small>
                   </div>
                   <div class="measured-selection-card">
-                    <h5>Final Model Selection</h5>
-                    <p>Validation label cleanup improved mAP@0.5 from <strong>0.552</strong> to <strong>0.595</strong>, a <strong>+0.043</strong> gain.</p>
-                    <p>PyTorch-to-ONNX parity checked: <strong>312 vs 312</strong> detections, with <strong>0/30</strong> images differing in detection count.</p>
+                    <h5>Why This Model Was Shipped</h5>
+                    <p>Validation-label correction improved mAP@0.5 from <strong>0.552 &rarr; 0.595</strong>.</p>
+                    <p>ONNX parity testing produced <strong>312 &rarr; 312</strong> detections, with <strong>0/30 differences</strong> in detection count.</p>
                   </div>
                 </div>
               </div>
