@@ -37,4 +37,9 @@ assert.match(retrainRoute, /modelReviewContext\(\["web_team"\]\)/);
 assert.match(retrainRoute, /Not enough flagged false signals to trigger a retrain yet/);
 assert.match(retrainRoute, /A retrain is already in progress/);
 
+const tasksRoute = fs.readFileSync("app/api/model-review/tasks/route.ts", "utf8");
+assert.match(tasksRoute, /modelReviewContext\(\["project_manager"\]\)/);
+assert.match(tasksRoute, /from\("model_review_tasks"\)/);
+assert.match(tasksRoute, /STATUSES = new Set\(\["todo", "in_progress", "blocked", "done"\]\)/);
+
 console.log("model review console tests passed");
