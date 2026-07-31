@@ -42,4 +42,9 @@ assert.match(tasksRoute, /modelReviewContext\(\["project_manager"\]\)/);
 assert.match(tasksRoute, /from\("model_review_tasks"\)/);
 assert.match(tasksRoute, /STATUSES = new Set\(\["todo", "in_progress", "blocked", "done"\]\)/);
 
+const notificationsRoute = fs.readFileSync("app/api/model-review/notifications/route.ts", "utf8");
+assert.match(notificationsRoute, /modelReviewContext\(\["project_manager"\]\)/);
+assert.match(notificationsRoute, /from\("model_review_notifications"\)/);
+assert.match(notificationsRoute, /TEAMS = new Set\(\["model", "web"\]\)/);
+
 console.log("model review console tests passed");
