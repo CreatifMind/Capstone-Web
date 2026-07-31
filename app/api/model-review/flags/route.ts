@@ -35,10 +35,16 @@ export async function GET() {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const { data: sevenDayFlags, error: sevenDayError } = await service
+    .from("model_review_flags")
+    .select("created_at")
+    .gte("created_at", sevenDaysAgo.toISOString());
+  if (sevenDayError) return failure("Unable to load flag statistics.", 500);
+
   const dailyCounts = new Map<string, number>();
-  (flags || []).forEach((flag) => {
+  (sevenDayFlags || []).forEach((flag) => {
     const createdAt = new Date(flag.created_at);
-    if (createdAt < sevenDaysAgo) return;
     const key = createdAt.toDateString();
     dailyCounts.set(key, (dailyCounts.get(key) || 0) + 1);
   });
