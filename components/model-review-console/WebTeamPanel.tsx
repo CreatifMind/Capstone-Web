@@ -9,6 +9,7 @@ const SNIPPET = 'import { loadModel } from "@purityloop/inference";\n\nconst mod
 
 export default function WebTeamPanel({ stats, onChanged }: Props) {
   const [copyStatus, setCopyStatus] = useState("");
+  const [error, setError] = useState("");
   const [retrainThreshold, setRetrainThreshold] = useState(stats.settings.retrain_threshold);
   const [integrating, setIntegrating] = useState(false);
 
@@ -19,25 +20,44 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
   };
 
   const updateRetrainThreshold = async (value: number) => {
+    setError("");
     setRetrainThreshold(value);
-    await fetch("/api/model-review/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ retrainThreshold: value })
-    });
-    onChanged();
+    try {
+      const response = await fetch("/api/model-review/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retrainThreshold: value })
+      });
+      if (!response.ok) {
+        setError("Unable to update retrain threshold.");
+        return;
+      }
+      onChanged();
+    } catch {
+      setError("Unable to update retrain threshold.");
+    }
   };
 
   const markIntegrated = async () => {
     if (!stats.currentRetrainRun) return;
+    setError("");
     setIntegrating(true);
-    const response = await fetch("/api/model-review/retrain", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: stats.currentRetrainRun.id })
-    });
-    setIntegrating(false);
-    if (response.ok) onChanged();
+    try {
+      const response = await fetch("/api/model-review/retrain", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: stats.currentRetrainRun.id })
+      });
+      if (response.ok) {
+        onChanged();
+      } else {
+        setError("Unable to mark integration.");
+      }
+    } catch {
+      setError("Unable to mark integration.");
+    } finally {
+      setIntegrating(false);
+    }
   };
 
   const showRetrainBanner = !!stats.currentRetrainRun && stats.currentRetrainRun.status === "complete" && !stats.currentRetrainRun.integrated;
@@ -56,6 +76,7 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
           </button>
         </div>
       )}
+      {error && <p className="mrc-error" role="alert">{error}</p>}
 
       <section className="mrc-grid-2">
         <div className="mrc-card">
