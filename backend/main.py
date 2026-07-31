@@ -2342,7 +2342,7 @@ def _mask_to_points(mask, width: int, height: int):
     return np.array(points, dtype=np.int32)
 
 
-def _annotate_video_frame(frame, detections: list[dict]):
+def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | None = None):
     import cv2
     height, width = frame.shape[:2]
     if not detections:
@@ -2389,6 +2389,21 @@ def _annotate_video_frame(frame, detections: list[dict]):
         cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (255, 255, 255), max(1, line_width - 1), cv2.LINE_AA)
     if has_mask:
         annotated = cv2.addWeighted(mask_layer, 0.28, annotated, 0.72, 0)
+    if footer_count is not None:
+        label = f"{footer_count} object{'s' if footer_count != 1 else ''} detected"
+        footer_height = max(26, round(height * 0.055))
+        footer_y = max(0, height - footer_height)
+        cv2.rectangle(annotated, (0, footer_y), (width, height), (4, 8, 6), -1)
+        cv2.putText(
+            annotated,
+            label,
+            (max(8, round(width * 0.025)), min(height - 8, footer_y + round(footer_height * 0.68))),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            max(0.45, min(0.9, min(width, height) / 850)),
+            (46, 204, 113),
+            max(1, round(line_width * 0.8)),
+            cv2.LINE_AA,
+        )
     return annotated
 
 
@@ -2696,34 +2711,58 @@ def _persist_tracked_video_objects(
                 crop_width, crop_height = crop_image.size
         except Exception:
             crop_width, crop_height = 100, 100
-        inset_x = min(max(0, crop_width - 1), max(1, round(crop_width * 0.04))) if crop_width > 2 else 0
-        inset_y = min(max(0, crop_height - 1), max(1, round(crop_height * 0.04))) if crop_height > 2 else 0
-        x2 = max(inset_x + 1, crop_width - inset_x)
-        y2 = max(inset_y + 1, crop_height - inset_y)
-        public_material.update({
-            "material_name": public_material.get("material_name") or public_material.get("category") or "Detected object",
-            "category": public_material.get("category") or public_material.get("material_name") or "Detected object",
-            "confidence": _coerce_float(
-                public_material.get("confidence")
-                or public_material.get("track_max_confidence")
-                or public_material.get("track_avg_confidence"),
-                0.0,
-            ),
-            "bbox_x": round((inset_x / crop_width) * 100, 2) if crop_width else 0,
-            "bbox_y": round((inset_y / crop_height) * 100, 2) if crop_height else 0,
-            "bbox_width": round(((x2 - inset_x) / crop_width) * 100, 2) if crop_width else 100,
-            "bbox_height": round(((y2 - inset_y) / crop_height) * 100, 2) if crop_height else 100,
-        })
+        public_material["bbox_x"] = 2.0
+        public_material["bbox_y"] = 2.0
+        public_material["bbox_width"] = 96.0
+        public_material["bbox_height"] = 96.0
+        public_material["material_name"] = (
+            public_material.get("material_name")
+            or public_material.get("category")
+            or "Detected object"
+        )
+        public_material["confidence"] = float(
+            public_material.get("confidence")
+            or public_material.get("track_max_confidence")
+            or public_material.get("track_avg_confidence")
+            or 0
+        )
+        preview_bytes = crop_bytes
+        try:
+            import cv2
+            import numpy as np
+            crop_frame = cv2.imdecode(np.frombuffer(crop_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if crop_frame is None:
+                raise ValueError("Unable to decode tracked-object preview crop")
+            preview_detection = {
+                "track_id": public_material.get("track_id"),
+                "category": public_material.get("category"),
+                "material_name": public_material.get("material_name"),
+                "confidence": public_material.get("confidence"),
+                "bbox": [0.02, 0.02, 0.98, 0.98],
+            }
+            annotated_crop = _annotate_video_frame(crop_frame, [preview_detection], footer_count=1)
+            ok, encoded_crop = cv2.imencode(".jpg", annotated_crop)
+            if not ok:
+                raise ValueError("Unable to encode tracked-object annotated preview")
+            preview_bytes = encoded_crop.tobytes()
+        except Exception as exc:
+            _video_processing_log(
+                "tracked_preview_annotation_failed",
+                scan_id=str(job["id"]),
+                logical_object_id=stable_object_id,
+                error_type=type(exc).__name__,
+                error=safe_error_message(exc),
+            )
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
         public_material["track_debug"]["preview_bbox"] = {
             "format": "crop_relative_display_inset",
             "crop_width": crop_width,
             "crop_height": crop_height,
-            "x1": inset_x,
-            "y1": inset_y,
-            "x2": x2,
-            "y2": y2,
+            "x1": round(crop_width * 0.02, 2),
+            "y1": round(crop_height * 0.02, 2),
+            "x2": round(crop_width * 0.98, 2),
+            "y2": round(crop_height * 0.98, 2),
         }
         public_material["result_type"] = "video_track_object"
         object_summary = summarize([public_material])
@@ -2750,7 +2789,7 @@ def _persist_tracked_video_objects(
             confidence=public_material.get("confidence"),
         )
         result = persist_scan(
-            crop_bytes,
+            preview_bytes,
             filename,
             "tracked_video",
             [public_material],
