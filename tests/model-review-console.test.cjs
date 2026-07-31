@@ -52,4 +52,13 @@ assert.match(settingsRoute, /Only model_team can edit the confidence threshold/)
 assert.match(settingsRoute, /Only web_team or project_manager can edit the retrain threshold/);
 assert.match(settingsRoute, /from\("model_review_settings"\)/);
 
+const types = fs.readFileSync("components/model-review-console/types.ts", "utf8");
+const layout = fs.readFileSync("app/model-review-console/layout.tsx", "utf8");
+const page = fs.readFileSync("app/model-review-console/page.tsx", "utf8");
+assert.match(types, /export type ModelReviewRole = "model_team" \| "web_team" \| "project_manager"/);
+assert.match(types, /export type SharedStats = \{/);
+assert.match(layout, /PageHtml bodyClass="ops-pro-page mrc-page lab-ui dark-ai dark-app"/);
+assert.match(page, /requireActiveModelReview\(\)/);
+assert.match(page, /redirect\("\/login"\)/);
+
 console.log("model review console tests passed");
