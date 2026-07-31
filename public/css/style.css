@@ -13519,7 +13519,7 @@ body.audit-review-modal-open { overflow: hidden; }
 
 .methodology-tablist {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -13823,6 +13823,25 @@ body.audit-review-modal-open { overflow: hidden; }
   object-fit: contain;
 }
 
+.methodology-lightbox-content {
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(14px, 2vw, 24px);
+  background: color-mix(in srgb, var(--surface-muted) 94%, #ffffff);
+}
+
+.methodology-lightbox-content .methodology-panel {
+  grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.methodology-lightbox-content .methodology-panel-copy {
+  min-width: 0;
+}
+
 @media (max-width: 980px) {
   .methodology-tablist {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -13944,6 +13963,10 @@ body.audit-review-modal-open { overflow: hidden; }
   display: grid;
   gap: 8px;
   margin: 16px 0 0;
+}
+
+.methodology-routing-list {
+  margin-top: 6px;
 }
 
 .methodology-target-list div {
@@ -14254,6 +14277,10 @@ body.audit-review-modal-open { overflow: hidden; }
 }
 
 @media (max-width: 980px) {
+  .methodology-lightbox-content .methodology-panel {
+    grid-template-columns: 1fr;
+  }
+
   .dark-landing .hdc-capability-grid,
   .capstone-research-grid,
   .measured-performance-grid,

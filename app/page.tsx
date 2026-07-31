@@ -258,6 +258,10 @@ const html = `
             <span>04 — Validation Criteria</span>
             <small>The target mAP, recall, inference latency, confidence thresholds and human-review rules.</small>
           </button>
+          <button id="methodology-tab-5" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-5" tabindex="-1" data-methodology-tab="4">
+            <span>05 — Model Performance</span>
+            <small>Measured validation results, model limitations, deployment evidence and ONNX parity.</small>
+          </button>
         </div>
 
         <div class="methodology-panels">
@@ -296,7 +300,7 @@ const html = `
 
           <article id="methodology-panel-4" class="methodology-panel" role="tabpanel" aria-labelledby="methodology-tab-4" tabindex="0" data-methodology-panel="3" hidden>
             <div class="methodology-panel-copy">
-              <span class="methodology-index">VALIDATION CRITERIA</span>
+              <span class="methodology-index">04 / Validation Criteria</span>
               <h3>Model Acceptance Targets &amp; Routing Rules</h3>
               <p>Proposed performance targets and operational confidence thresholds. These values are validation criteria, not final measured results.</p>
               <span class="methodology-target-badge">TARGETS — NOT FINAL RESULTS</span>
@@ -306,16 +310,27 @@ const html = `
                 <div><dt>Battery Recall</dt><dd>&ge; 80%</dd></div>
                 <div><dt>Inference Speed</dt><dd>&lt; 50ms</dd></div>
               </dl>
+              <dl class="methodology-target-list methodology-routing-list" aria-label="Routing rule targets">
+                <div><dt>Standard class threshold</dt><dd>&ge; 0.85</dd></div>
+                <div><dt>Battery / hazardous threshold</dt><dd>&ge; 0.90</dd></div>
+                <div><dt>Below threshold</dt><dd>Human review</dd></div>
+              </dl>
             </div>
             <div class="methodology-evidence">
               <figure class="methodology-figure">
                 <img data-src="/assets/Production Model Success Metrics.png" width="1536" height="1024" alt="Production model success metrics diagram showing capstone validation targets for mAP, recall, inference latency, class thresholds, and human review rules." data-methodology-image="3" loading="lazy" />
               </figure>
+            </div>
+          </article>
+
+          <article id="methodology-panel-5" class="methodology-panel methodology-results-panel" role="tabpanel" aria-labelledby="methodology-tab-5" tabindex="0" data-methodology-panel="4" hidden>
+            <div class="methodology-panel-copy">
+              <span class="methodology-index">05 / Model Performance</span>
+              <h3>Measured Validation Results</h3>
+              <p>Final held-out validation results for the browser ONNX waste-classification model.</p>
+            </div>
+            <div class="methodology-evidence">
               <div class="measured-performance-panel" aria-label="Measured model performance results">
-                <div class="measured-performance-copy">
-                  <h4>Measured Model Performance</h4>
-                  <p>Final held-out validation results for the browser ONNX waste-classification model.</p>
-                </div>
                 <div class="measured-performance-summary">
                   <div class="measured-performance-hero">
                     <span>Primary score</span>
@@ -333,21 +348,6 @@ const html = `
                   <div><dt>Validation Set</dt><dd>8K+ images</dd></div>
                   <div><dt>Deployment</dt><dd>best.onnx</dd></div>
                 </dl>
-                <div class="measured-class-results" aria-label="Detected waste classes">
-                  <p>9 fixed waste classes</p>
-                  <div class="measured-class-pill-row">
-                    <span>Plastic</span>
-                    <span>Paper</span>
-                    <span>Cardboard</span>
-                    <span>Metal</span>
-                    <span>Glass</span>
-                    <span>Textile</span>
-                    <span>Food Waste</span>
-                    <span>Battery</span>
-                    <span>General Trash</span>
-                  </div>
-                  <small>General trash and uncertain detections route to human review.</small>
-                </div>
                 <div class="measured-insight-grid">
                   <div class="measured-reliability-chart" aria-label="Detection reliability by scene complexity">
                     <h5>Detection Performance by Scene Complexity</h5>
@@ -383,7 +383,7 @@ const html = `
           <button class="methodology-control" type="button" data-methodology-prev>
             <i class="fa-solid fa-arrow-left"></i> Previous
           </button>
-          <span class="methodology-count" aria-live="polite" data-methodology-count>1 of 4</span>
+          <span class="methodology-count" aria-live="polite" data-methodology-count>1 of 5</span>
           <button class="methodology-control" type="button" data-methodology-next>
             Next <i class="fa-solid fa-arrow-right"></i>
           </button>
