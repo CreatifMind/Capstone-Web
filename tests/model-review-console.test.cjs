@@ -75,4 +75,9 @@ assert.match(modelPanel, /fetch\("\/api\/model-review\/run", \{/);
 assert.match(modelPanel, /fetch\("\/api\/model-review\/flags", \{/);
 assert.match(modelPanel, /fetch\("\/api\/model-review\/retrain", \{ method: "POST" \}\)/);
 
+const webPanel = fs.readFileSync("components/model-review-console/WebTeamPanel.tsx", "utf8");
+assert.match(webPanel, /fetch\("\/api\/model-review\/retrain", \{\s*method: "PATCH"/);
+assert.match(webPanel, /fetch\("\/api\/model-review\/settings", \{\s*method: "PATCH"/);
+assert.match(webPanel, /retrainThreshold: value/);
+
 console.log("model review console tests passed");
