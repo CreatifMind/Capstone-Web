@@ -80,4 +80,9 @@ assert.match(webPanel, /fetch\("\/api\/model-review\/retrain", \{\s*method: "PAT
 assert.match(webPanel, /fetch\("\/api\/model-review\/settings", \{\s*method: "PATCH"/);
 assert.match(webPanel, /retrainThreshold: value/);
 
+const pmPanel = fs.readFileSync("components/model-review-console/PmPanel.tsx", "utf8");
+assert.match(pmPanel, /fetch\("\/api\/model-review\/tasks", \{\s*method: "POST"/);
+assert.match(pmPanel, /fetch\("\/api\/model-review\/tasks", \{\s*method: "PATCH"/);
+assert.match(pmPanel, /fetch\("\/api\/model-review\/notifications", \{/);
+
 console.log("model review console tests passed");
