@@ -2691,6 +2691,40 @@ def _persist_tracked_video_objects(
         if not crop_bytes:
             continue
         public_material = {key: value for key, value in item.items() if not key.startswith("_")}
+        try:
+            with Image.open(BytesIO(crop_bytes)) as crop_image:
+                crop_width, crop_height = crop_image.size
+        except Exception:
+            crop_width, crop_height = 100, 100
+        inset_x = min(max(0, crop_width - 1), max(1, round(crop_width * 0.04))) if crop_width > 2 else 0
+        inset_y = min(max(0, crop_height - 1), max(1, round(crop_height * 0.04))) if crop_height > 2 else 0
+        x2 = max(inset_x + 1, crop_width - inset_x)
+        y2 = max(inset_y + 1, crop_height - inset_y)
+        public_material.update({
+            "material_name": public_material.get("material_name") or public_material.get("category") or "Detected object",
+            "category": public_material.get("category") or public_material.get("material_name") or "Detected object",
+            "confidence": _coerce_float(
+                public_material.get("confidence")
+                or public_material.get("track_max_confidence")
+                or public_material.get("track_avg_confidence"),
+                0.0,
+            ),
+            "bbox_x": round((inset_x / crop_width) * 100, 2) if crop_width else 0,
+            "bbox_y": round((inset_y / crop_height) * 100, 2) if crop_height else 0,
+            "bbox_width": round(((x2 - inset_x) / crop_width) * 100, 2) if crop_width else 100,
+            "bbox_height": round(((y2 - inset_y) / crop_height) * 100, 2) if crop_height else 100,
+        })
+        if not isinstance(public_material.get("track_debug"), dict):
+            public_material["track_debug"] = {}
+        public_material["track_debug"]["preview_bbox"] = {
+            "format": "crop_relative_display_inset",
+            "crop_width": crop_width,
+            "crop_height": crop_height,
+            "x1": inset_x,
+            "y1": inset_y,
+            "x2": x2,
+            "y2": y2,
+        }
         public_material["result_type"] = "video_track_object"
         object_summary = summarize([public_material])
         object_summary.update({
