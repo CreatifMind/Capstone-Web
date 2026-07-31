@@ -89,7 +89,13 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
         body: JSON.stringify({ detectionCount: output.detections.length, durationMs })
       });
       const runData = await runResponse.json();
-      if (runResponse.ok) { setRunId(runData.run.id); onChanged(); }
+      if (runResponse.ok) {
+        setRunId(runData.run.id);
+        onChanged();
+      } else {
+        setRunId(null);
+        setError("Run was not recorded — flags on these detections won't be linked to a run.");
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "ONNX inference failed.");
       setStatus("Detection failed.");
@@ -121,23 +127,30 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     if (response.ok) {
       setFlaggedKeys((keys) => new Set(keys).add(key));
       onChanged();
+    } else {
+      setError("Unable to flag detection.");
     }
   };
 
   const updateConfidenceThreshold = async (value: number) => {
     setConfidenceThreshold(value);
-    await fetch("/api/model-review/settings", {
+    const response = await fetch("/api/model-review/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confidenceThreshold: value })
     });
+    if (!response.ok) setError("Unable to update confidence threshold.");
   };
 
   const startRetrain = async () => {
     setRetraining(true);
     const response = await fetch("/api/model-review/retrain", { method: "POST" });
     setRetraining(false);
-    if (response.ok) onChanged();
+    if (response.ok) {
+      onChanged();
+    } else {
+      setError("Unable to start retrain.");
+    }
   };
 
   const exportFlags = async () => {
