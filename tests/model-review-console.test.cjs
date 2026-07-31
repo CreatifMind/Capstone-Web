@@ -20,4 +20,9 @@ assert.match(middleware, /const isModelReviewPage = pathname === "\/model-review
 assert.match(middleware, /if \(MODEL_REVIEW_ROLES\.has\(profile\.role\)\) \{/);
 assert.match(middleware, /return redirect\(request, "\/model-review-console", response\)/);
 
+const runRoute = fs.readFileSync("app/api/model-review/run/route.ts", "utf8");
+assert.match(runRoute, /modelReviewContext\(\["model_team"\]\)/);
+assert.match(runRoute, /from\("model_review_runs"\)/);
+assert.match(runRoute, /detectionCount and durationMs must be non-negative numbers/);
+
 console.log("model review console tests passed");
