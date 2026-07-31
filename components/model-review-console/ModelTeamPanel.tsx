@@ -222,7 +222,8 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
           Confidence threshold ({confidenceThreshold.toFixed(2)})
           <input type="range" min={0.1} max={0.9} step={0.01} value={confidenceThreshold}
             onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
-            onPointerUp={(event) => updateConfidenceThreshold(Number((event.target as HTMLInputElement).value))} />
+            onPointerUp={(event) => updateConfidenceThreshold(Number((event.target as HTMLInputElement).value))}
+            onKeyUp={(event) => updateConfidenceThreshold(Number((event.target as HTMLInputElement).value))} />
         </label>
         <div className="mrc-retrain-controls">
           <span className={`mrc-badge${readyToRetrain ? " mrc-badge-ready" : ""}`}>

@@ -87,7 +87,8 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
             Retrain threshold ({retrainThreshold})
             <input type="range" min={1} max={30} step={1} value={retrainThreshold}
               onChange={(event) => setRetrainThreshold(Number(event.target.value))}
-              onPointerUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))} />
+              onPointerUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))}
+              onKeyUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))} />
           </label>
         </div>
 
