@@ -305,22 +305,70 @@ const html = `
               <figure class="methodology-figure">
                 <img data-src="/assets/Production Model Success Metrics.png" width="1536" height="1024" alt="Production model success metrics diagram showing capstone validation targets for mAP, recall, inference latency, class thresholds, and human review rules." data-methodology-image="3" loading="lazy" />
               </figure>
-              <div class="measured-performance-panel" aria-label="Measured model performance placeholder">
+              <div class="measured-performance-panel" aria-label="Measured model performance results">
                 <div class="measured-performance-copy">
                   <h4>Measured Model Performance</h4>
-                  <p>Final held-out test evaluation results will be reported here after model validation.</p>
+                  <p>Final held-out validation results for the browser ONNX waste-classification model.</p>
                 </div>
-                <dl class="measured-performance-grid">
-                  <div><dt>Bounding-box mAP@0.5</dt><dd>Pending</dd></div>
-                  <div><dt>Mask mAP@0.5</dt><dd>Pending</dd></div>
-                  <div><dt>Mask mAP@0.5:0.95</dt><dd>Pending</dd></div>
-                  <div><dt>Battery recall</dt><dd>Pending</dd></div>
-                  <div><dt>Median inference latency</dt><dd>Pending</dd></div>
-                  <div><dt>Model version</dt><dd>Pending</dd></div>
-                  <div><dt>Test-set size</dt><dd>Pending</dd></div>
-                  <div><dt>Evaluation device</dt><dd>Pending</dd></div>
-                  <div><dt>Evaluation date</dt><dd>Pending</dd></div>
+                <div class="measured-performance-summary">
+                  <div class="measured-performance-hero">
+                    <span>Primary score</span>
+                    <strong>59.5</strong>
+                    <small>mAP@0.5</small>
+                  </div>
+                  <dl class="measured-performance-grid">
+                    <div><dt>Precision</dt><dd>0.606</dd></div>
+                    <div><dt>Recall</dt><dd>0.579</dd></div>
+                    <div><dt>Naming accuracy</dt><dd>0.918</dd></div>
+                  </dl>
+                </div>
+                <dl class="measured-model-facts">
+                  <div><dt>Model</dt><dd>remask200_40ep</dd></div>
+                  <div><dt>Architecture</dt><dd>YOLOv8m-seg</dd></div>
+                  <div><dt>Validation set</dt><dd>8,453 images</dd></div>
+                  <div><dt>Deployment</dt><dd>best.onnx, 54.6 MB fp16</dd></div>
                 </dl>
+                <div class="measured-class-results" aria-label="Detected waste classes">
+                  <p>9 fixed waste classes</p>
+                  <div class="measured-class-pill-row">
+                    <span>Plastic</span>
+                    <span>Paper</span>
+                    <span>Cardboard</span>
+                    <span>Metal</span>
+                    <span>Glass</span>
+                    <span>Textile</span>
+                    <span>Food Waste</span>
+                    <span>Battery</span>
+                    <span>General Trash</span>
+                  </div>
+                  <small>General trash and uncertain detections route to human review.</small>
+                </div>
+                <div class="measured-insight-grid">
+                  <div class="measured-reliability-chart" aria-label="Detection reliability by scene complexity">
+                    <h5>Confusion / Error Insight</h5>
+                    <div class="measured-bar-row">
+                      <span>One close-up object</span>
+                      <div><i style="width: 85%"></i></div>
+                      <strong>~85%</strong>
+                    </div>
+                    <div class="measured-bar-row">
+                      <span>2-5 objects</span>
+                      <div><i style="width: 56%"></i></div>
+                      <strong>~56%</strong>
+                    </div>
+                    <div class="measured-bar-row">
+                      <span>6+ cluttered objects</span>
+                      <div><i style="width: 42%"></i></div>
+                      <strong>~42%</strong>
+                    </div>
+                    <small>Small objects and cluttered scenes are the hardest cases.</small>
+                  </div>
+                  <div class="measured-selection-card">
+                    <h5>Final Model Selection</h5>
+                    <p>Validation label cleanup improved mAP@0.5 from <strong>0.552</strong> to <strong>0.595</strong>, a <strong>+0.043</strong> gain.</p>
+                    <p>PyTorch-to-ONNX parity checked: <strong>312 vs 312</strong> detections, with <strong>0/30</strong> images differing in detection count.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </article>
