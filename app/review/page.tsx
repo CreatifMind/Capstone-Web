@@ -105,8 +105,24 @@ export default function ReviewPage() {
                 <header className="review-panel-header review-selected-header"><h2 id="liveStreamTitle" title="No scan selected">No scan selected</h2><span id="resultSourceState">No saved result</span></header>
                 <div className="review-selected-content">
                   <div className="review-primary-column">
+                    <div id="reviewMediaTabs" className="review-media-tabs" role="tablist" aria-label="Video review media" hidden>
+                      <button id="reviewDetectedObjectsTab" className="review-media-tab active" type="button" role="tab" aria-selected="true" aria-controls="detectedObjectsPanel">Detected Objects</button>
+                      <button id="reviewAnnotatedVideoTab" className="review-media-tab" type="button" role="tab" aria-selected="false" aria-controls="annotatedVideoPanel">Annotated Video</button>
+                    </div>
                     <section className="stream-panel review-stream-panel" aria-label="Selected scan image">
-                      <div className="stream-canvas-wrap"><canvas id="liveInferenceCanvas" aria-label="Waste sorting classification overlay" /></div>
+                      <div id="detectedObjectsPanel" className="stream-canvas-wrap" role="tabpanel" aria-labelledby="reviewDetectedObjectsTab"><canvas id="liveInferenceCanvas" aria-label="Waste sorting classification overlay" /></div>
+                    </section>
+                    <section id="annotatedVideoPanel" className="annotated-video-panel bbox-card review-annotated-video-panel" hidden aria-live="polite" role="tabpanel" aria-labelledby="reviewAnnotatedVideoTab">
+                      <div className="panel-heading-row">
+                        <div>
+                          <span className="panel-kicker">Video scan output</span>
+                          <h2>Annotated Video Result</h2>
+                        </div>
+                        <span id="annotatedVideoStatus">Unavailable</span>
+                      </div>
+                      <div id="annotatedVideoBody" className="annotated-video-body">
+                        <p className="feed-empty">Annotated video is unavailable for this scan.</p>
+                      </div>
                     </section>
                     <div className="review-form-row">
                       <section className="review-decision-card" aria-labelledby="reviewDecisionTitle">

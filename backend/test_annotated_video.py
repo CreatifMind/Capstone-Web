@@ -153,6 +153,36 @@ def test_annotated_frame_writing_draws_boxes_masks_and_labels():
     assert int(annotated.sum()) > int(frame.sum())
 
 
+def test_tracked_video_preview_uses_full_representative_frame_not_crop():
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    bbox = [0.25, 0.25, 0.5, 0.5]
+    xyxy = [30, 20, 60, 40]
+    full_frame_bytes = main._encode_frame_jpeg(frame)
+    crop_bytes = main._encode_detection_crop(frame, xyxy)
+
+    aggregator = main.VideoTrackAggregator("scan-full-frame", min_frames=1)
+    aggregator.observe(0, 0.0, [{
+        "track_id": 4,
+        "category": "plastic",
+        "material_name": "plastic",
+        "confidence": 0.9,
+        "bbox": bbox,
+        "bbox_percent": {"x": 25, "y": 25, "width": 25, "height": 25},
+        "best_box": {"xyxy": xyxy, "frame": 0, "timestamp": 0.0},
+        "frame_bytes": full_frame_bytes,
+        "frame_width": 120,
+        "frame_height": 80,
+        "crop_bytes": crop_bytes,
+    }])
+    material = aggregator.finish(1)[0]
+
+    decoded = cv2.imdecode(np.frombuffer(material["_best_crop_bytes"], dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert decoded.shape[:2] == (80, 120)
+    assert material["track_debug"]["representative_frame_dimensions"] == {"width": 120, "height": 80}
+    assert material["track_debug"]["representative_bbox_format"] == "normalized_original_frame_xyxy"
+
+
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
 def test_successful_h264_yuv420p_encoding_and_probe(temp_video_pair):
     source, encoded = temp_video_pair

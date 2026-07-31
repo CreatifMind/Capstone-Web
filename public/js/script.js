@@ -2658,6 +2658,10 @@ function initResultPage() {
   const annotatedVideoPanel = document.getElementById("annotatedVideoPanel");
   const annotatedVideoBody = document.getElementById("annotatedVideoBody");
   const annotatedVideoStatus = document.getElementById("annotatedVideoStatus");
+  const reviewMediaTabs = document.getElementById("reviewMediaTabs");
+  const reviewDetectedObjectsTab = document.getElementById("reviewDetectedObjectsTab");
+  const reviewAnnotatedVideoTab = document.getElementById("reviewAnnotatedVideoTab");
+  const detectedObjectsPanel = document.getElementById("detectedObjectsPanel");
   const previousScanBtn = document.getElementById("previousScanBtn");
   const nextScanBtn = document.getElementById("nextScanBtn");
   const navigationStatus = document.getElementById("finderNavigationStatus");
@@ -2668,6 +2672,7 @@ function initResultPage() {
   const reviewFeedback = document.getElementById("reviewActionFeedback");
   let activeReviewMaterial = null;
   let isReviewSaving = false;
+  let reviewMediaMode = "detected";
   let isReviewNavigating = false;
   let reviewNavigationState = null;
   let reviewSelectionCleared = false;
@@ -3075,18 +3080,37 @@ function initResultPage() {
     });
   }
 
+  function setReviewMediaMode(mode) {
+    if (!isReviewWorkspace || !reviewMediaTabs || !detectedObjectsPanel || !annotatedVideoPanel) return;
+    reviewMediaMode = mode === "annotated" ? "annotated" : "detected";
+    const annotatedAvailable = annotatedVideoPanel.dataset.available === "true";
+    const showAnnotated = annotatedAvailable && reviewMediaMode === "annotated";
+    detectedObjectsPanel.hidden = showAnnotated;
+    annotatedVideoPanel.hidden = !showAnnotated;
+    reviewDetectedObjectsTab?.classList.toggle("active", !showAnnotated);
+    reviewAnnotatedVideoTab?.classList.toggle("active", showAnnotated);
+    reviewDetectedObjectsTab?.setAttribute("aria-selected", String(!showAnnotated));
+    reviewAnnotatedVideoTab?.setAttribute("aria-selected", String(showAnnotated));
+    if (!showAnnotated) drawCanvasFrame();
+  }
+
   function renderAnnotatedVideoPanel(scan) {
     if (!annotatedVideoPanel || !annotatedVideoBody) return;
     const isVideoScan = ["tracked_video_object", "video_track_object"].includes(scan?.result_kind) || scan?.source_type === "tracked_video" || Boolean(scan?.annotated_video_status || scan?.annotated_video_url);
     if (!scan || !isVideoScan) {
+      if (reviewMediaTabs) reviewMediaTabs.hidden = true;
+      annotatedVideoPanel.dataset.available = "false";
       annotatedVideoPanel.hidden = true;
+      if (detectedObjectsPanel) detectedObjectsPanel.hidden = false;
       annotatedVideoBody.innerHTML = "";
       if (annotatedVideoStatus) annotatedVideoStatus.textContent = "Unavailable";
       return;
     }
     const status = plNormalizeStatus(scan.annotated_video_status || "unavailable");
     const videoUrl = plDisplayableImageUrl(scan.annotated_video_url || "");
-    annotatedVideoPanel.hidden = false;
+    annotatedVideoPanel.dataset.available = "true";
+    if (reviewMediaTabs) reviewMediaTabs.hidden = false;
+    if (!isReviewWorkspace) annotatedVideoPanel.hidden = false;
     if (annotatedVideoStatus) {
       annotatedVideoStatus.textContent = ({
         ready: "Ready",
@@ -3118,8 +3142,11 @@ function initResultPage() {
     } else if (status === "failed") {
       annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video generation failed${scan.annotated_video_error ? `: ${plEscapeHtml(scan.annotated_video_error)}` : "."} Frame results were preserved.</p>`;
     } else {
-      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video is unavailable for this scan. Frame results are shown below.</p>`;
+      annotatedVideoBody.innerHTML = scan.legacy_result
+        ? `<p class="feed-empty">Annotated video was not generated for this earlier scan. Frame results are shown below.</p>`
+        : `<p class="feed-empty">Annotated video is unavailable for this scan. Frame results are shown below.</p>`;
     }
+    if (isReviewWorkspace) setReviewMediaMode(reviewMediaMode);
   }
 
   function setReviewWorkspaceControls(materials) {
@@ -3173,6 +3200,8 @@ function initResultPage() {
     if (reviewVerifyButton) reviewVerifyButton.disabled = !enabled;
     if (reviewRejectButton) reviewRejectButton.disabled = !enabled;
   });
+  reviewDetectedObjectsTab?.addEventListener("click", () => setReviewMediaMode("detected"));
+  reviewAnnotatedVideoTab?.addEventListener("click", () => setReviewMediaMode("annotated"));
   reviewVerifyButton?.addEventListener("click", () => saveReviewFromWorkspace("confirmed"));
   reviewRejectButton?.addEventListener("click", () => saveReviewFromWorkspace("rejected"));
 
@@ -3193,7 +3222,18 @@ function initResultPage() {
   }
 
   function getActiveBoxes() {
-    return activeScan ? plMaterialsToBoxes(activeScan.detected_materials) : [];
+    if (!activeScan) return [];
+    const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
+    if (isTrackedVideo) {
+      const hasOriginalFramePreview = plSafeArray(activeScan.detected_materials).some(material => material?.track_debug?.representative_frame_dimensions);
+      if (!hasOriginalFramePreview) {
+        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+          console.info("[review-preview] Skipping overlay for legacy crop-based tracked-video preview.", { scanId: activeScan.id });
+        }
+        return [];
+      }
+    }
+    return plMaterialsToBoxes(activeScan.detected_materials);
   }
 
   function getActiveTrackPath() {
@@ -3467,6 +3507,22 @@ function initResultPage() {
     const drawH = imgH * scale;
     const drawX = (canvas.width - drawW) / 2;
     const drawY = (canvas.height - drawH) / 2;
+    if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") && activeScan?.detected_materials?.length) {
+      console.info("[review-preview] contain transform", {
+        scanId: activeScan.id,
+        source: { width: imgW, height: imgH },
+        rendered: { width: Math.round(drawW), height: Math.round(drawH) },
+        canvas: { width: canvas.width, height: canvas.height },
+        offset: { x: Math.round(drawX), y: Math.round(drawY) },
+        scale,
+        bbox: activeScan.detected_materials[0]?.best_bbox_norm || activeScan.detected_materials[0]?.best_box || {
+          x: activeScan.detected_materials[0]?.bbox_x,
+          y: activeScan.detected_materials[0]?.bbox_y,
+          width: activeScan.detected_materials[0]?.bbox_width,
+          height: activeScan.detected_materials[0]?.bbox_height,
+        },
+      });
+    }
 
     ctx2d.fillStyle = document.documentElement.dataset.theme === "light" ? "#dfe9e2" : "#07110d";
     ctx2d.fillRect(0, 0, canvas.width, canvas.height);

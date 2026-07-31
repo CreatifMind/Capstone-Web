@@ -294,6 +294,8 @@ class VideoTrackState:
     observations: list[dict] = field(default_factory=list)
     path: list[dict] = field(default_factory=list)
     best_observation: dict = field(default_factory=dict)
+    best_frame_bytes: bytes | None = None
+    best_frame_dimensions: dict | None = None
     best_crop_bytes: bytes | None = None
     counted: bool = False
     last_center: tuple[float, float] | None = None
@@ -415,6 +417,12 @@ class VideoTrackAggregator:
                 "mask": detection.get("mask"),
                 "best_box": detection.get("best_box") or detection.get("bbox_percent") or box,
             }
+            state.best_frame_bytes = detection.get("frame_bytes") or state.best_frame_bytes
+            if detection.get("frame_width") and detection.get("frame_height"):
+                state.best_frame_dimensions = {
+                    "width": int(detection["frame_width"]),
+                    "height": int(detection["frame_height"]),
+                }
             state.best_crop_bytes = detection.get("crop_bytes") or state.best_crop_bytes
         state.last_center = center
 
@@ -531,8 +539,10 @@ class VideoTrackAggregator:
                 "frame_observations": state.observations,
                 "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
                 "raw_track_ids": sorted(state.raw_track_ids),
+                "representative_frame_dimensions": state.best_frame_dimensions,
+                "representative_bbox_format": "normalized_original_frame_xyxy",
             },
-            "_best_crop_bytes": state.best_crop_bytes,
+            "_best_crop_bytes": state.best_frame_bytes or state.best_crop_bytes,
         }
         return material
 
@@ -2228,6 +2238,12 @@ def _encode_detection_crop(frame, box: list[float]) -> bytes | None:
     return encoded.tobytes() if ok else None
 
 
+def _encode_frame_jpeg(frame) -> bytes | None:
+    import cv2
+    ok, encoded = cv2.imencode(".jpg", frame)
+    return encoded.tobytes() if ok else None
+
+
 def _mask_polygon(result, index: int) -> list | None:
     masks = getattr(result, "masks", None)
     if not masks:
@@ -2249,6 +2265,7 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
     image_height, image_width = getattr(result, "orig_shape", frame.shape[:2])
     track_ids = getattr(boxes, "id", None)
     detections = []
+    frame_bytes = _encode_frame_jpeg(frame)
     for index, box in enumerate(boxes):
         xyxy = [float(value) for value in box.xyxy[0].tolist()]
         confidence = float(box.conf[0])
@@ -2283,6 +2300,9 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
                 "timestamp": round(timestamp, 3),
             },
             "mask": _mask_polygon(result, index),
+            "frame_bytes": frame_bytes,
+            "frame_width": int(image_width or frame.shape[1]),
+            "frame_height": int(image_height or frame.shape[0]),
             "crop_bytes": _encode_detection_crop(frame, xyxy),
         })
     return detections
@@ -2433,6 +2453,8 @@ def _encode_browser_mp4(input_path: str | Path, output_path: str | Path) -> list
         "-i", str(input_path),
         "-an",
         "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         str(output_path),
@@ -2726,6 +2748,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         "annotated_video_storage_path": None,
         "annotated_video_status": "unavailable",
         "annotated_video_error": None,
+        "annotated_video_probe": None,
     }
     scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
     options = job.get("options") or {}
@@ -2865,7 +2888,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 if annotated_frames_written <= 0:
                     raise RuntimeError("Annotated writer did not write any frames.")
                 _encode_browser_mp4(annotated_tmp_path, encoded_tmp_path)
-                _ffprobe_mp4(encoded_tmp_path)
+                probe = _ffprobe_mp4(encoded_tmp_path)
                 storage_path = f"annotated-videos/{job['id']}/result.mp4"
                 upload = upload_file_to_supabase_storage(
                     encoded_tmp_path,
@@ -2878,6 +2901,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                     "annotated_video_storage_path": storage_path,
                     "annotated_video_status": "ready",
                     "annotated_video_error": None,
+                    "annotated_video_probe": probe,
                 })
                 _video_processing_log("supabase_upload_completed", scan_id=scan_id, storage_path=storage_path, content_type="video/mp4", has_url=bool(upload.get("public_url")))
             except Exception as exc:
