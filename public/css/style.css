@@ -12979,9 +12979,11 @@ body[data-page="review"] .review-selected-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
 }
-body[data-page="review"] .review-primary-column { display: grid; gap: 12px; min-width: 0; }
+body[data-page="review"] .review-primary-column { display: grid; gap: 12px; min-width: 0; max-width: 100%; }
 body[data-page="review"] .review-media-tabs {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -13020,8 +13022,8 @@ body[data-page="review"] .review-annotated-video-panel {
   background: var(--surface-elevated);
 }
 body[data-page="review"] .review-annotated-video-panel[hidden] { display: none; }
-body[data-page="review"] .review-inspector { display: flex; flex-direction: column; align-items: stretch; gap: 12px; min-width: 0; }
-body[data-page="review"] .review-inspector .mini-panel { min-width: 0; padding: 8px 10px; background: var(--surface-elevated); }
+body[data-page="review"] .review-inspector { display: flex; flex-direction: column; align-items: stretch; gap: 12px; min-width: 0; max-width: 100%; }
+body[data-page="review"] .review-inspector .mini-panel { min-width: 0; max-width: 100%; padding: 8px 10px; background: var(--surface-elevated); }
 body[data-page="review"] .review-inspector .live-feed { min-height: 0; overflow: visible; }
 body[data-page="review"] .review-inspector #liveActionPanel { grid-column: auto; width: auto; padding: 11px 12px; }
 body[data-page="review"] .review-material-summary {
@@ -13051,7 +13053,7 @@ body[data-page="review"] .review-material-class {
   text-align: center;
 }
 body[data-page="review"] .review-material-class.contaminant { background: color-mix(in srgb, var(--status-danger) 10%, var(--surface)); border-color: color-mix(in srgb, var(--status-danger) 32%, var(--border)); color: var(--status-danger); }
-body[data-page="review"] .review-inspector .material-metrics { display: grid; grid-template-columns: repeat(3, minmax(96px, 1fr)); gap: 6px; margin: 4px 0 0; }
+body[data-page="review"] .review-inspector .material-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 0; }
 body[data-page="review"] .review-inspector .material-metrics div { min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); }
 body[data-page="review"] .review-inspector .material-metrics dt { color: var(--text-muted); font-size: .68rem; line-height: 1.2; overflow-wrap: anywhere; }
 body[data-page="review"] .review-inspector .material-metrics dd { margin: 3px 0 0; color: var(--text-primary); font-size: .82rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
@@ -13167,7 +13169,7 @@ body[data-page="review"] .review-action-bar button:disabled { opacity: .48; curs
   body[data-page="review"] .review-history-panel.is-active-tab,
   body[data-page="review"] .review-selected-panel.is-active-tab { display: grid; }
   body[data-page="review"] .review-selected-content { grid-template-columns: 1fr; }
-  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(96px, 1fr)); }
+  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body[data-page="review"] .review-history-list { max-height: none; }
   body[data-page="review"] .review-action-bar {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
@@ -13185,7 +13187,7 @@ body[data-page="review"] .review-action-bar button:disabled { opacity: .48; curs
   body[data-page="review"] .review-sort-controls { margin-left: 0; }
   body[data-page="review"] .review-form-row,
   body[data-page="review"] .review-selected-meta { grid-template-columns: 1fr; }
-  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(84px, 1fr)); }
+  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body[data-page="review"] .review-action-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 100%; gap: 10px; }
   body[data-page="review"] .review-action-bar button { min-height: 48px; padding-inline: 10px; white-space: normal; }
   body[data-page="review"] .review-route-status div { grid-template-columns: 1fr; gap: 2px; }
@@ -13289,7 +13291,7 @@ body[data-page="review"] .review-action-bar button:disabled { opacity: .48; curs
   body[data-page="review"] .review-primary-column { gap: 12px; }
   body[data-page="review"] .review-inspector { align-self: start; min-height: 0; height: auto; gap: 12px; }
   body[data-page="review"] .review-inspector .mini-panel { min-width: 0; min-height: auto; overflow: visible; }
-  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(96px, 1fr)); }
+  body[data-page="review"] .review-inspector .material-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   body[data-page="review"] .review-inspector .action-panel { flex: 0 0 auto; min-height: auto; overflow: visible; }
   body[data-page="review"] .review-inspector .action-panel #liveActionText { min-height: auto; overflow: visible; }
   body[data-page="review"] .review-form-row { grid-template-columns: minmax(0, 1fr); min-width: 0; }

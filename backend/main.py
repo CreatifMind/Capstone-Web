@@ -2733,11 +2733,21 @@ def _persist_tracked_video_objects(
             crop_frame = cv2.imdecode(np.frombuffer(crop_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
             if crop_frame is None:
                 raise ValueError("Unable to decode tracked-object preview crop")
+            crop_height, crop_width = crop_frame.shape[:2]
+            inset_x = max(0, round(crop_width * 0.02))
+            inset_y = max(0, round(crop_height * 0.02))
+            x2 = min(crop_width - 1, round(crop_width * 0.98))
+            y2 = min(crop_height - 1, round(crop_height * 0.98))
+            if x2 <= inset_x:
+                x2 = min(crop_width - 1, inset_x + 1)
+            if y2 <= inset_y:
+                y2 = min(crop_height - 1, inset_y + 1)
             preview_detection = {
                 "track_id": public_material.get("track_id"),
                 "category": public_material.get("category"),
                 "material_name": public_material.get("material_name"),
                 "confidence": public_material.get("confidence"),
+                "best_box": {"xyxy": [inset_x, inset_y, x2, y2]},
                 "bbox": [0.02, 0.02, 0.98, 0.98],
             }
             annotated_crop = _annotate_video_frame(crop_frame, [preview_detection], footer_count=1)
