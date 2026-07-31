@@ -15,6 +15,12 @@ async function fetchSharedStats(): Promise<SharedStats> {
     fetch("/api/model-review/retrain"),
     fetch("/api/model-review/settings")
   ]);
+
+  if (!runRes.ok) throw new Error("Failed to load run data");
+  if (!flagsRes.ok) throw new Error("Failed to load flags data");
+  if (!retrainRes.ok) throw new Error("Failed to load retrain data");
+  if (!settingsRes.ok) throw new Error("Failed to load settings data");
+
   const [runData, flagsData, retrainData, settingsData] = await Promise.all([
     runRes.json(), flagsRes.json(), retrainRes.json(), settingsRes.json()
   ]);
@@ -38,16 +44,23 @@ const ROLE_LABEL: Record<ModelReviewRole, string> = {
 
 export default function ModelReviewConsole({ role }: Props) {
   const [stats, setStats] = useState<SharedStats | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
   const refresh = () => setRefreshToken((token) => token + 1);
 
   useEffect(() => {
     let cancelled = false;
-    fetchSharedStats().then((next) => { if (!cancelled) setStats(next); });
+    setLoadError(null);
+    fetchSharedStats()
+      .then((next) => { if (!cancelled) setStats(next); })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err?.message || "Failed to load console data.");
+      });
     return () => { cancelled = true; };
   }, [refreshToken]);
 
+  if (loadError && !stats) return <p className="mrc-error">{loadError}</p>;
   if (!stats) return <p className="mrc-status">Loading console…</p>;
 
   return (
