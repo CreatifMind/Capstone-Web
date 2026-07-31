@@ -1,18 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { failure, modelReviewContext } from "@/lib/model-review/context";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 const INITIAL_MODEL_VERSION = "yolov8-purityloop v1.4.2";
-
-function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
-
-async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
-  if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
-  if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
-  return { context };
-}
 
 function bumpVersion(version: string) {
   return version.replace(/(\d+)(?!.*\d)/, (match) => String(Number(match) + 1));
@@ -89,7 +79,12 @@ export async function POST() {
     .from("model_review_flags")
     .update({ resolved_at: nowIso, retrain_run_id: retrainRun.id })
     .is("resolved_at", null);
-  if (resolveError) return failure("Retrain recorded, but unable to resolve flagged signals.", 500);
+  if (resolveError) {
+    // Roll back the run insert so the "already in progress" guard above doesn't
+    // permanently wedge on a run that never finished resolving its flags.
+    await service.from("model_review_retrain_runs").delete().eq("id", retrainRun.id);
+    return failure("Retrain recorded, but unable to resolve flagged signals.", 500);
+  }
 
   return NextResponse.json({ retrainRun }, { status: 201 });
 }
@@ -108,6 +103,10 @@ export async function PATCH(request: Request) {
     .eq("id", id).eq("status", "complete").eq("integrated", false)
     .select("id, status, base_version, new_version, started_by_email, started_at, completed_at, integrated, integrated_by_email, integrated_at")
     .single();
-  if (error || !retrainRun) return failure("Retrain run not found or already integrated.", 404);
+  if (error) {
+    if (error.code === "PGRST116") return failure("Retrain run not found or already integrated.", 404);
+    return failure("Unable to integrate retrain run.", 500);
+  }
+  if (!retrainRun) return failure("Retrain run not found or already integrated.", 404);
   return NextResponse.json({ retrainRun });
 }

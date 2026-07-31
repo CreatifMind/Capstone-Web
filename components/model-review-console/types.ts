@@ -55,7 +55,7 @@ export type ConsoleSettings = {
 export type SharedStats = {
   imagesTested: number;
   latency: { avg: number; p50: number; p95: number; p99: number; samples: number };
-  weeklyFalseSignals: number;
+  unresolvedFlags: number;
   dailyBars: { day: string; count: number }[];
   liveVersion: string;
   pendingVersion: string | null;

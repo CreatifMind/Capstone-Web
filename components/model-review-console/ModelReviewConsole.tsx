@@ -27,7 +27,7 @@ async function fetchSharedStats(): Promise<SharedStats> {
   return {
     imagesTested: runData.imagesTested,
     latency: runData.latency,
-    weeklyFalseSignals: flagsData.weeklyFalseSignals,
+    unresolvedFlags: flagsData.unresolvedFlags,
     dailyBars: flagsData.dailyBars,
     liveVersion: retrainData.liveVersion,
     pendingVersion: retrainData.pendingVersion,
@@ -65,6 +65,7 @@ export default function ModelReviewConsole({ role }: Props) {
 
   return (
     <>
+      {loadError && <p className="mrc-error" role="alert">{loadError}</p>}
       <section className="mrc-stats" aria-label="Session overview">
         <div className="mrc-card mrc-stat-card">
           <p className="mrc-stat-label">Images tested</p>
@@ -72,7 +73,7 @@ export default function ModelReviewConsole({ role }: Props) {
         </div>
         <div className="mrc-card mrc-stat-card">
           <p className="mrc-stat-label">Flagged for review</p>
-          <p className="mrc-stat-value mrc-stat-warn">{stats.weeklyFalseSignals}</p>
+          <p className="mrc-stat-value mrc-stat-warn">{stats.unresolvedFlags}</p>
         </div>
         <div className="mrc-card mrc-stat-card">
           <p className="mrc-stat-label">Role</p>

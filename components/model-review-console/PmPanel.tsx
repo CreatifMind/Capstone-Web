@@ -103,14 +103,15 @@ export default function PmPanel({ stats, onChanged }: Props) {
         loadTasksAndNotifications();
         onChanged();
       } else {
-        setError("Unable to send notification.");
+        setError("Unable to log notification.");
       }
     } catch {
-      setError("Unable to send notification.");
+      setError("Unable to log notification.");
     }
   };
 
-  const taskCounts = tasks.reduce((counts, task) => ({ ...counts, [task.status]: (counts[task.status] || 0) + 1 }), {} as Record<string, number>);
+  const taskCounts: Record<string, number> = {};
+  for (const task of tasks) taskCounts[task.status] = (taskCounts[task.status] || 0) + 1;
 
   return (
     <>
@@ -120,7 +121,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <h2>Handoff status</h2>
         <div className="mrc-stepper">
           <div><span>1</span><small>Model testing<br />{stats.imagesTested} images</small></div>
-          <div><span>2</span><small>Flagged for review<br />{stats.weeklyFalseSignals} items</small></div>
+          <div><span>2</span><small>Flagged for review<br />{stats.unresolvedFlags} items</small></div>
           <div><span>3</span><small>Retrain<br />{stats.currentRetrainRun?.status || "idle"}</small></div>
           <div><span>4</span><small>Live in production<br />{stats.liveVersion}</small></div>
         </div>
@@ -130,8 +131,8 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <div className="mrc-card">
           <h2>Request status update</h2>
           <div className="mrc-controls">
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("model")}>Email model team</button>
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("web")}>Email web team</button>
+            <button type="button" className="mrc-btn-secondary" onClick={() => notify("model")}>Log request to model team</button>
+            <button type="button" className="mrc-btn-secondary" onClick={() => notify("web")}>Log request to web team</button>
           </div>
         </div>
         <div className="mrc-card">

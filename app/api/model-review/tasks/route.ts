@@ -1,18 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { failure, modelReviewContext } from "@/lib/model-review/context";
 
 const STATUSES = new Set(["todo", "in_progress", "blocked", "done"]);
 const ASSIGNEE_ROLES = new Set(["model_team", "web_team", "project_manager"]);
-
-function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
-
-async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
-  if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
-  if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
-  return { context };
-}
 
 export async function GET() {
   const checked = await modelReviewContext();
@@ -21,7 +11,8 @@ export async function GET() {
   const { data: tasks, error } = await service
     .from("model_review_tasks")
     .select("id, title, assignee_role, status, url, created_by_email, created_at, updated_at")
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(200);
   if (error) return failure("Unable to load tasks.", 500);
   return NextResponse.json({ tasks: tasks || [] });
 }
@@ -35,6 +26,7 @@ export async function POST(request: Request) {
   const assigneeRole = typeof body?.assigneeRole === "string" ? body.assigneeRole : "";
   const url = typeof body?.url === "string" ? body.url.trim() : "";
   if (!title || !ASSIGNEE_ROLES.has(assigneeRole)) return failure("A title and a valid assignee role are required.", 422);
+  if (url && !/^https?:\/\//i.test(url)) return failure("url must be a valid http(s) link.", 422);
 
   const { data: task, error } = await service
     .from("model_review_tasks")
@@ -60,6 +52,10 @@ export async function PATCH(request: Request) {
     .eq("id", id)
     .select("id, title, assignee_role, status, url, created_by_email, created_at, updated_at")
     .single();
-  if (error || !task) return failure("Task not found.", 404);
+  if (error) {
+    if (error.code === "PGRST116") return failure("Task not found.", 404);
+    return failure("Unable to update task.", 500);
+  }
+  if (!task) return failure("Task not found.", 404);
   return NextResponse.json({ task });
 }

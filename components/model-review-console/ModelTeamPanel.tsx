@@ -115,60 +115,82 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
 
   const flagDetection = async (detection: Detection, signalType: "fp" | "fn") => {
     const key = `${detection.classId}-${detection.x1}-${detection.y1}`;
-    const response = await fetch("/api/model-review/flags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        runId, className: detection.className, confidence: detection.confidence,
-        x1: detection.x1, y1: detection.y1, x2: detection.x2, y2: detection.y2,
-        signalType, suggestedLabel: suggestedLabels[key] || ""
-      })
-    });
-    if (response.ok) {
-      setFlaggedKeys((keys) => new Set(keys).add(key));
-      onChanged();
-    } else {
+    try {
+      const response = await fetch("/api/model-review/flags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId, className: detection.className, confidence: detection.confidence,
+          x1: detection.x1, y1: detection.y1, x2: detection.x2, y2: detection.y2,
+          signalType, suggestedLabel: suggestedLabels[key] || ""
+        })
+      });
+      if (response.ok) {
+        setFlaggedKeys((keys) => new Set(keys).add(key));
+        onChanged();
+      } else {
+        setError("Unable to flag detection.");
+      }
+    } catch {
       setError("Unable to flag detection.");
     }
   };
 
   const updateConfidenceThreshold = async (value: number) => {
     setConfidenceThreshold(value);
-    const response = await fetch("/api/model-review/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confidenceThreshold: value })
-    });
-    if (!response.ok) setError("Unable to update confidence threshold.");
+    try {
+      const response = await fetch("/api/model-review/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confidenceThreshold: value })
+      });
+      if (!response.ok) setError("Unable to update confidence threshold.");
+    } catch {
+      setError("Unable to update confidence threshold.");
+    }
   };
 
   const startRetrain = async () => {
     setRetraining(true);
-    const response = await fetch("/api/model-review/retrain", { method: "POST" });
-    setRetraining(false);
-    if (response.ok) {
-      onChanged();
-    } else {
+    try {
+      const response = await fetch("/api/model-review/retrain", { method: "POST" });
+      if (response.ok) {
+        onChanged();
+      } else {
+        setError("Unable to start retrain.");
+      }
+    } catch {
       setError("Unable to start retrain.");
+    } finally {
+      setRetraining(false);
     }
   };
 
   const exportFlags = async () => {
-    const response = await fetch("/api/model-review/flags");
-    const data = await response.json();
-    const blob = new Blob([JSON.stringify(data.flags, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url; link.download = "false-signals.json";
-    document.body.appendChild(link); link.click();
-    window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 1000);
+    try {
+      const response = await fetch("/api/model-review/flags");
+      if (!response.ok) {
+        setError("Unable to export false signals.");
+        return;
+      }
+      const data = await response.json();
+      const unresolved = (data.flags || []).filter((flag: { resolved_at: string | null }) => flag.resolved_at == null);
+      const blob = new Blob([JSON.stringify(unresolved, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = "false-signals.json";
+      document.body.appendChild(link); link.click();
+      window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 1000);
+    } catch {
+      setError("Unable to export false signals.");
+    }
   };
 
   const visibleDetections = detections
     .filter((detection) => classFilter === "all" || detection.className === classFilter)
     .filter((detection) => detection.confidence >= confidenceThreshold);
 
-  const readyToRetrain = stats.weeklyFalseSignals >= stats.settings.retrain_threshold;
+  const readyToRetrain = stats.unresolvedFlags >= stats.settings.retrain_threshold;
   const maxDaily = Math.max(...stats.dailyBars.map((bar) => bar.count), 1);
 
   return (
@@ -182,7 +204,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
           {isRunning ? "Running…" : "Run detection"}
         </button>
         <button type="button" className="mrc-btn-secondary" onClick={reset} disabled={isRunning}>Reset</button>
-        <button type="button" className="mrc-btn-secondary" onClick={exportFlags} disabled={stats.weeklyFalseSignals === 0}>Export all false signals</button>
+        <button type="button" className="mrc-btn-secondary" onClick={exportFlags} disabled={stats.unresolvedFlags === 0}>Export all false signals</button>
       </section>
 
       <p className="mrc-status" role="status">{status}</p>
@@ -199,11 +221,12 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
         <label className="mrc-field">
           Confidence threshold ({confidenceThreshold.toFixed(2)})
           <input type="range" min={0.1} max={0.9} step={0.01} value={confidenceThreshold}
-            onChange={(event) => updateConfidenceThreshold(Number(event.target.value))} />
+            onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
+            onPointerUp={(event) => updateConfidenceThreshold(Number((event.target as HTMLInputElement).value))} />
         </label>
         <div className="mrc-retrain-controls">
           <span className={`mrc-badge${readyToRetrain ? " mrc-badge-ready" : ""}`}>
-            {readyToRetrain ? "Ready to retrain" : `${stats.settings.retrain_threshold - stats.weeklyFalseSignals} more to trigger retrain`}
+            {readyToRetrain ? "Ready to retrain" : `${stats.settings.retrain_threshold - stats.unresolvedFlags} more to trigger retrain`}
           </span>
           <button type="button" className="mrc-btn-primary" onClick={startRetrain} disabled={!readyToRetrain || retraining}>
             {retraining ? "Retraining…" : "Start retrain"}
@@ -213,7 +236,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
 
       <div className="mrc-card">
         <h2>Cumulative false signals by day</h2>
-        <p className="mrc-muted">{stats.weeklyFalseSignals} unresolved &middot; retrain at {stats.settings.retrain_threshold}</p>
+        <p className="mrc-muted">{stats.unresolvedFlags} unresolved &middot; retrain at {stats.settings.retrain_threshold}</p>
         <div className="mrc-chart">
           {stats.dailyBars.map((bar) => (
             <div key={bar.day} className="mrc-chart-col">

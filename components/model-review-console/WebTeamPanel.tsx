@@ -21,7 +21,6 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
 
   const updateRetrainThreshold = async (value: number) => {
     setError("");
-    setRetrainThreshold(value);
     try {
       const response = await fetch("/api/model-review/settings", {
         method: "PATCH",
@@ -87,7 +86,8 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
           <label className="mrc-field">
             Retrain threshold ({retrainThreshold})
             <input type="range" min={1} max={30} step={1} value={retrainThreshold}
-              onChange={(event) => updateRetrainThreshold(Number(event.target.value))} />
+              onChange={(event) => setRetrainThreshold(Number(event.target.value))}
+              onPointerUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))} />
           </label>
         </div>
 
