@@ -67,4 +67,12 @@ assert.match(console_, /role === "model_team" && <ModelTeamPanel/);
 assert.match(console_, /role === "web_team" && <WebTeamPanel/);
 assert.match(console_, /role === "project_manager" && <PmPanel/);
 
+const modelPanel = fs.readFileSync("components/model-review-console/ModelTeamPanel.tsx", "utf8");
+assert.match(modelPanel, /import \{ runModel \} from "@\/lib\/inference\/onnx-session"/);
+assert.match(modelPanel, /import \{ preprocessImage \} from "@\/lib\/inference\/preprocess"/);
+assert.doesNotMatch(modelPanel, /MOCK_BOXES/);
+assert.match(modelPanel, /fetch\("\/api\/model-review\/run", \{/);
+assert.match(modelPanel, /fetch\("\/api\/model-review\/flags", \{/);
+assert.match(modelPanel, /fetch\("\/api\/model-review\/retrain", \{ method: "POST" \}\)/);
+
 console.log("model review console tests passed");
