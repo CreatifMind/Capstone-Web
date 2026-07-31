@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
+const MODEL_REVIEW_ROLES = new Set(["model_team", "web_team", "project_manager"]);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -10,14 +11,16 @@ export async function middleware(request: NextRequest) {
 
   const isAdminApi = pathname.startsWith("/api/admin/");
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isModelReviewApi = pathname.startsWith("/api/model-review/");
+  const isModelReviewPage = pathname === "/model-review-console" || pathname.startsWith("/model-review-console/");
   const isOperational = OPERATIONAL.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !anonKey || !serviceKey) {
-    if (isAdminApi) return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
-    return isAdminPage || isOperational ? redirect(request, "/login", response) : response;
+    if (isAdminApi || isModelReviewApi) return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
+    return isAdminPage || isModelReviewPage || isOperational ? redirect(request, "/login", response) : response;
   }
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -27,8 +30,8 @@ export async function middleware(request: NextRequest) {
   });
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    if (isAdminApi) return response;
-    if (isAdminPage || isOperational) return redirect(request, "/login", response);
+    if (isAdminApi || isModelReviewApi) return response;
+    if (isAdminPage || isModelReviewPage || isOperational) return redirect(request, "/login", response);
     return response;
   }
 
@@ -39,15 +42,21 @@ export async function middleware(request: NextRequest) {
   const profile = profiles[0];
   if (!profile || profile.status !== "active" || profile.deleted_at) {
     await supabase.auth.signOut();
-    if (isAdminApi) return response;
+    if (isAdminApi || isModelReviewApi) return response;
     return redirect(request, "/login?reason=inactive", response);
   }
   if (profile.role === "admin") {
     if (isAdminApi || isAdminPage) return response;
     return redirect(request, "/admin/users", response);
   }
+  if (MODEL_REVIEW_ROLES.has(profile.role)) {
+    if (isModelReviewApi || isModelReviewPage) return response;
+    return redirect(request, "/model-review-console", response);
+  }
   if (isAdminApi) return response;
   if (isAdminPage) return redirect(request, "/upload", response);
+  if (isModelReviewApi) return response;
+  if (isModelReviewPage) return redirect(request, "/upload", response);
   if (PUBLIC.has(pathname)) return redirect(request, "/upload", response);
   return response;
 }
