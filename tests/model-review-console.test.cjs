@@ -25,4 +25,10 @@ assert.match(runRoute, /modelReviewContext\(\["model_team"\]\)/);
 assert.match(runRoute, /from\("model_review_runs"\)/);
 assert.match(runRoute, /detectionCount and durationMs must be non-negative numbers/);
 
+const flagsRoute = fs.readFileSync("app/api/model-review/flags/route.ts", "utf8");
+assert.match(flagsRoute, /modelReviewContext\(\["model_team"\]\)/);
+assert.match(flagsRoute, /from\("model_review_flags"\)/);
+assert.match(flagsRoute, /FLAG_TYPES = new Set\(\["fp", "fn"\]\)/);
+assert.match(flagsRoute, /is\("resolved_at", null\)/);
+
 console.log("model review console tests passed");
