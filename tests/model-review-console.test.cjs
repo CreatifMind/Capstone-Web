@@ -61,4 +61,10 @@ assert.match(layout, /PageHtml bodyClass="ops-pro-page mrc-page lab-ui dark-ai d
 assert.match(page, /requireActiveModelReview\(\)/);
 assert.match(page, /redirect\("\/login"\)/);
 
+const console_ = fs.readFileSync("components/model-review-console/ModelReviewConsole.tsx", "utf8");
+assert.match(console_, /export default function ModelReviewConsole\(\{ role \}: Props\)/);
+assert.match(console_, /role === "model_team" && <ModelTeamPanel/);
+assert.match(console_, /role === "web_team" && <WebTeamPanel/);
+assert.match(console_, /role === "project_manager" && <PmPanel/);
+
 console.log("model review console tests passed");
