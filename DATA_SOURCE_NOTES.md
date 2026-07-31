@@ -6,7 +6,8 @@
 - No mock records are inserted.
 - Google Drive will store uploaded images or ZIP files later.
 - Supabase stores `scan_results` and `detected_materials`.
-- The FastAPI YOLOv8 backend loads `best.pt` from `MODEL_PATH`.
+- Browser image inference loads `best.onnx` from `/models/purityloop/best.onnx`.
+- The FastAPI backend is still used for persistence and long-running video processing services.
 - Frontend should show empty or pending states until records exist.
 
 ## Current Data Source Mode
@@ -17,7 +18,7 @@ Use this setup when preparing the real Google Drive + Supabase flow:
 NEXT_PUBLIC_DEMO_MODE=false
 NEXT_PUBLIC_USE_SUPABASE=true
 NEXT_PUBLIC_USE_MOCK_DB=false
-NEXT_PUBLIC_API_BASE_URL=https://capstone-web-backend.onrender.com
+NEXT_PUBLIC_API_BASE_URL=https://your-fastapi-backend.example.com
 ```
 
 In this mode:
@@ -33,9 +34,9 @@ In this mode:
 
 ```text
 User uploads one image from `https://purityloop-ai.vercel.app`
--> frontend sends image to backend `https://capstone-web-backend.onrender.com/api/predict`
+-> frontend sends image to the configured FastAPI backend, for example `${NEXT_PUBLIC_API_BASE_URL}/api/predict`
 -> backend creates scan_results row in Supabase
--> YOLOv8 backend processes file using best.pt
+-> browser ONNX inference processes image uploads with `/models/purityloop/best.onnx`
 -> backend inserts detected_materials rows
 -> frontend reads Supabase records
 ```

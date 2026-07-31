@@ -7,6 +7,7 @@ export type UploadBrowserDetectionResult = {
   originalWidth: number;
   originalHeight: number;
   detections: Detection[];
+  reviewDetections: Detection[];
 };
 
 export type UploadBrowserInferenceFlags = {
@@ -63,7 +64,7 @@ export default function UploadBrowserInferenceBridge({ flags }: { flags: UploadB
           return {
             originalWidth: letterbox.originalWidth,
             originalHeight: letterbox.originalHeight,
-            detections: postprocessOutput(output, letterbox).detections
+            ...postprocessOutput(output, letterbox)
           };
         } finally {
           URL.revokeObjectURL(objectUrl);

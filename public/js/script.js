@@ -40,11 +40,11 @@ function plSafeFiles(files) {
 const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
 const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
 const PL_UPLOADS_KEY = "purityloop_uploads";
-const PL_SCAN_PAGE_SIZE = 200;
+const PL_SCAN_BOOTSTRAP_PAGE_SIZE = 10;
 const PL_SCAN_META_KEY = "purityloop_scan_meta";
 let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
   total: null,
-  limit: PL_SCAN_PAGE_SIZE,
+  limit: PL_SCAN_BOOTSTRAP_PAGE_SIZE,
   offset: 0,
   summary: { confirmed: null, needs_review: null, rejected: null }
 });
@@ -60,6 +60,23 @@ function plConfig() {
 
 function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
+}
+
+function plBrowserModelUrl() {
+  return "/models/purityloop/best.onnx";
+}
+
+function plApiErrorMessage(payload, fallback) {
+  const detail = payload?.detail ?? payload?.error;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "object") {
+    const code = detail.code ? `${detail.code}: ` : "";
+    const message = detail.message || detail.detail || fallback;
+    const stage = detail.stage ? ` (${detail.stage})` : "";
+    return `${code}${message}${stage}`;
+  }
+  return fallback;
 }
 
 function plVideoPollingDelay(transientFailures) {
@@ -210,6 +227,25 @@ function plNormalizeMaterial(material) {
     bbox_y: Number(material?.bbox_y || 0),
     bbox_width: Number(material?.bbox_width || 0),
     bbox_height: Number(material?.bbox_height || 0),
+    stable_object_id: material?.stable_object_id || "",
+    track_id: material?.track_id || "",
+    track_first_frame: material?.track_first_frame ?? null,
+    track_last_frame: material?.track_last_frame ?? null,
+    track_first_timestamp: material?.track_first_timestamp ?? null,
+    track_last_timestamp: material?.track_last_timestamp ?? null,
+    track_duration_seconds: material?.track_duration_seconds ?? null,
+    track_avg_confidence: material?.track_avg_confidence ?? null,
+    track_max_confidence: material?.track_max_confidence ?? null,
+    track_frame_count: material?.track_frame_count ?? null,
+    track_hazard_status: material?.track_hazard_status || "",
+    track_counted: material?.track_counted,
+    track_debug: material?.track_debug || null,
+    track_path: plSafeArray(material?.track_path),
+    object_uid: material?.object_uid || material?.stable_object_id || "",
+    source_track_ids: plSafeArray(material?.source_track_ids),
+    result_type: material?.result_type || "",
+    segmentation_mask: material?.segmentation_mask || null,
+    best_box: material?.best_box || null,
     review_decision: material?.review_decision || null
   };
 }
@@ -235,6 +271,8 @@ function plDisplayableImageUrl(value) {
 function plNormalizeScan(scan) {
   if (!scan || !scan.id) return null;
   const sourceName = scan.source_name || scan.drive_file_name || "Uploaded image";
+  const sourceType = scan.source_type || "image";
+  const videoSummary = scan.video_tracking_summary && typeof scan.video_tracking_summary === "object" ? scan.video_tracking_summary : {};
   return {
     ...scan,
     image_url: String(scan.image_url || ""),
@@ -248,6 +286,15 @@ function plNormalizeScan(scan) {
     review_status: scan.review_status || null,
     verified_category: scan.verified_category || null,
     reviewed_at: scan.reviewed_at || null,
+    result_kind: scan.result_kind || (sourceType === "tracked_video" ? "video_track_object" : sourceType === "video_frame" ? "legacy_video_frame" : "image_detection"),
+    legacy_result: Boolean(scan.legacy_result || sourceType === "video_frame"),
+    total_unique_objects: Number(scan.total_unique_objects || (sourceType === "tracked_video" ? 1 : 0)),
+    video_tracking_summary: videoSummary,
+    annotated_video_url: scan.annotated_video_url || videoSummary.annotated_video_url || "",
+    annotated_video_storage_path: scan.annotated_video_storage_path || videoSummary.annotated_video_storage_path || "",
+    annotated_video_status: scan.annotated_video_status || videoSummary.annotated_video_status || "",
+    annotated_video_error: scan.annotated_video_error || videoSummary.annotated_video_error || "",
+    annotated_video_probe: scan.annotated_video_probe || videoSummary.annotated_video_probe || null,
     created_at: scan.created_at || new Date().toISOString(),
     detected_materials: plSafeArray(scan.detected_materials).map(plNormalizeMaterial)
   };
@@ -262,7 +309,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
   }
   plScanHistoryRefreshPromise = (async () => {
     try {
-      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
+      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
       const body = await response.text();
       if (!response.ok) {
         console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
@@ -280,7 +327,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
         .filter(Boolean);
       plScanHistoryMeta = {
         total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
-        limit: Number(payload?.limit) || PL_SCAN_PAGE_SIZE,
+        limit: Number(payload?.limit) || PL_SCAN_BOOTSTRAP_PAGE_SIZE,
         offset: Number(payload?.offset) || 0,
         summary: {
           confirmed: Number.isFinite(Number(payload?.summary?.confirmed)) ? Number(payload.summary.confirmed) : null,
@@ -310,6 +357,16 @@ function plSetScanResults(scans) {
   const safeScans = plSafeArray(scans).filter(scan => scan && scan.id);
   plSetJson(PL_SCAN_LOGS_KEY, safeScans);
   if (safeScans[0]) plSetJson(PL_LATEST_SCAN_KEY, safeScans[0]);
+}
+
+function plMergeScanResults(scans) {
+  const incoming = plSafeArray(scans).map(plNormalizeScan).filter(scan => scan?.id);
+  if (!incoming.length) return plGetScanResults();
+  const byId = new Map(plGetScanResults().map(scan => [scan.id, scan]));
+  incoming.forEach(scan => byId.set(scan.id, scan));
+  const merged = [...byId.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  plSetScanResults(merged);
+  return merged;
 }
 
 function plSaveScanResult(scan) {
@@ -346,7 +403,7 @@ async function plFetchScanResultById(scanId) {
     throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
   }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 404 ? "The deployed backend is missing the scan lookup route. Restart or deploy the updated FastAPI backend." : (payload.detail || "Unable to retrieve the persisted scan for review."));
+  if (!response.ok) throw new Error(response.status === 404 ? "Scan result was not found." : (payload.detail || "Unable to retrieve the persisted scan for review."));
   return plNormalizeScan(payload.scan_result);
 }
 
@@ -361,7 +418,8 @@ function plGetLatestScanResult() {
 
 function plGetRequestedScanResult() {
   const params = new URLSearchParams(window.location.search);
-  return plGetScanResultById(params.get("scanId")) || plGetLatestScanResult();
+  const requestedId = params.get("scanId");
+  return requestedId ? plGetScanResultById(requestedId) : plGetLatestScanResult();
 }
 
 function plNumberFromPercent(value) {
@@ -425,6 +483,9 @@ function plFormatScanTime(scan) {
 
 function plScanToLedger(scan, material = {}, index = 0) {
   const decision = plEvaluateMaterial(material, scan);
+  const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(scan.result_kind) || scan.source_type === "tracked_video" || Boolean(material?.stable_object_id);
+  const sourceTypeLabel = isTrackedVideo ? "Tracked video object" : scan.legacy_result ? "Legacy frame-based video" : "Image result";
+  const duration = material?.track_duration_seconds !== null && material?.track_duration_seconds !== undefined ? `${Number(material.track_duration_seconds).toFixed(2)}s` : "";
   return {
     id: `${scan.id}:${material.id || index}`,
     scanId: scan.id,
@@ -433,6 +494,9 @@ function plScanToLedger(scan, material = {}, index = 0) {
     timestamp: new Date(scan.created_at || Date.now()).getTime(),
     time: plFormatScanTime(scan),
     source: scan.source_name || "Uploaded image",
+    sourceTypeLabel,
+    duration,
+    stableObjectId: material?.stable_object_id || "",
     category: plNormalizeCategory(decision.category),
     materialClass: decision.materialClass,
     weight: plDisplayWeight(material, scan),
@@ -1584,15 +1648,16 @@ function initUploadPage() {
         await new Promise(resolve => setTimeout(resolve, plVideoPollingDelay(transientFailures)));
         continue;
       }
-      if (!response.ok) throw new Error(job.detail || "Unable to read MP4 job status.");
+      if (!response.ok) throw new Error(plApiErrorMessage(job, "Unable to read MP4 job status."));
       transientFailures = 0;
       if (job.status === "complete" || job.status === "completed") {
         plSetUploadProgress(100, "MP4 processing complete");
-        setMessages(`${filename} processed. ${Number(job.processed_count || 0)} frame scans saved.`);
+        const uniqueCount = Number(job.result_summary?.total_unique_objects ?? job.total_count ?? job.processed_count ?? 0);
+        setMessages(`${filename} processed. ${uniqueCount} unique object${uniqueCount === 1 ? "" : "s"} saved.`);
         return job;
       }
       if (job.status === "failed") throw new Error(job.error || "MP4 processing failed.");
-      if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} frames)`;
+      if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} unique objects)`;
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
@@ -1788,6 +1853,7 @@ function initUploadPage() {
         originalWidth: image.naturalWidth || image.width,
         originalHeight: image.naturalHeight || image.height,
         browserDetections: [],
+        browserReviewDetections: [],
         errorMessage: "",
         scanId: ""
       };
@@ -2022,6 +2088,7 @@ function initUploadPage() {
     item.browserState = "decoding";
     item.browserFailurePhase = "";
     item.browserDetections = [];
+    item.browserReviewDetections = [];
     renderQueue();
     await new Promise(resolve => window.requestAnimationFrame(resolve));
     item.browserState = "loading-model";
@@ -2044,6 +2111,7 @@ function initUploadPage() {
       item.originalWidth = result.originalWidth;
       item.originalHeight = result.originalHeight;
       item.browserDetections = result.detections;
+      item.browserReviewDetections = result.reviewDetections || result.detections;
       await saveBrowserDetectedResult(item);
     } catch (error) {
       item.browserState = "failed";
@@ -2066,7 +2134,7 @@ function initUploadPage() {
     item.browserFailurePhase = "";
     item.errorMessage = "";
     renderQueue();
-    const detections = item.browserDetections.map((detection, index) => ({
+    const detections = (item.browserReviewDetections || item.browserDetections).map((detection, index) => ({
       detection_index: index,
       class_id: detection.classId,
       model_class_name: detection.className,
@@ -2381,7 +2449,7 @@ function initUploadPage() {
     if (!apiBase) throw new Error("Backend API URL is not configured.");
     const startResponse = await fetch(`${apiBase}/api/uploads/start`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ filename: item.file.name, size_bytes: item.file.size, mime: "video/mp4" }) });
     const startPayload = await startResponse.json().catch(() => ({}));
-    if (!startResponse.ok || !startPayload.upload_id) throw new Error(startPayload.detail || "Unable to start MP4 upload.");
+    if (!startResponse.ok || !startPayload.upload_id) throw new Error(plApiErrorMessage(startPayload, "Unable to start MP4 upload."));
     const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
     let offset = 0;
     let driveFile = null;
@@ -2389,7 +2457,7 @@ function initUploadPage() {
       const end = Math.min(item.file.size, offset + chunkSize);
       const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, { method: "PUT", headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${item.file.size}` }), body: item.file.slice(offset, end) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || `MP4 chunk upload failed (${response.status}).`);
+      if (!response.ok) throw new Error(plApiErrorMessage(payload, `MP4 chunk upload failed (${response.status}).`));
       if (payload.complete) driveFile = payload.drive_file || null;
       offset = end;
       plSetUploadProgress((offset / item.file.size) * 90, `Uploading ${item.file.name}`);
@@ -2397,7 +2465,7 @@ function initUploadPage() {
     if (!driveFile?.id) throw new Error("Google Drive did not return the uploaded file id.");
     const ingestResponse = await fetch(`${apiBase}/api/ingest`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ source: "drive_file", ref: driveFile.id, options: { vid_stride: 30 } }) });
     const ingestPayload = await ingestResponse.json().catch(() => ({}));
-    if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(ingestPayload.detail || "Unable to queue MP4 processing.");
+    if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(plApiErrorMessage(ingestPayload, "Unable to queue MP4 processing."));
     const job = await pollVideoJob(apiBase, ingestPayload.job_id, item.file.name);
     item.scanId = job.scan_ids?.[0] || "";
     return job;
@@ -2436,11 +2504,7 @@ function initUploadPage() {
         } else if (shouldUseBrowserOnnxForItem(item)) {
           await runBrowserDetection(item);
         } else {
-          item.inferenceLabel = "Backend PyTorch — best.pt";
-          renderQueue();
-          const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
-          item.scanId = scan.id;
-          item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+          throw new Error("Browser ONNX is required for image detection. Enable browser ONNX for this upload source.");
         }
       } catch (error) {
         item.status = "failed";
@@ -2591,6 +2655,13 @@ function initResultPage() {
   const actionText = document.getElementById("liveActionText");
   const actionBadge = document.getElementById("liveActionBadge");
   const activeBeltTitle = document.getElementById("liveStreamTitle");
+  const annotatedVideoPanel = document.getElementById("annotatedVideoPanel");
+  const annotatedVideoBody = document.getElementById("annotatedVideoBody");
+  const annotatedVideoStatus = document.getElementById("annotatedVideoStatus");
+  const reviewMediaTabs = document.getElementById("reviewMediaTabs");
+  const reviewDetectedObjectsTab = document.getElementById("reviewDetectedObjectsTab");
+  const reviewAnnotatedVideoTab = document.getElementById("reviewAnnotatedVideoTab");
+  const detectedObjectsPanel = document.getElementById("detectedObjectsPanel");
   const previousScanBtn = document.getElementById("previousScanBtn");
   const nextScanBtn = document.getElementById("nextScanBtn");
   const navigationStatus = document.getElementById("finderNavigationStatus");
@@ -2601,11 +2672,11 @@ function initResultPage() {
   const reviewFeedback = document.getElementById("reviewActionFeedback");
   let activeReviewMaterial = null;
   let isReviewSaving = false;
+  let reviewMediaMode = "detected";
   let isReviewNavigating = false;
   let reviewNavigationState = null;
   let reviewSelectionCleared = false;
 
-  const scans = plGetScanResults();
   const cachedUploadPreviews = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_UPLOADS_KEY), []));
   const findCachedUploadPreview = sourceName => {
     const key = String(sourceName || "");
@@ -2615,7 +2686,7 @@ function initResultPage() {
     });
     return match?.dataUrl || "";
   };
-  let uploads = scans.map(scan => {
+  const scanUploads = scanList => scanList.map(scan => {
     const previewUrl = scan.preview_image_url || "";
     const hasScanImage = Boolean(previewUrl);
     const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
@@ -2628,8 +2699,11 @@ function initResultPage() {
       scanId: scan.id
     };
   });
+  const scans = plGetScanResults();
+  let uploads = scanUploads(scans);
+  const requestedScanId = new URLSearchParams(window.location.search).get("scanId") || "";
   const requestedScan = plGetRequestedScanResult();
-  console.info("[result] scanId from URL", new URLSearchParams(window.location.search).get("scanId") || "");
+  console.info("[result] scanId from URL", requestedScanId);
 
   let activeIndex = 0;
   if (requestedScan) {
@@ -2675,14 +2749,9 @@ function initResultPage() {
   };
   const onResultHistoryRefresh = () => {
     const refreshedScans = plGetScanResults();
-    uploads = refreshedScans.map(scan => {
-      const previewUrl = scan.preview_image_url || "";
-      const hasScanImage = Boolean(previewUrl);
-      const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
-      return { name: scan.source_name || scan.id, size: scan.source_size || 0, thumbnailSrc: previewUrl, dataUrl: hasScanImage ? "" : cachedPreview, assetPath: previewUrl, scanId: scan.id };
-    });
+    uploads = scanUploads(refreshedScans);
     const refreshedActive = activeScan ? plGetScanResultById(activeScan.id) : null;
-    activeScan = refreshedActive || (isReviewWorkspace && reviewSelectionCleared ? null : refreshedScans[0]) || null;
+    activeScan = refreshedActive || (isReviewWorkspace && requestedScanId ? activeScan : (isReviewWorkspace && reviewSelectionCleared ? null : refreshedScans[0])) || null;
     activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === activeScan?.id));
     renderFinderGrid();
     if (activeScan) {
@@ -2691,6 +2760,34 @@ function initResultPage() {
         window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: activeScan.id } }));
       }
     } else renderEmptyResult();
+  };
+  const loadReviewScanById = async scanId => {
+    if (!isReviewWorkspace || !scanId) return false;
+    let scan = plGetScanResultById(scanId);
+    if (!scan) {
+      if (resultSourceState) resultSourceState.textContent = "Loading selected scan";
+      try {
+        scan = await plFetchScanResultById(scanId);
+        plMergeScanResults([scan]);
+      } catch (error) {
+        reviewSelectionCleared = true;
+        activeScan = null;
+        activeIndex = -1;
+        if (resultSourceState) resultSourceState.textContent = "Selected scan unavailable";
+        renderEmptyResult();
+        if (liveFeed) liveFeed.innerHTML = `<div class="feed-empty">${plEscapeHtml(error.message || "Unable to load selected scan.")}</div>`;
+        return false;
+      }
+    }
+    const refreshedScans = plGetScanResults();
+    uploads = scanUploads(refreshedScans);
+    activeScan = scan;
+    activeIndex = Math.max(0, uploads.findIndex(upload => upload.scanId === scan.id));
+    reviewSelectionCleared = false;
+    renderFinderGrid();
+    loadActiveImage();
+    window.dispatchEvent(new CustomEvent("purityloop:review-scan-selected", { detail: { scanId: scan.id } }));
+    return true;
   };
   const onResultThemeChange = () => {
     if (activeImageObj) drawCanvasFrame();
@@ -2710,6 +2807,8 @@ function initResultPage() {
     if (selectedIndex >= 0) {
       reviewSelectionCleared = false;
       selectScan(selectedIndex);
+    } else {
+      loadReviewScanById(scanId);
     }
   };
   const onReviewNavigationState = event => {
@@ -2718,6 +2817,7 @@ function initResultPage() {
   };
   window.addEventListener('resize', onResultResize);
   window.addEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
+  window.addEventListener("purityloop:scan-cache-updated", onResultHistoryRefresh);
   window.addEventListener("purityloop:theme-change", onResultThemeChange);
   if (isReviewWorkspace) window.addEventListener("purityloop:review-select-scan", onReviewScanSelection);
   if (isReviewWorkspace) window.addEventListener("purityloop:review-navigation-state", onReviewNavigationState);
@@ -2741,6 +2841,7 @@ function initResultPage() {
     stopAutoScanSimulation();
     window.removeEventListener('resize', onResultResize);
     window.removeEventListener("purityloop:scan-history-refreshed", onResultHistoryRefresh);
+    window.removeEventListener("purityloop:scan-cache-updated", onResultHistoryRefresh);
     window.removeEventListener("purityloop:theme-change", onResultThemeChange);
     if (isReviewWorkspace) window.removeEventListener("purityloop:review-select-scan", onReviewScanSelection);
     if (isReviewWorkspace) window.removeEventListener("purityloop:review-navigation-state", onReviewNavigationState);
@@ -2801,6 +2902,7 @@ function initResultPage() {
 
   if (previousScanBtn) previousScanBtn.addEventListener("click", () => navigateScan(-1));
   if (nextScanBtn) nextScanBtn.addEventListener("click", () => navigateScan(1));
+  if (requestedScanId && !requestedScan) loadReviewScanById(requestedScanId);
 
   function renderFinderGrid() {
     const grid = document.getElementById("finderGrid");
@@ -2882,6 +2984,14 @@ function initResultPage() {
       activeBeltTitle.textContent = activeFile.name;
       activeBeltTitle.title = activeFile.name;
     }
+    if (resultSourceState) {
+      resultSourceState.textContent = ["tracked_video_object", "video_track_object"].includes(activeScan?.result_kind) || activeScan?.source_type === "tracked_video"
+        ? "Tracked video result"
+        : activeScan?.legacy_result
+          ? "Legacy frame-based video result"
+          : "Image result";
+    }
+    renderAnnotatedVideoPanel(activeScan);
 
     activeImageObj = new Image();
     activeImageObj.onload = function () {
@@ -2936,6 +3046,7 @@ function initResultPage() {
 
   function renderEmptyResult() {
     activeImageObj = null;
+    renderAnnotatedVideoPanel(null);
     if (activeBeltTitle) {
       activeBeltTitle.textContent = "No scan selected";
       activeBeltTitle.title = "No scan selected";
@@ -2967,6 +3078,75 @@ function initResultPage() {
       const element = document.getElementById(id);
       if (element) element.textContent = "-";
     });
+  }
+
+  function setReviewMediaMode(mode) {
+    if (!isReviewWorkspace || !reviewMediaTabs || !detectedObjectsPanel || !annotatedVideoPanel) return;
+    reviewMediaMode = mode === "annotated" ? "annotated" : "detected";
+    const annotatedAvailable = annotatedVideoPanel.dataset.available === "true";
+    const showAnnotated = annotatedAvailable && reviewMediaMode === "annotated";
+    detectedObjectsPanel.hidden = showAnnotated;
+    annotatedVideoPanel.hidden = !showAnnotated;
+    reviewDetectedObjectsTab?.classList.toggle("active", !showAnnotated);
+    reviewAnnotatedVideoTab?.classList.toggle("active", showAnnotated);
+    reviewDetectedObjectsTab?.setAttribute("aria-selected", String(!showAnnotated));
+    reviewAnnotatedVideoTab?.setAttribute("aria-selected", String(showAnnotated));
+    if (!showAnnotated) drawCanvasFrame();
+  }
+
+  function renderAnnotatedVideoPanel(scan) {
+    if (!annotatedVideoPanel || !annotatedVideoBody) return;
+    const isVideoScan = ["tracked_video_object", "video_track_object"].includes(scan?.result_kind) || scan?.source_type === "tracked_video" || Boolean(scan?.annotated_video_status || scan?.annotated_video_url);
+    if (!scan || !isVideoScan) {
+      if (reviewMediaTabs) reviewMediaTabs.hidden = true;
+      annotatedVideoPanel.dataset.available = "false";
+      annotatedVideoPanel.hidden = true;
+      if (detectedObjectsPanel) detectedObjectsPanel.hidden = false;
+      annotatedVideoBody.innerHTML = "";
+      if (annotatedVideoStatus) annotatedVideoStatus.textContent = "Unavailable";
+      return;
+    }
+    const status = plNormalizeStatus(scan.annotated_video_status || "unavailable");
+    const videoUrl = plDisplayableImageUrl(scan.annotated_video_url || "");
+    annotatedVideoPanel.dataset.available = "true";
+    if (reviewMediaTabs) reviewMediaTabs.hidden = false;
+    if (!isReviewWorkspace) annotatedVideoPanel.hidden = false;
+    if (annotatedVideoStatus) {
+      annotatedVideoStatus.textContent = ({
+        ready: "Ready",
+        uploaded: "Ready",
+        processing: "Processing",
+        failed: "Failed",
+        expired: "Expired",
+        unavailable: "Unavailable"
+      })[status] || plNormalizeCategory(status || "unavailable");
+    }
+    if (videoUrl && (status === "ready" || status === "uploaded")) {
+      annotatedVideoBody.innerHTML = `
+        <video class="annotated-result-video" controls preload="metadata" playsinline poster="${plEscapeHtml(scan.preview_image_url || "")}">
+          <source src="${plEscapeHtml(videoUrl)}" type="video/mp4">
+          Your browser does not support MP4 video playback.
+        </video>
+        <a class="annotated-video-download" href="${plEscapeHtml(videoUrl)}" download>Download annotated MP4</a>
+        <p class="annotated-video-note">Annotated video output. Frame results remain available below.</p>
+      `;
+      const video = annotatedVideoBody.querySelector("video");
+      video?.addEventListener("error", () => {
+        if (annotatedVideoStatus) annotatedVideoStatus.textContent = "Expired";
+        annotatedVideoBody.querySelector(".annotated-video-note").textContent = "The annotated video URL could not be loaded. It may be expired; refresh the scan result to request a fresh URL.";
+      }, { once: true });
+    } else if (status === "processing") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video is still being generated. Refresh this result shortly.</p>`;
+    } else if (status === "expired") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video URL has expired. Refresh this result to request a fresh signed URL.</p>`;
+    } else if (status === "failed") {
+      annotatedVideoBody.innerHTML = `<p class="feed-empty">Annotated video generation failed${scan.annotated_video_error ? `: ${plEscapeHtml(scan.annotated_video_error)}` : "."} Frame results were preserved.</p>`;
+    } else {
+      annotatedVideoBody.innerHTML = scan.legacy_result
+        ? `<p class="feed-empty">Annotated video was not generated for this earlier scan. Frame results are shown below.</p>`
+        : `<p class="feed-empty">Annotated video is unavailable for this scan. Frame results are shown below.</p>`;
+    }
+    if (isReviewWorkspace) setReviewMediaMode(reviewMediaMode);
   }
 
   function setReviewWorkspaceControls(materials) {
@@ -3020,6 +3200,8 @@ function initResultPage() {
     if (reviewVerifyButton) reviewVerifyButton.disabled = !enabled;
     if (reviewRejectButton) reviewRejectButton.disabled = !enabled;
   });
+  reviewDetectedObjectsTab?.addEventListener("click", () => setReviewMediaMode("detected"));
+  reviewAnnotatedVideoTab?.addEventListener("click", () => setReviewMediaMode("annotated"));
   reviewVerifyButton?.addEventListener("click", () => saveReviewFromWorkspace("confirmed"));
   reviewRejectButton?.addEventListener("click", () => saveReviewFromWorkspace("rejected"));
 
@@ -3040,7 +3222,23 @@ function initResultPage() {
   }
 
   function getActiveBoxes() {
-    return activeScan ? plMaterialsToBoxes(activeScan.detected_materials) : [];
+    if (!activeScan) return [];
+    const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
+    if (isTrackedVideo) {
+      const hasOriginalFramePreview = plSafeArray(activeScan.detected_materials).some(material => material?.track_debug?.representative_frame_dimensions);
+      if (!hasOriginalFramePreview) {
+        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+          console.info("[review-preview] Skipping overlay for legacy crop-based tracked-video preview.", { scanId: activeScan.id });
+        }
+        return [];
+      }
+    }
+    return plMaterialsToBoxes(activeScan.detected_materials);
+  }
+
+  function getActiveTrackPath() {
+    const material = activeScan?.detected_materials?.[0];
+    return plSafeArray(material?.track_path).filter(point => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
   }
 
   function updateResultDetails(result, file) {
@@ -3159,6 +3357,8 @@ function initResultPage() {
       const primaryValue = getEstimatedResaleValueRm(primaryDecision.category);
       const primaryRoute = PL_CATEGORY_ROUTES[primaryDecision.category] || "Route by material stream";
       const quantity = primaryMaterial?.quantity ?? primaryMaterial?.count ?? activeScan?.quantity ?? 1;
+      const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan?.result_kind) || activeScan?.source_type === "tracked_video" || Boolean(primaryMaterial?.stable_object_id);
+      const resultLabel = isTrackedVideo ? "Tracked video object" : activeScan?.legacy_result ? "Legacy frame-based video" : "Image result";
       const materialIcon = {
         battery: "fa-battery-full", plastic: "fa-bottle-water", metal: "fa-cube", glass: "fa-wine-bottle",
         paper: "fa-file-lines", cardboard: "fa-box", textile: "fa-shirt", food_organics: "fa-leaf", general_trash: "fa-trash-can"
@@ -3170,7 +3370,7 @@ function initResultPage() {
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
         <div class="review-material-identity">
           <strong>${plNormalizeCategory(primaryDecision.category)}</strong>
-          <span class="review-material-class ${primaryDecision.materialClass}">${materialClassLabel}</span>
+          <span class="review-material-class ${primaryDecision.materialClass}" title="${resultLabel}">${materialClassLabel}</span>
         </div>
       ` : `
         <i class="fa-solid ${materialIcon}" aria-hidden="true"></i>
@@ -3194,6 +3394,19 @@ function initResultPage() {
         <div><dt>Recommended Route</dt><dd>${primaryDecision.reviewRequired ? primaryRoute : primaryDecision.disposalRoute}</dd></div>
       `;
       liveFeed.appendChild(metrics);
+      const observations = plSafeArray(primaryMaterial?.track_debug?.frame_observations);
+      if (isReviewWorkspace && observations.length) {
+        const debugPanel = document.createElement("details");
+        debugPanel.className = "track-observations-panel";
+        debugPanel.innerHTML = `
+          <summary>Frame observations (${observations.length})</summary>
+          <div class="track-observations-list">
+            ${observations.slice(0, 12).map(item => `<span>Frame ${Number(item.frame)} · ${Number(item.timestamp).toFixed(2)}s · ${Math.round(plConfidencePercent(item.confidence))}%</span>`).join("")}
+            ${observations.length > 12 ? `<span>+ ${observations.length - 12} more observations</span>` : ""}
+          </div>
+        `;
+        liveFeed.appendChild(debugPanel);
+      }
 
       const unresolved = materials.find(material => plEvaluateMaterial(material, activeScan).reviewRequired);
       if (isReviewWorkspace) {
@@ -3294,6 +3507,22 @@ function initResultPage() {
     const drawH = imgH * scale;
     const drawX = (canvas.width - drawW) / 2;
     const drawY = (canvas.height - drawH) / 2;
+    if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") && activeScan?.detected_materials?.length) {
+      console.info("[review-preview] contain transform", {
+        scanId: activeScan.id,
+        source: { width: imgW, height: imgH },
+        rendered: { width: Math.round(drawW), height: Math.round(drawH) },
+        canvas: { width: canvas.width, height: canvas.height },
+        offset: { x: Math.round(drawX), y: Math.round(drawY) },
+        scale,
+        bbox: activeScan.detected_materials[0]?.best_bbox_norm || activeScan.detected_materials[0]?.best_box || {
+          x: activeScan.detected_materials[0]?.bbox_x,
+          y: activeScan.detected_materials[0]?.bbox_y,
+          width: activeScan.detected_materials[0]?.bbox_width,
+          height: activeScan.detected_materials[0]?.bbox_height,
+        },
+      });
+    }
 
     ctx2d.fillStyle = document.documentElement.dataset.theme === "light" ? "#dfe9e2" : "#07110d";
     ctx2d.fillRect(0, 0, canvas.width, canvas.height);
@@ -3357,6 +3586,22 @@ function initResultPage() {
       ctx2d.fillStyle = "#ffffff";
       ctx2d.fillText(labelText, tagX + 7, tagY + 15);
     });
+
+    const path = getActiveTrackPath();
+    if (path.length > 1) {
+      ctx2d.save();
+      ctx2d.strokeStyle = "rgba(32, 178, 107, 0.92)";
+      ctx2d.lineWidth = 3;
+      ctx2d.beginPath();
+      path.forEach((point, index) => {
+        const x = drawX + drawW * Number(point.x);
+        const y = drawY + drawH * Number(point.y);
+        if (index === 0) ctx2d.moveTo(x, y);
+        else ctx2d.lineTo(x, y);
+      });
+      ctx2d.stroke();
+      ctx2d.restore();
+    }
 
     // - 5. Bottom telemetry bar (subtle, minimal - doesn't distract from image) -
     const hudY = canvas.height - 30;
@@ -3435,7 +3680,7 @@ function initReviewWorkspace() {
   const status = document.getElementById("historyStatus");
   const range = document.getElementById("historyRange");
   const pager = document.getElementById("historyPageButtons");
-  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "" };
+  const state = { page: 1, sort: "timestamp", direction: -1, bucket: "", selectedId: new URLSearchParams(location.search).get("scanId") || plGetLatestScanResult()?.id || "", items: [], total: 0, loading: false, error: "", requestId: 0 };
   const pageSize = 10;
   const escape = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const selectedId = () => state.selectedId;
@@ -3443,26 +3688,68 @@ function initReviewWorkspace() {
     const material = scan.detected_materials?.[0] || {};
     const decision = plEvaluateMaterial(material, scan);
     const categoryKey = plCategoryKey(scan.verified_category || material.review_decision?.chosen_category || material.category || material.material_name);
-    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
+    const row = plScanToLedger(scan, material);
+    return { scan, id: scan.id, scanId: scan.id, materialId: material.id || "", source: scan.source_name || scan.id, sourceTypeLabel: row.sourceTypeLabel, duration: row.duration, preview: scan.preview_image_url || "", category: plNormalizeCategory(categoryKey), categoryKey, materialClass: decision.materialClass === "contaminant" ? "Contaminant" : "Recyclable", weight: plDisplayWeight(material, scan), confidence: Math.round(plConfidencePercent(scan.overall_confidence || material.confidence)), timestamp: new Date(scan.created_at).getTime(), time: plFormatScanTime(scan), decisionStatus: decision.decisionStatus, status: decision.displayStatus };
   };
-  const rows = () => plGetScanResults().map(scanRow);
   const labelForBucket = bucket => ({ review_needed: "Review Needed", rejected: "Rejected" })[bucket] || "";
-  const matches = row => {
-    const query = String(search?.value || "").trim().toLowerCase();
-    const selectedCategory = plCategoryKey(category?.value);
-    const selectedStatus = String(status?.value || "");
-    const selectedDate = String(date?.value || "");
-    const day = new Date(row.timestamp);
-    const rowDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-    const statusMatch = !selectedStatus || row.status === selectedStatus || (selectedStatus.startsWith("Confirmed") && row.decisionStatus === "confirmed");
-    return (!query || `${row.source} ${row.category} ${row.materialClass} ${row.status}`.toLowerCase().includes(query)) && (!selectedDate || rowDate === selectedDate) && (!category?.value || row.categoryKey === selectedCategory) && statusMatch && (!state.bucket || state.bucket === "total" || row.decisionStatus === state.bucket);
+  const reviewStatusParam = () => {
+    const selectedStatus = labelForBucket(state.bucket) || String(status?.value || "");
+    if (selectedStatus === "Review Needed") return "review_needed";
+    if (selectedStatus === "Rejected") return "rejected";
+    if (selectedStatus.startsWith("Confirmed") || selectedStatus === "Verified") return "confirmed";
+    return "";
   };
-  const sortedRows = () => rows().filter(matches).sort((a, b) => (state.sort === "confidence" ? a.confidence - b.confidence : a.timestamp - b.timestamp) * state.direction);
-  const clearSelection = () => {
-    if (!state.selectedId) return;
-    state.selectedId = "";
-    history.replaceState(null, "", location.pathname);
-    window.dispatchEvent(new CustomEvent("purityloop:review-select-scan", { detail: { scanId: null } }));
+  const reviewHistoryParams = (limit, offset) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      sort: state.sort,
+      direction: state.direction === -1 ? "desc" : "asc"
+    });
+    const statusValue = reviewStatusParam();
+    if (search?.value.trim()) params.set("search", search.value.trim());
+    if (category?.value) params.set("category", category.value);
+    if (statusValue) params.set("status", statusValue);
+    if (date?.value) {
+      const start = new Date(`${date.value}T00:00:00+08:00`);
+      const end = new Date(start.getTime() + 86400000);
+      params.set("start_date", start.toISOString());
+      params.set("end_date", end.toISOString());
+    }
+    return params;
+  };
+  const currentRows = () => state.items.map(scanRow);
+  const exportParams = (params, format, scope) => { params.delete("limit"); params.delete("offset"); params.set("format", format); params.set("scope", scope); return params; };
+  const filenameFromDisposition = (value, fallback) => {
+    const match = String(value || "").match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+  };
+  const downloadHistoryExport = async (button, format, params, fallbackName) => {
+    if (!button || button.dataset.exporting === "true") return;
+    const original = button.innerHTML;
+    button.dataset.exporting = "true";
+    button.disabled = true;
+    button.textContent = format === "pdf" ? "Preparing PDF..." : "Preparing Excel...";
+    try {
+      const response = await fetch(`${plApiBaseUrl()}/api/history/export?${params}`, { headers: await plAuthHeaders() });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "Unable to export history.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filenameFromDisposition(response.headers.get("content-disposition"), fallbackName);
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      showToast(error.message || "Unable to export history.", "error");
+    } finally {
+      button.innerHTML = original;
+      button.disabled = false;
+      delete button.dataset.exporting;
+    }
   };
   const activateTab = name => {
     const tab = name === "history" ? "history" : "selected";
@@ -3486,38 +3773,91 @@ function initReviewWorkspace() {
   };
   const updateSummary = () => {
     const summary = plScanHistoryMeta.summary || {};
-    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows().length;
+    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total;
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? rows().filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? rows().filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? rows().filter(row => row.decisionStatus === "rejected").length);
+    const pageRows = currentRows();
+    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? pageRows.filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? pageRows.filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? pageRows.filter(row => row.decisionStatus === "rejected").length);
   };
   const render = () => {
     updateSummary();
-    const all = sortedRows();
-    const pages = Math.max(1, Math.ceil(all.length / pageSize));
+    const visible = currentRows();
+    const pages = Math.max(1, Math.ceil(state.total / pageSize));
     state.page = Math.min(state.page, pages);
-    const visible = all.slice((state.page - 1) * pageSize, state.page * pageSize);
-    if (state.selectedId && !all.some(row => row.id === state.selectedId)) {
-      if (visible[0]) select(visible[0].id);
-      else clearSelection();
-    }
-    list.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+    list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (state.error ? `<div class="feed-empty">${escape(state.error)}</div>` : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.sourceTypeLabel)} · ${escape(row.duration || row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>'));
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
-    if (range) range.textContent = `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, all.length)} loaded results of ${all.length} total`;
-    renderPager(pager, state.page, pages, page => { state.page = page; render(); });
-    const index = all.findIndex(row => row.id === selectedId());
-    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: index > 0, hasNext: index >= 0 && index < all.length - 1 } }));
+    if (range) range.textContent = state.loading ? "Loading scans" : `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, state.total)} loaded results of ${state.total} total`;
+    renderPager(pager, state.page, pages, page => fetchReviewPage(page));
+    const index = visible.findIndex(row => row.id === selectedId());
+    const absoluteIndex = index >= 0 ? (state.page - 1) * pageSize + index : -1;
+    window.dispatchEvent(new CustomEvent("purityloop:review-navigation-state", { detail: { hasPrevious: absoluteIndex > 0, hasNext: absoluteIndex >= 0 && absoluteIndex < state.total - 1 } }));
+  };
+  const fetchReviewPage = async (page = state.page, options = {}) => {
+    const requestId = ++state.requestId;
+    state.page = Math.max(1, page);
+    state.loading = true;
+    render();
+    try {
+      const response = await fetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(pageSize, (state.page - 1) * pageSize)}`, { headers: await plAuthHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || "Unable to load scan history.");
+      if (requestId !== state.requestId) return;
+      state.error = "";
+      state.items = (payload.items || []).map(plNormalizeScan).filter(Boolean);
+      plMergeScanResults(state.items);
+      window.dispatchEvent(new Event("purityloop:scan-cache-updated"));
+      state.total = Number(payload.total) || 0;
+      const pages = Math.max(1, Math.ceil(state.total / pageSize));
+      if (state.page > pages) {
+        state.loading = false;
+        return fetchReviewPage(pages, options);
+      }
+      if (payload.summary && !search?.value.trim() && !category?.value && !date?.value && !reviewStatusParam()) {
+        plScanHistoryMeta = {
+          ...plScanHistoryMeta,
+          total: state.total,
+          limit: Number(payload.limit) || pageSize,
+          offset: Number(payload.offset) || 0,
+          summary: payload.summary
+        };
+        plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
+      }
+      if (options.selectEdge && state.items.length) {
+        select(options.selectEdge === "last" ? state.items[state.items.length - 1].id : state.items[0].id);
+      }
+    } catch (error) {
+      if (requestId === state.requestId) {
+        state.items = [];
+        state.error = error.message || "Unable to load history.";
+        showToast(error.message || "Unable to load scan history.", "error");
+      }
+    } finally {
+      if (requestId === state.requestId) {
+        state.loading = false;
+        render();
+      }
+    }
   };
   window.plReviewNavigateScan = direction => {
-    const all = sortedRows(); const index = all.findIndex(row => row.id === selectedId()); const target = all[index + direction];
-    if (!target) return false;
-    state.page = Math.floor((index + direction) / pageSize) + 1; select(target.id); render(); return true;
+    const all = currentRows();
+    const index = all.findIndex(row => row.id === selectedId());
+    const target = all[index + direction];
+    if (target) {
+      select(target.id);
+      render();
+      return true;
+    }
+    const pages = Math.max(1, Math.ceil(state.total / pageSize));
+    const targetPage = direction < 0 ? state.page - 1 : state.page + 1;
+    if (targetPage < 1 || targetPage > pages) return false;
+    fetchReviewPage(targetPage, { selectEdge: direction < 0 ? "last" : "first" });
+    return true;
   };
-  const applyFilters = () => { state.page = 1; render(); };
+  const applyFilters = () => { state.page = 1; fetchReviewPage(1); };
   [search, date].forEach(input => input?.addEventListener("input", () => { state.bucket = ""; applyFilters(); }));
   category?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   status?.addEventListener("change", () => { state.bucket = ""; applyFilters(); });
   document.querySelectorAll(".review-summary-card[data-kpi-filter]").forEach(card => {
-    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; render(); activateTab("history"); };
+    const activate = () => { state.bucket = card.dataset.kpiFilter || ""; if (status) status.value = labelForBucket(state.bucket); state.page = 1; fetchReviewPage(1); activateTab("history"); };
     card.addEventListener("click", activate); card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
   });
   document.querySelectorAll(".review-tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
@@ -3578,7 +3918,7 @@ function initReviewWorkspace() {
     auditSubmitting = true; auditFeedback.textContent = ""; auditVerify.disabled = true; auditReject.disabled = true; auditCategory.disabled = true;
     try {
       const savedReview = await plSaveReview(auditScan, auditMaterial, auditCategory.value, outcome);
-      render(); await closeAuditReview(true, true); showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
+      await fetchReviewPage(state.page); await closeAuditReview(true, true); showToast(savedReview.refreshWarning || (outcome === "rejected" ? "Result rejected." : "Review saved."), savedReview.refreshWarning ? "warning" : "success");
     } catch (error) { auditFeedback.textContent = error.message || "Unable to save review."; }
     finally { auditSubmitting = false; auditVerify.disabled = false; auditReject.disabled = false; auditCategory.disabled = false; }
   };
@@ -3601,25 +3941,6 @@ function initReviewWorkspace() {
     if (fullDate?.value) { const start = new Date(`${fullDate.value}T00:00:00+08:00`), end = new Date(start.getTime() + 86400000); params.set("start_date", start.toISOString()); params.set("end_date", end.toISOString()); }
     return params;
   };
-  const fetchAllFullHistory = async () => {
-    const collected = []; let offset = 0; let total = 0;
-    do {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?${fullHistoryParams(200, offset)}`, { headers: await plAuthHeaders() });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || "Unable to export history.");
-      const items = (payload.items || []).map(plNormalizeScan).filter(Boolean); collected.push(...items); total = Number(payload.total) || 0; offset += items.length;
-      if (!items.length) break;
-    } while (offset < total);
-    return collected.map(scanRow);
-  };
-  const setExporting = (ids, exporting) => ids.forEach(id => { const button = document.getElementById(id); if (button) button.disabled = exporting; });
-  const exportAuditHistory = async kind => {
-    const ids = ["exportAuditHistoryPdf", "exportAuditHistoryExcel"]; const popup = kind === "pdf" ? window.open("", "_blank", "width=1000,height=760") : null;
-    setExporting(ids, true);
-    try { const historyRows = await fetchAllFullHistory(); kind === "pdf" ? plPrintHistoryPdf(historyRows, "PurityLoop Audit History", popup) : plDownloadHistoryExcel(historyRows, "purityloop-audit-history.csv"); }
-    catch (error) { popup?.close(); showToast(error.message || "Unable to export history.", "error"); }
-    finally { setExporting(ids, false); }
-  };
   const openFullHistory = event => {
     modalOpener = event.currentTarget;
     if (fullSearch) fullSearch.value = search?.value || "";
@@ -3631,10 +3952,10 @@ function initReviewWorkspace() {
     modal.classList.add("active"); modal.setAttribute("aria-hidden", "false"); document.body.classList.add("review-history-modal-open"); requestAnimationFrame(() => modal.querySelector("[role=dialog]")?.focus()); fetchFullHistory();
   };
   document.getElementById("openFullHistory")?.addEventListener("click", openFullHistory);
-  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", () => plPrintHistoryPdf(sortedRows(), "PurityLoop Scan History"));
-  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", () => plDownloadHistoryExcel(sortedRows(), "purityloop-scan-history.csv"));
-  document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", () => exportAuditHistory("pdf"));
-  document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", () => exportAuditHistory("excel"));
+  document.getElementById("exportReviewHistoryPdf")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "pdf", exportParams(reviewHistoryParams(1, 0), "pdf", "scan"), "purityloop-scan-history.pdf"));
+  document.getElementById("exportReviewHistoryExcel")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "excel", exportParams(reviewHistoryParams(1, 0), "excel", "scan"), "purityloop-scan-history.xlsx"));
+  document.getElementById("exportAuditHistoryPdf")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "pdf", exportParams(fullHistoryParams(1, 0), "pdf", "audit"), "purityloop-audit-history.pdf"));
+  document.getElementById("exportAuditHistoryExcel")?.addEventListener("click", event => downloadHistoryExport(event.currentTarget, "excel", exportParams(fullHistoryParams(1, 0), "excel", "audit"), "purityloop-audit-history.xlsx"));
   modal.querySelectorAll("[data-review-history-close]").forEach(button => button.addEventListener("click", closeFullHistory)); modal.addEventListener("click", event => { if (event.target === modal) closeFullHistory(); });
   auditModal?.querySelectorAll("[data-audit-review-close]").forEach(button => button.addEventListener("click", closeAuditReview)); auditModal?.addEventListener("click", event => { if (event.target === auditModal) closeAuditReview(); });
   auditVerify?.addEventListener("click", () => saveAuditReview("confirmed")); auditReject?.addEventListener("click", () => saveAuditReview("rejected"));
@@ -3643,8 +3964,8 @@ function initReviewWorkspace() {
   document.getElementById("fullHistorySortConfidence")?.addEventListener("click", () => { modalState.sort = "confidence"; modalState.direction = modalState.direction === "desc" ? "asc" : "desc"; fetchFullHistory(); });
   document.addEventListener("keydown", event => { if (!modal.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeFullHistory(); return; } if (event.key !== "Tab") return; const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
   document.addEventListener("keydown", event => { if (!auditModal?.classList.contains("active")) return; if (event.key === "Escape") { event.preventDefault(); closeAuditReview(); return; } if (event.key !== "Tab") return; const focusable = [...auditModal.querySelectorAll('button:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(item => item.offsetParent); const first = focusable[0], last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey ? document.activeElement === first : document.activeElement === last) { event.preventDefault(); (event.shiftKey ? last : first).focus(); } });
-  window.addEventListener("purityloop:scan-history-refreshed", render); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open", "audit-review-modal-open"); });
-  render();
+  window.addEventListener("purityloop:scan-history-refreshed", () => fetchReviewPage(state.page)); window.addEventListener("purityloop:review-scan-selected", event => { state.selectedId = event.detail?.scanId || ""; render(); }); window.addEventListener("purityloop:page-cleanup", () => { delete window.plReviewNavigateScan; document.body.classList.remove("review-history-modal-open", "audit-review-modal-open"); });
+  fetchReviewPage(1);
 }
 
 function initReviewModal() {
@@ -3858,7 +4179,7 @@ function initReviewModal() {
     }
     if (historyList) {
       const selectedScanId = new URLSearchParams(window.location.search).get("scanId") || plGetLatestScanResult()?.id || "";
-      historyList.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.scanId === selectedScanId ? "is-selected" : ""}" data-select-scan="${escape(row.scanId)}" aria-pressed="${row.scanId === selectedScanId}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.time)} · ${escape(row.confidenceText)} confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
+      historyList.innerHTML = visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.scanId === selectedScanId ? "is-selected" : ""}" data-select-scan="${escape(row.scanId)}" aria-pressed="${row.scanId === selectedScanId}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.sourceTypeLabel)} · ${escape(row.duration || row.time)} · ${escape(row.confidenceText)} confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : row.decisionStatus === "verified" ? "cleared" : row.materialClass === "contaminant" ? "history-confirmed-contaminant" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>';
     }
     const start = rows.length ? (state.page - 1) * pageSize + 1 : 0;
     const resultTotal = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : rows.length;
@@ -3952,10 +4273,6 @@ function initReviewModal() {
  * 4. OPERATIONS DASHBOARD PAGE           *
  ******************************************/
 const plOverviewCharts = {};
-
-function plEscapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
-}
 
 function plFormatReviewTurnaround(milliseconds) {
   if (!Number.isFinite(milliseconds)) return "No completed reviews";
@@ -4226,10 +4543,15 @@ async function initSettingsPage() {
   renderTheme();
   window.addEventListener("purityloop:theme-change", renderTheme);
   window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", renderTheme), { once: true });
+  try {
+    const response = await fetch(plBrowserModelUrl(), { method: "HEAD" });
+    if (modelStatus) modelStatus.textContent = response.ok ? "Browser ONNX available" : "Browser ONNX unavailable";
+  } catch {
+    if (modelStatus) modelStatus.textContent = "Browser ONNX unavailable";
+  }
   const apiBase = plApiBaseUrl();
   if (!apiBase) {
     if (backendStatus) backendStatus.textContent = "Backend unavailable";
-    if (modelStatus) modelStatus.textContent = "Status unavailable";
     return;
   }
   try {
@@ -4237,10 +4559,8 @@ async function initSettingsPage() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) throw new Error("Health check failed");
     if (backendStatus) backendStatus.textContent = "Connected";
-    if (modelStatus) modelStatus.textContent = payload.model_available ? "YOLOv8 available" : "YOLOv8 unavailable";
   } catch {
     if (backendStatus) backendStatus.textContent = "Backend unavailable";
-    if (modelStatus) modelStatus.textContent = "Status unavailable";
   }
 }
 

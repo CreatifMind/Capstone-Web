@@ -714,6 +714,8 @@ function initLandingPresentation() {
   let activeIndex = Math.max(0, tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true'));
   let lastFocus = null;
   let lightbox = null;
+  let touchStartX = 0;
+  let touchStartY = 0;
 
   const ensureImage = index => {
     const image = panels[index]?.querySelector('img[data-methodology-image]');
@@ -759,10 +761,26 @@ function initLandingPresentation() {
     if (!lightbox) return;
     const image = ensureImage(activeIndex);
     const lightboxImage = lightbox.querySelector('[data-lightbox-image]');
+    const lightboxFigure = lightbox.querySelector('[data-lightbox-figure]');
+    const lightboxContent = lightbox.querySelector('[data-lightbox-content]');
     const title = lightbox.querySelector('[data-lightbox-title]');
-    if (image && lightboxImage) {
+    if (image && lightboxImage && lightboxFigure && lightboxContent) {
       lightboxImage.setAttribute('src', image.currentSrc || image.src);
       lightboxImage.setAttribute('alt', image.alt || activeTitle());
+      lightboxFigure.hidden = false;
+      lightboxContent.hidden = true;
+      lightboxContent.replaceChildren();
+    } else if (lightboxFigure && lightboxContent) {
+      const activePanel = panels[activeIndex]?.cloneNode(true);
+      if (activePanel) {
+        activePanel.hidden = false;
+        activePanel.classList.add('active');
+        activePanel.removeAttribute('id');
+        activePanel.removeAttribute('aria-labelledby');
+        lightboxContent.replaceChildren(activePanel);
+      }
+      lightboxFigure.hidden = true;
+      lightboxContent.hidden = false;
     }
     if (title) title.textContent = activeTitle();
   };
@@ -793,9 +811,10 @@ function initLandingPresentation() {
               <button type="button" data-lightbox-close aria-label="Close full screen diagram"><i class="fa-solid fa-xmark"></i></button>
             </div>
           </header>
-          <figure class="methodology-lightbox-figure">
+          <figure class="methodology-lightbox-figure" data-lightbox-figure>
             <img data-lightbox-image src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="" />
           </figure>
+          <div class="methodology-lightbox-content" data-lightbox-content hidden></div>
         </div>
       `;
       document.body.appendChild(lightbox);
@@ -869,6 +888,20 @@ function initLandingPresentation() {
   prev?.addEventListener('click', () => setActive(activeIndex - 1, true));
   next?.addEventListener('click', () => setActive(activeIndex + 1, true));
   fullscreen?.addEventListener('click', openLightbox);
+  root.addEventListener('touchstart', event => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+  root.addEventListener('touchend', event => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
+    setActive(activeIndex + (deltaX < 0 ? 1 : -1), true);
+  }, { passive: true });
 
   document.querySelectorAll('[data-methodology-jump]').forEach(link => {
     link.addEventListener('click', event => {

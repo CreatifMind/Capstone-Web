@@ -89,7 +89,7 @@ const html = `
             <p class="eyebrow">System</p>
             <h2>Preferences</h2>
             <div class="settings-row"><span>Environment</span><strong id="settingsEnvironment">Public demo</strong></div>
-            <div class="settings-row"><span>Model</span><strong id="settingsModelStatus">Checking backend…</strong></div>
+            <div class="settings-row"><span>Model</span><strong id="settingsModelStatus">Checking browser ONNX…</strong></div>
             <div class="settings-row"><span>Backend</span><strong id="settingsBackendStatus">Checking connection…</strong></div>
             <div class="settings-row"><span>Default result page</span><strong>Latest saved scan</strong></div>
             <div class="settings-row"><span>Theme</span><strong id="settingsThemeStatus">System</strong></div>

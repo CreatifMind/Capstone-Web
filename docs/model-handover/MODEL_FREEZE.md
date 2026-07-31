@@ -35,7 +35,7 @@ The freeze has **two tiers**, and the distinction is the whole reason we can han
 | checkpoint | `runs/segment/runs/v3_ffremask_9cls/weights/best.pt` |
 | checkpoint sha256 | `eccad1ada346dbc6959608ca0e42f1eaf6ad61034900910127871844b1a7a6cd` |
 | exported model | `runs/segment/runs/v3_ffremask_9cls/weights/best.onnx` |
-| ONNX sha256 | `9dc80d62c76f43326ea217b00e97441a2a9b4740a26ff1c930c237ba7626bb6b` |
+| ONNX sha256 | `ff866a7c3154286de6bf5bef72984f584066eda1c9a1cc7643186a1a81fe3ff0` |
 | ONNX size | 54.6 MB (52.1 MiB), fp16 |
 | confidence threshold | 0.32 (product choice, overrulable — see `WEB_TEAM_HANDOVER.md` §4) |
 | NMS IoU | 0.7 |

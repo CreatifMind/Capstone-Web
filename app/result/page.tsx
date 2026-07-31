@@ -140,6 +140,19 @@ const html = `
           </aside>
         </section>
 
+        <section id="annotatedVideoPanel" class="annotated-video-panel bbox-card" hidden aria-live="polite">
+          <div class="panel-heading-row">
+            <div>
+              <span class="panel-kicker">Video scan output</span>
+              <h2>Annotated Result Video</h2>
+            </div>
+            <span id="annotatedVideoStatus">Unavailable</span>
+          </div>
+          <div id="annotatedVideoBody" class="annotated-video-body">
+            <p class="feed-empty">Annotated video is unavailable for this scan.</p>
+          </div>
+        </section>
+
         <section class="upload-review-board">
           <header class="finder-header">
             <div>

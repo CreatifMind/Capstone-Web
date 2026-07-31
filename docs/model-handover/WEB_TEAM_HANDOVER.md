@@ -46,7 +46,7 @@ it:
 sha256sum best.onnx
 ```
 
-Must give `9dc80d62c76f43326ea217b00e97441a2a9b4740a26ff1c930c237ba7626bb6b`. A different,
+Must give `ff866a7c3154286de6bf5bef72984f584066eda1c9a1cc7643186a1a81fe3ff0`. A different,
 **wrong** export of an older checkpoint is nearly the same size and looks identical — the hash is
 the only way to tell them apart, and it has already reached someone by mistake.
 

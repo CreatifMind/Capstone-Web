@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import json
@@ -7,19 +9,25 @@ import traceback
 import threading
 import time
 import random
-from dataclasses import dataclass
+import shutil
+import subprocess
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
+from urllib.parse import unquote
 from uuid import UUID, uuid4, uuid5
 from typing import Any, Callable, TypeVar
+from zoneinfo import ZoneInfo
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from supabase import create_client
@@ -71,7 +79,11 @@ DETECTED_MATERIALS_TABLE = "detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
-PREVIEW_BUCKET = "mock_uploaded_images"
+PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
+VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
+DEFAULT_VIDEO_FPS = float(os.getenv("DEFAULT_VIDEO_FPS", "30") or 30)
+UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024
+MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", "0") or 0)
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 # The upload folder is configured server-side, not selected with Google Picker.
 # OAuth therefore needs access to that existing folder and its idempotency search.
@@ -82,7 +94,16 @@ OAUTH_DRIVE_SCOPES = [
 CONFIRMATION_THRESHOLD = 0.85
 ANALYTICS_PAGE_SIZE = 500
 ANALYTICS_CHILD_PAGE_SIZE = 500
-ANALYTICS_MALAYSIA_TZ = timezone(timedelta(hours=8))
+SCAN_HISTORY_DEFAULT_LIMIT = 10
+SCAN_HISTORY_MAX_LIMIT = 100
+SCAN_HISTORY_EXPORT_BATCH_SIZE = 500
+SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE = 200
+SCAN_HISTORY_THUMBNAIL_SIZE = (80, 80)
+SCAN_HISTORY_THUMBNAIL_WORKERS = 8
+SCAN_HISTORY_IMAGE_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+SCAN_HISTORY_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+MALAYSIA_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
+ANALYTICS_MALAYSIA_TZ = MALAYSIA_TIMEZONE
 ANALYTICS_MATERIAL_ESTIMATES = {
     "general trash": {"label": "General Trash", "average_weight_kg": 0.100, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
     "food organic": {"label": "Food Organic", "average_weight_kg": 0.080, "price_per_kg_rm": 0.00, "material_class": "contaminant"},
@@ -97,11 +118,15 @@ ANALYTICS_MATERIAL_ESTIMATES = {
 BROWSER_CONFIDENCE_THRESHOLD = 0.32
 BROWSER_NMS_IOU_THRESHOLD = 0.70
 BROWSER_MODEL_NAME = "best.onnx"
+BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
 BROWSER_MODEL_VERSION = "v3_ffremask_9cls"
 BROWSER_INFERENCE_ENGINE = "browser-onnx"
 BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
+BROWSER_CONFIDENCE_DETAIL = f"Detection confidence must be between {BROWSER_CONFIDENCE_THRESHOLD:.2f} and 1."
+BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_CONFIDENCE_THRESHOLD:.2f}."
+BROWSER_NMS_CONTRACT_DETAIL = f"Browser NMS IoU threshold must be {BROWSER_NMS_IOU_THRESHOLD:.2f}."
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 SUPABASE_RETRY_ATTEMPTS = 6
 SUPABASE_TRANSIENT_ERRORS = (
@@ -175,6 +200,351 @@ CATEGORY_ROUTES = {
     "paper": "Paper Sorting Bin",
     "cardboard": "Cardboard Sorting Bin",
 }
+VIDEO_TRACK_MIN_FRAMES = max(1, int(os.getenv("VIDEO_TRACK_MIN_FRAMES", "3")))
+VIDEO_TRACK_SHORT_CONFIDENCE = float(os.getenv("VIDEO_TRACK_SHORT_CONFIDENCE", "0.92"))
+VIDEO_TRACK_LOST_BUFFER = max(1, int(os.getenv("VIDEO_TRACK_LOST_BUFFER", "15")))
+VIDEO_TRACK_RECOVERY_IOU = float(os.getenv("VIDEO_TRACK_RECOVERY_IOU", "0.35"))
+VIDEO_TRACK_RECOVERY_CENTER_DISTANCE = float(os.getenv("VIDEO_TRACK_RECOVERY_CENTER_DISTANCE", "0.18"))
+VIDEO_LOGICAL_MERGE_MAX_GAP = max(1, int(os.getenv("VIDEO_LOGICAL_MERGE_MAX_GAP", "90")))
+VIDEO_LOGICAL_MERGE_CENTER_DISTANCE = float(os.getenv("VIDEO_LOGICAL_MERGE_CENTER_DISTANCE", "0.22"))
+VIDEO_LOGICAL_MERGE_SIZE_RATIO = float(os.getenv("VIDEO_LOGICAL_MERGE_SIZE_RATIO", "0.65"))
+VIDEO_TRACKER_CONFIG = os.getenv("VIDEO_TRACKER_CONFIG", "config/bytetrack_purityloop.yaml")
+VIDEO_TRACK_DEBUG_LOGS = os.getenv("VIDEO_TRACK_DEBUG_LOGS", "true").lower() != "false"
+
+
+def _coerce_float(value: Any, fallback: float = 0.0) -> float:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _bbox_iou(first: list[float] | None, second: list[float] | None) -> float:
+    if not first or not second or len(first) < 4 or len(second) < 4:
+        return 0.0
+    ax1, ay1, ax2, ay2 = first[:4]
+    bx1, by1, bx2, by2 = second[:4]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _bbox_center(box: list[float] | None) -> tuple[float, float]:
+    if not box or len(box) < 4:
+        return (0.0, 0.0)
+    return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def _parse_counting_line(options: dict | None) -> dict | None:
+    raw = (options or {}).get("counting_line") or os.getenv("VIDEO_COUNTING_LINE")
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            axis, _, position = raw.partition("=")
+            raw = {"axis": axis, "position": position}
+    if not isinstance(raw, dict):
+        return None
+    axis = str(raw.get("axis") or "x").lower()
+    if axis not in {"x", "y"}:
+        axis = "x"
+    position = _coerce_float(raw.get("position"), 0.5)
+    if position > 1:
+        position = position / 100
+    direction = str(raw.get("direction") or "any").lower()
+    if direction not in {"positive", "negative", "any"}:
+        direction = "any"
+    return {"axis": axis, "position": max(0.0, min(1.0, position)), "direction": direction}
+
+
+def _video_debug(event: str, **fields) -> None:
+    if not VIDEO_TRACK_DEBUG_LOGS:
+        return
+    safe = {"event": event, **fields}
+    print(f"[video-track] {json.dumps(safe, default=str, sort_keys=True)}")
+
+
+def _bbox_size(box: list[float] | None) -> tuple[float, float, float]:
+    if not box or len(box) < 4:
+        return (0.0, 0.0, 0.0)
+    width = max(0.0, box[2] - box[0])
+    height = max(0.0, box[3] - box[1])
+    aspect = width / height if height > 0 else 0.0
+    return width, height, aspect
+
+
+@dataclass
+class VideoTrackState:
+    key: str
+    raw_track_ids: set[str] = field(default_factory=set)
+    first_frame: int = 0
+    last_frame: int = 0
+    first_timestamp: float = 0.0
+    last_timestamp: float = 0.0
+    class_votes: dict[str, float] = field(default_factory=dict)
+    class_names: dict[str, str] = field(default_factory=dict)
+    confidences: list[float] = field(default_factory=list)
+    observations: list[dict] = field(default_factory=list)
+    path: list[dict] = field(default_factory=list)
+    best_observation: dict = field(default_factory=dict)
+    best_frame_bytes: bytes | None = None
+    best_frame_dimensions: dict | None = None
+    best_crop_bytes: bytes | None = None
+    counted: bool = False
+    last_center: tuple[float, float] | None = None
+
+
+class VideoTrackAggregator:
+    """Collect sequential ByteTrack observations into one row per physical object."""
+
+    def __init__(
+        self,
+        upload_id: str,
+        *,
+        min_frames: int = VIDEO_TRACK_MIN_FRAMES,
+        short_track_confidence: float = VIDEO_TRACK_SHORT_CONFIDENCE,
+        lost_buffer: int = VIDEO_TRACK_LOST_BUFFER,
+        recovery_iou: float = VIDEO_TRACK_RECOVERY_IOU,
+        recovery_center_distance: float = VIDEO_TRACK_RECOVERY_CENTER_DISTANCE,
+        counting_line: dict | None = None,
+    ):
+        self.upload_id = str(upload_id)
+        self.min_frames = min_frames
+        self.short_track_confidence = short_track_confidence
+        self.lost_buffer = lost_buffer
+        self.recovery_iou = recovery_iou
+        self.recovery_center_distance = recovery_center_distance
+        self.counting_line = counting_line
+        self.active: dict[str, VideoTrackState] = {}
+        self.raw_to_key: dict[str, str] = {}
+        self.finalized_track_ids: set[str] = set()
+        self.finalized: list[dict] = []
+        self._next_synthetic = 1
+
+    def observe(self, frame_index: int, timestamp: float, detections: list[dict]) -> list[dict]:
+        for detection in detections:
+            self._observe_one(frame_index, timestamp, detection)
+        return self.flush_stale(frame_index)
+
+    def flush_stale(self, frame_index: int, *, force: bool = False) -> list[dict]:
+        flushed = []
+        for key, state in list(self.active.items()):
+            if force or frame_index - state.last_frame > self.lost_buffer:
+                self.active.pop(key, None)
+                for raw_id in state.raw_track_ids:
+                    if self.raw_to_key.get(raw_id) == key:
+                        self.raw_to_key.pop(raw_id, None)
+                material = self._finalize(state)
+                if material:
+                    self.finalized_track_ids.update(state.raw_track_ids)
+                    self.finalized.append(material)
+                    flushed.append(material)
+                    _video_debug(
+                        "track_finalized",
+                        scan_id=self.upload_id,
+                        logical_object_id=material.get("stable_object_id"),
+                        source_track_ids=material.get("source_track_ids"),
+                        first_frame=material.get("track_first_frame"),
+                        last_frame=material.get("track_last_frame"),
+                        observations=material.get("track_frame_count"),
+                        final_class=material.get("category"),
+                    )
+        return flushed
+
+    def finish(self, frame_index: int = 0) -> list[dict]:
+        return self.flush_stale(frame_index, force=True)
+
+    def _observe_one(self, frame_index: int, timestamp: float, detection: dict) -> None:
+        track_id = detection.get("track_id")
+        raw_id = str(track_id) if track_id is not None and str(track_id) != "" else ""
+        if raw_id and raw_id in self.finalized_track_ids:
+            _video_debug("track_observation_skipped_finalized", scan_id=self.upload_id, frame=frame_index, raw_track_id=raw_id)
+            return
+        category = material_category(detection.get("category") or detection.get("material_name"))
+        box = [round(_coerce_float(value), 6) for value in detection.get("bbox") or []][:4]
+        key = self._resolve_key(raw_id, category, box, frame_index)
+        state = self.active.get(key)
+        confidence = max(0.0, min(1.0, _coerce_float(detection.get("confidence"))))
+        if not state:
+            state = VideoTrackState(
+                key=key,
+                first_frame=frame_index,
+                last_frame=frame_index,
+                first_timestamp=timestamp,
+                last_timestamp=timestamp,
+            )
+            self.active[key] = state
+        if raw_id:
+            state.raw_track_ids.add(raw_id)
+            self.raw_to_key[raw_id] = key
+        state.last_frame = frame_index
+        state.last_timestamp = timestamp
+        state.class_votes[category] = state.class_votes.get(category, 0.0) + confidence
+        state.class_names.setdefault(category, str(detection.get("material_name") or category))
+        state.confidences.append(confidence)
+        center = _bbox_center(box)
+        state.path.append({"frame": frame_index, "timestamp": round(timestamp, 3), "x": round(center[0], 4), "y": round(center[1], 4)})
+        self._update_counting_line(state, center)
+        observation = {
+            "frame": frame_index,
+            "timestamp": round(timestamp, 3),
+            "track_id": raw_id or key,
+            "category": category,
+            "confidence": round(confidence, 4),
+            "bbox": box,
+            "bbox_percent": detection.get("bbox_percent"),
+        }
+        _video_debug(
+            "track_observation",
+            scan_id=self.upload_id,
+            frame=frame_index,
+            raw_track_id=raw_id or key,
+            class_name=category,
+            confidence=round(confidence, 4),
+            bbox=box,
+        )
+        state.observations.append(observation)
+        if confidence >= _coerce_float(state.best_observation.get("confidence"), -1):
+            state.best_observation = {
+                **observation,
+                "mask": detection.get("mask"),
+                "best_box": detection.get("best_box") or detection.get("bbox_percent") or box,
+            }
+            state.best_frame_bytes = detection.get("frame_bytes") or state.best_frame_bytes
+            if detection.get("frame_width") and detection.get("frame_height"):
+                state.best_frame_dimensions = {
+                    "width": int(detection["frame_width"]),
+                    "height": int(detection["frame_height"]),
+                }
+            state.best_crop_bytes = detection.get("crop_bytes") or state.best_crop_bytes
+        state.last_center = center
+
+    def _resolve_key(self, raw_id: str, category: str, box: list[float], frame_index: int) -> str:
+        if raw_id and raw_id in self.raw_to_key and self.raw_to_key[raw_id] in self.active:
+            return self.raw_to_key[raw_id]
+        recovered = self._recover_key(category, box, frame_index)
+        if recovered:
+            return recovered
+        if raw_id:
+            return raw_id
+        key = f"synthetic-{self._next_synthetic}"
+        self._next_synthetic += 1
+        return key
+
+    def _recover_key(self, category: str, box: list[float], frame_index: int) -> str | None:
+        best_key = None
+        best_score = 0.0
+        cx, cy = _bbox_center(box)
+        for key, state in self.active.items():
+            if frame_index - state.last_frame > self.lost_buffer:
+                continue
+            previous_category = max(state.class_votes, key=state.class_votes.get, default="")
+            if previous_category != category:
+                continue
+            previous_box = state.best_observation.get("bbox") or []
+            iou = _bbox_iou(previous_box, box)
+            px, py = state.last_center or _bbox_center(previous_box)
+            distance = math.hypot(cx - px, cy - py)
+            score = max(iou, 1.0 - distance)
+            if (iou >= self.recovery_iou or distance <= self.recovery_center_distance) and score > best_score:
+                best_score = score
+                best_key = key
+        return best_key
+
+    def _update_counting_line(self, state: VideoTrackState, center: tuple[float, float]) -> None:
+        if not self.counting_line:
+            return
+        previous = state.last_center
+        if previous is None or state.counted:
+            return
+        index = 0 if self.counting_line["axis"] == "x" else 1
+        position = self.counting_line["position"]
+        before = previous[index] - position
+        after = center[index] - position
+        crossed = before == 0 or after == 0 or before * after < 0
+        if not crossed:
+            return
+        direction = self.counting_line["direction"]
+        if direction == "positive" and after <= before:
+            return
+        if direction == "negative" and after >= before:
+            return
+        state.counted = True
+
+    def _finalize(self, state: VideoTrackState) -> dict | None:
+        frame_count = len(state.observations)
+        max_confidence = max(state.confidences or [0.0])
+        if frame_count < self.min_frames and max_confidence < self.short_track_confidence:
+            return None
+        final_category = max(state.class_votes, key=state.class_votes.get, default="unknown")
+        avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
+        recyclable_status, contaminant_status = material_status(final_category)
+        hazard_status = "hazard" if CATEGORY_CLASS_MAP.get(final_category) == "contaminant" else "clear"
+        best_box = state.best_observation.get("bbox_percent") or {}
+        if not isinstance(best_box, dict):
+            best_box = {}
+        best_norm_box = state.best_observation.get("bbox") or []
+        start_center = state.path[0] if state.path else {"x": 0, "y": 0}
+        end_center = state.path[-1] if state.path else {"x": 0, "y": 0}
+        widths, heights, aspects = [], [], []
+        for observation in state.observations:
+            width, height, aspect = _bbox_size(observation.get("bbox"))
+            widths.append(width)
+            heights.append(height)
+            aspects.append(aspect)
+        source_track_ids = sorted(state.raw_track_ids)
+        stable_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "-", state.key).strip("-") or "object"
+        material = {
+            "stable_object_id": f"{self.upload_id}-track-{stable_suffix}",
+            "object_uid": f"{self.upload_id}-track-{stable_suffix}",
+            "source_track_ids": source_track_ids,
+            "track_id": ",".join(sorted(state.raw_track_ids)) or stable_suffix,
+            "material_name": state.class_names.get(final_category, final_category),
+            "category": final_category,
+            "confidence": round(max_confidence, 4),
+            "track_avg_confidence": round(avg_confidence, 4),
+            "track_max_confidence": round(max_confidence, 4),
+            "track_first_frame": state.first_frame,
+            "track_last_frame": state.last_frame,
+            "track_first_timestamp": round(state.first_timestamp, 3),
+            "track_last_timestamp": round(state.last_timestamp, 3),
+            "track_duration_seconds": round(max(0.0, state.last_timestamp - state.first_timestamp), 3),
+            "track_frame_count": frame_count,
+            "track_hazard_status": hazard_status,
+            "track_counted": True if not self.counting_line else state.counted,
+            "track_start_center": {"x": start_center.get("x", 0), "y": start_center.get("y", 0)},
+            "track_end_center": {"x": end_center.get("x", 0), "y": end_center.get("y", 0)},
+            "track_avg_width": round(sum(widths) / len(widths), 6) if widths else 0,
+            "track_avg_height": round(sum(heights) / len(heights), 6) if heights else 0,
+            "track_avg_aspect_ratio": round(sum(aspects) / len(aspects), 6) if aspects else 0,
+            "recyclable_status": recyclable_status,
+            "contaminant_status": contaminant_status,
+            **evaluate_material(final_category, max_confidence),
+            "bbox_x": round(_coerce_float(best_box.get("x")), 2),
+            "bbox_y": round(_coerce_float(best_box.get("y")), 2),
+            "bbox_width": round(_coerce_float(best_box.get("width")), 2),
+            "bbox_height": round(_coerce_float(best_box.get("height")), 2),
+            "best_box": state.best_observation.get("best_box"),
+            "best_bbox_norm": best_norm_box,
+            "segmentation_mask": state.best_observation.get("mask"),
+            "track_path": state.path,
+            "track_debug": {
+                "frame_observations": state.observations,
+                "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
+                "raw_track_ids": sorted(state.raw_track_ids),
+                "representative_frame_dimensions": state.best_frame_dimensions,
+                "representative_bbox_format": "normalized_original_frame_xyxy",
+            },
+            "_best_crop_bytes": state.best_frame_bytes or state.best_crop_bytes,
+        }
+        return material
 
 
 def canonical_category_key(value: str | None) -> str:
@@ -227,6 +597,10 @@ def require_principal() -> Principal:
     return Principal("public", "public", frozenset({"scan:read", "scan:write", "job:read", "review:write"}))
 
 
+def _api_key_digest(value: str) -> str:
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+
 def require_scope(scope: str):
     def dependency(principal: Principal = Depends(require_principal)) -> Principal:
         if scope not in principal.scopes:
@@ -248,6 +622,27 @@ def get_model():
             raise HTTPException(status_code=500, detail="YOLO model file not found.")
         model = YOLO(str(MODEL_PATH))
     return model
+
+
+def safe_startup_diagnostics() -> dict:
+    browser_model_available = BROWSER_MODEL_PATH.exists()
+    return {
+        "model_path": str(BROWSER_MODEL_PATH),
+        "model_name": BROWSER_MODEL_NAME,
+        "model_engine": BROWSER_INFERENCE_ENGINE,
+        "model_available": browser_model_available,
+        "browser_model_path": str(BROWSER_MODEL_PATH),
+        "browser_model_available": browser_model_available,
+        "backend_pytorch_model_path": str(MODEL_PATH),
+        "backend_pytorch_model_available": MODEL_PATH.exists(),
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
+        "storage_bucket": PREVIEW_BUCKET,
+        "storage_private": os.getenv("SUPABASE_STORAGE_PRIVATE", "false").lower() == "true",
+        "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
+        "ffmpeg_available": bool(shutil.which("ffmpeg")),
+        "ffprobe_available": bool(shutil.which("ffprobe")),
+        "allowed_origins": ALLOWED_ORIGINS,
+    }
 
 
 def safe_drive_filename(original_filename: str | None) -> str:
@@ -287,12 +682,49 @@ def upload_original_to_supabase_storage(
             raise
         # Deterministic browser paths make an existing object a successful retry.
         print(f"[Supabase Storage] Reusing deterministic object: {path}")
+    public_url = supabase_storage_url(database, path)
+    if not public_url:
+        raise RuntimeError("Supabase Storage public URL is empty")
+    return {"path": path, "public_url": str(public_url or "")}
+
+
+def upload_file_to_supabase_storage(
+    file_path: str | Path,
+    object_path: str,
+    content_type: str,
+    database: SupabaseExecutor | None = None,
+) -> dict:
+    database = database or SupabaseExecutor(supabase)
+    if not database.client:
+        raise RuntimeError("Supabase backend env is not configured")
+
+    path = str(object_path).lstrip("/")
+    source = Path(file_path)
+    with source.open("rb") as file:
+        database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).upload(
+            path=path,
+            file=file,
+            file_options={"content-type": content_type, "upsert": "true"},
+        ))
     public_url = database.execute(lambda client: client.storage.from_(PREVIEW_BUCKET).get_public_url(path))
     if isinstance(public_url, dict):
         public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
     if not public_url:
         raise RuntimeError("Supabase Storage public URL is empty")
     return {"path": path, "public_url": str(public_url or "")}
+
+
+def supabase_storage_url(database: SupabaseExecutor, object_path: str, *, expires_in: int = 60 * 60 * 24 * 7) -> str:
+    bucket = database.client.storage.from_(PREVIEW_BUCKET)
+    private_bucket = os.getenv("SUPABASE_STORAGE_PRIVATE", "false").lower() == "true"
+    if private_bucket and hasattr(bucket, "create_signed_url"):
+        signed = database.execute(lambda _client: bucket.create_signed_url(object_path, expires_in))
+        if isinstance(signed, dict):
+            return str(signed.get("signedURL") or signed.get("signedUrl") or signed.get("url") or "")
+    public_url = database.execute(lambda _client: bucket.get_public_url(object_path))
+    if isinstance(public_url, dict):
+        public_url = public_url.get("publicURL") or public_url.get("publicUrl") or public_url.get("signedURL") or ""
+    return str(public_url or "")
 
 
 def safe_error_message(exc: Exception) -> str:
@@ -302,6 +734,473 @@ def safe_error_message(exc: Exception) -> str:
     message = re.sub(r"[\w./ -]*google-oauth-token\.json", "[google-oauth-token.json]", message)
     message = re.sub(r"[\w./ -]*google-oauth-state\.json", "[google-oauth-state.json]", message)
     return message[:300]
+
+
+def log_scan_stage_failure(stage: str, exc: Exception) -> None:
+    print(f"[scans] {stage} failed: {type(exc).__name__}: {safe_error_message(exc)}")
+    traceback.print_exc()
+
+
+def execute_scan_read(stage: str, operation: Callable[[Any], T]) -> T:
+    try:
+        return SupabaseExecutor(client_factory=_new_supabase_client, attempts=2).execute(operation)
+    except Exception as exc:
+        log_scan_stage_failure(stage, exc)
+        raise
+
+
+def scan_history_filters(
+    start_date: str | None,
+    end_date: str | None,
+    search: str | None,
+    status: str | None,
+) -> dict[str, str | None]:
+    normalized_status = str(status or "").lower()
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "search": search.strip() if search and search.strip() else None,
+        "status": normalized_status or None,
+    }
+
+
+def apply_scan_history_filters(query, filters: dict[str, str | None], status_override: str | None = None):
+    query = query.neq("source_type", "video_frame")
+    if filters.get("start_date"):
+        query = query.gte("created_at", filters["start_date"])
+    if filters.get("end_date"):
+        query = query.lt("created_at", filters["end_date"])
+    if filters.get("search"):
+        query = query.ilike("source_name", f"%{filters['search']}%")
+    normalized_status = str(status_override if status_override is not None else filters.get("status") or "").lower()
+    if normalized_status == "review_needed":
+        query = query.eq("human_review_required", True)
+    elif normalized_status == "rejected":
+        query = query.in_("overall_status", ["rejected", "quarantined"])
+    elif normalized_status == "confirmed":
+        query = query.eq("human_review_required", False)
+    return query
+
+
+def display_label(value: Any) -> str:
+    text = re.sub(r"[_-]+", " ", str(value or "Unknown")).strip()
+    return " ".join(word[:1].upper() + word[1:] for word in text.split()) or "Unknown"
+
+
+def confidence_percent(value: Any) -> float:
+    try:
+        numeric = float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return numeric * 100 if numeric <= 1 else numeric
+
+
+def latest_decisions_by_material(decisions: list[dict]) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+        latest[str(decision.get("detected_material_id", ""))] = decision
+    return latest
+
+
+def attach_scan_children(scans: list[dict], materials: list[dict], decisions: list[dict]) -> list[dict]:
+    latest = latest_decisions_by_material(decisions)
+    materials_by_scan: dict[str, list[dict]] = {}
+    for material in sorted(materials, key=lambda item: str(item.get("created_at", ""))):
+        materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
+            **material,
+            "review_decision": latest.get(str(material.get("id", ""))),
+        })
+    return [{**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])} for scan in scans]
+
+
+def export_material_decision(scan: dict) -> tuple[dict, dict | None]:
+    material = (scan.get("detected_materials") or [{}])[0] or {}
+    decision = material.get("review_decision") or None
+    return material, decision
+
+
+def export_final_category(scan: dict) -> str:
+    material, decision = export_material_decision(scan)
+    return canonical_category_key(scan.get("verified_category") or (decision or {}).get("chosen_category") or material.get("category") or material.get("material_name"))
+
+
+def export_display_status(scan: dict, material: dict, decision: dict | None) -> tuple[str, str, str]:
+    category = export_final_category(scan)
+    material_class = (decision or {}).get("disposition") or material.get("material_class") or CATEGORY_CLASS_MAP.get(category, "unknown")
+    confidence = confidence_percent(material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"))
+    review_outcome = str((decision or {}).get("outcome") or (decision or {}).get("review_outcome") or "confirmed").strip().lower().replace("-", "_").replace(" ", "_")
+    scan_status = str(scan.get("review_status") or scan.get("overall_status") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    rejected = scan_status in {"rejected", "quarantined"} or (decision is not None and review_outcome == "rejected")
+    verified = scan_status == "verified"
+    review_required = not verified and not rejected and decision is None and (confidence < CONFIRMATION_THRESHOLD * 100 or material_class == "unknown")
+    if rejected:
+        return "Rejected", "rejected", material_class
+    if verified:
+        return "Verified", "verified", material_class
+    if review_required:
+        return "Review Needed", "review_needed", material_class
+    if material_class == "recyclable":
+        return "Confirmed Recyclable", "confirmed", material_class
+    if material_class == "contaminant":
+        return "Confirmed Contaminant", "confirmed", material_class
+    return "Review Needed", "review_needed", material_class
+
+
+def export_weight(scan: dict, material: dict) -> str:
+    for value in (
+        material.get("estimated_weight_kg"), material.get("estimated_weight"), material.get("weight_kg"), material.get("weight"),
+        scan.get("estimated_weight_kg"), scan.get("estimated_weight"), scan.get("weight_kg"), scan.get("weight"),
+    ):
+        if value not in (None, ""):
+            try:
+                return f"{float(value):.3f} kg"
+            except (TypeError, ValueError):
+                return str(value)
+    category = material.get("category") or material.get("material_name")
+    if category:
+        key = analytics_category(category)
+        estimate = ANALYTICS_MATERIAL_ESTIMATES.get(key)
+        if estimate and estimate.get("average_weight_kg") is not None:
+            return f"{float(estimate['average_weight_kg']):.3f} kg"
+    return "-"
+
+
+def export_quantity(scan: dict, material: dict) -> str:
+    value = material.get("quantity", material.get("count", scan.get("quantity", "")))
+    return "-" if value in (None, "") else str(value)
+
+
+def export_reviewer(decision: dict | None) -> str:
+    if not decision:
+        return "-"
+    return str(decision.get("reviewer") or decision.get("reviewer_id") or decision.get("reviewed_by") or "-")
+
+
+def format_malaysia_datetime(value: Any) -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return "-"
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return "-"
+    else:
+        return "-"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    malaysia_datetime = parsed.astimezone(MALAYSIA_TIMEZONE)
+    weekday = malaysia_datetime.strftime("%a")
+    day = malaysia_datetime.day
+    month = malaysia_datetime.strftime("%b")
+    hour = malaysia_datetime.strftime("%I").lstrip("0") or "0"
+    minute = malaysia_datetime.strftime("%M")
+    period = malaysia_datetime.strftime("%p")
+    return f"{weekday} {day} {month} {hour}:{minute} {period}"
+
+
+def export_scan_row(scan: dict) -> dict[str, str]:
+    material, decision = export_material_decision(scan)
+    category = export_final_category(scan)
+    status, review_status, material_class = export_display_status(scan, material, decision)
+    confidence = confidence_percent(scan.get("overall_confidence") if scan.get("overall_confidence") is not None else material.get("confidence"))
+    image_url = scan.get("preview_image_url") or scan.get("image_url") or scan.get("drive_web_url") or ""
+    return {
+        "scan_id": str(scan.get("id") or ""),
+        "datetime": format_malaysia_datetime(scan.get("created_at")),
+        "file_name": str(scan.get("source_name") or "Uploaded image"),
+        "predicted_category": display_label(material.get("category") or material.get("material_name")),
+        "corrected_category": display_label(scan.get("verified_category") or (decision or {}).get("chosen_category") or category),
+        "confidence": f"{confidence:.0f}%",
+        "status": status,
+        "quantity": export_quantity(scan, material),
+        "estimated_weight": export_weight(scan, material),
+        "recommended_route": (CATEGORY_ROUTES.get(category) or "Manual Audit Queue") if review_status != "review_needed" else "Manual Audit Queue",
+        "review_status": review_status,
+        "reviewer": export_reviewer(decision),
+        "image_url": str(image_url),
+        "material_class": display_label(material_class),
+    }
+
+
+def fetch_history_export_rows(
+    start_date: str | None,
+    end_date: str | None,
+    search: str | None,
+    category: str | None,
+    status: str | None,
+    sort: str,
+    direction: str,
+    principal: Principal,
+) -> list[dict[str, str]]:
+    filters = scan_history_filters(start_date, end_date, search, status)
+    category_key = canonical_category_key(category) if category else ""
+    if category and category_key == "unknown":
+        return []
+    order_column = "overall_confidence" if sort == "confidence" else "created_at"
+    descending = str(direction).lower() != "asc"
+    database = SupabaseExecutor(client_factory=_new_supabase_client, attempts=2)
+    rows: list[dict[str, str]] = []
+    offset = 0
+    while True:
+        def scan_query(client, offset=offset):
+            query = client.table(SCAN_RESULTS_TABLE).select("*")
+            query = apply_scan_history_filters(query, filters)
+            return scoped_query(query.order(order_column, desc=descending).range(offset, offset + SCAN_HISTORY_EXPORT_BATCH_SIZE - 1), principal).execute()
+
+        scans = database.execute(scan_query).data or []
+        if not scans:
+            break
+        scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
+        materials: list[dict] = []
+        decisions: list[dict] = []
+        for index in range(0, len(scan_ids), SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE):
+            ids = scan_ids[index:index + SCAN_HISTORY_EXPORT_CHILD_BATCH_SIZE]
+            materials.extend(database.execute(lambda client, ids=ids: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", ids).execute()).data or [])
+            decisions.extend(database.execute(lambda client, ids=ids: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", ids).execute()).data or [])
+        for scan in attach_scan_children(scans, materials, decisions):
+            if category_key and export_final_category(scan) != category_key:
+                continue
+            rows.append(export_scan_row(scan))
+        if len(scans) < SCAN_HISTORY_EXPORT_BATCH_SIZE:
+            break
+        offset += SCAN_HISTORY_EXPORT_BATCH_SIZE
+    return rows
+
+
+EXPORT_COLUMNS = [
+    ("scan_id", "Scan ID"),
+    ("datetime", "Date and time"),
+    ("corrected_category", "Category"),
+    ("confidence", "Confidence"),
+    ("status", "Status"),
+    ("recommended_route", "Recommended route"),
+    ("image_preview", "Image Preview"),
+]
+
+PDF_EXPORT_COLUMNS = ["Scan ID", "Date/time", "Category", "Confidence", "Status", "Route", "Preview"]
+EXCEL_COLUMN_WIDTHS = {
+    "Scan ID": 18,
+    "Date and time": 24,
+    "Category": 20,
+    "Confidence": 12,
+    "Status": 22,
+    "Recommended route": 30,
+    "Image Preview": 14,
+}
+
+
+@dataclass(frozen=True)
+class ThumbnailResult:
+    url: str
+    data: bytes | None = None
+    error: str | None = None
+
+
+def storage_signed_url(url: str) -> str | None:
+    if not supabase or not SUPABASE_URL or not url.startswith(SUPABASE_URL):
+        return None
+    match = re.search(r"/storage/v1/object/(?:public|sign)/([^/]+)/(.+)$", url)
+    if not match:
+        return None
+    bucket, object_path = match.group(1), unquote(match.group(2).split("?")[0])
+    try:
+        signed = supabase.storage.from_(bucket).create_signed_url(object_path, 3600)
+        return signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+    except Exception as exc:
+        print(f"[history-export] signed URL fallback failed: {type(exc).__name__}")
+        return None
+
+
+def transformed_storage_url(url: str) -> str:
+    if not SUPABASE_URL or not url.startswith(SUPABASE_URL):
+        return url
+    match = re.search(r"/storage/v1/object/public/([^/]+)/(.+)$", url)
+    if not match:
+        return url
+    bucket, object_path = match.group(1), match.group(2).split("?")[0]
+    return (
+        f"{SUPABASE_URL}/storage/v1/render/image/public/{bucket}/{object_path}"
+        f"?width={SCAN_HISTORY_THUMBNAIL_SIZE[0]}&height={SCAN_HISTORY_THUMBNAIL_SIZE[1]}"
+        "&resize=contain&quality=50&format=origin"
+    )
+
+
+def fetch_image_bytes(client: httpx.Client, url: str) -> bytes:
+    request_url = transformed_storage_url(url)
+    for attempt in range(2):
+        try:
+            response = client.get(request_url, follow_redirects=True)
+            if response.status_code >= 500 and attempt == 0:
+                continue
+            break
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt == 0:
+                continue
+            raise
+    if response.status_code in {403, 404}:
+        signed_url = storage_signed_url(url)
+        if signed_url and signed_url != url:
+            response = client.get(signed_url, follow_redirects=True)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "").lower()
+    if content_type and not any(kind in content_type for kind in ("image/jpeg", "image/jpg", "image/png", "image/webp")):
+        raise ValueError("unsupported image content type")
+    content = response.content
+    if len(content) > SCAN_HISTORY_IMAGE_MAX_BYTES:
+        raise ValueError("source image too large")
+    return content
+
+
+def thumbnail_png(image_bytes: bytes) -> bytes:
+    with Image.open(BytesIO(image_bytes)) as image:
+        image.thumbnail(SCAN_HISTORY_THUMBNAIL_SIZE)
+        canvas = Image.new("RGB", SCAN_HISTORY_THUMBNAIL_SIZE, "white")
+        if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+            image = image.convert("RGBA")
+            x = (SCAN_HISTORY_THUMBNAIL_SIZE[0] - image.width) // 2
+            y = (SCAN_HISTORY_THUMBNAIL_SIZE[1] - image.height) // 2
+            canvas.paste(image, (x, y), image)
+        else:
+            image = image.convert("RGB")
+            x = (SCAN_HISTORY_THUMBNAIL_SIZE[0] - image.width) // 2
+            y = (SCAN_HISTORY_THUMBNAIL_SIZE[1] - image.height) // 2
+            canvas.paste(image, (x, y))
+        output = BytesIO()
+        canvas.save(output, format="PNG", optimize=True)
+        return output.getvalue()
+
+
+def load_thumbnail(client: httpx.Client, url: str) -> ThumbnailResult:
+    if not url:
+        return ThumbnailResult(url, error="missing URL")
+    try:
+        return ThumbnailResult(url, data=thumbnail_png(fetch_image_bytes(client, url)))
+    except Exception as exc:
+        return ThumbnailResult(url, error=type(exc).__name__)
+
+
+def fetch_history_thumbnails(rows: list[dict[str, str]]) -> tuple[dict[str, bytes], dict[str, int]]:
+    urls = [row.get("image_url", "") for row in rows if row.get("image_url")]
+    unique_urls = list(dict.fromkeys(urls))
+    stats = {"requested": len(urls), "unique": len(unique_urls), "cache_hits": max(0, len(urls) - len(unique_urls)), "failed": 0, "processed": 0}
+    if not unique_urls:
+        return {}, stats
+    thumbnails: dict[str, bytes] = {}
+    limits = httpx.Limits(max_connections=SCAN_HISTORY_THUMBNAIL_WORKERS, max_keepalive_connections=SCAN_HISTORY_THUMBNAIL_WORKERS)
+    with httpx.Client(timeout=SCAN_HISTORY_IMAGE_TIMEOUT, limits=limits) as client:
+        with ThreadPoolExecutor(max_workers=SCAN_HISTORY_THUMBNAIL_WORKERS) as executor:
+            futures = [executor.submit(load_thumbnail, client, url) for url in unique_urls]
+            for future in as_completed(futures):
+                result = future.result()
+                stats["processed"] += 1
+                if result.data:
+                    thumbnails[result.url] = result.data
+                else:
+                    stats["failed"] += 1
+                if stats["processed"] == stats["unique"] or stats["processed"] % 250 == 0:
+                    print(
+                        "[history-export] image progress "
+                        f"processed={stats['processed']}/{stats['unique']} failed={stats['failed']} "
+                        f"cache_hits={stats['cache_hits']}"
+                    )
+    return thumbnails, stats
+
+
+def build_history_excel(rows: list[dict[str, str]], thumbnails: dict[str, bytes] | None = None) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as ExcelImage
+    from openpyxl.styles import Alignment
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "PurityLoop History"
+    worksheet.append([label for _, label in EXPORT_COLUMNS])
+    preview_col = len(EXPORT_COLUMNS)
+    for index, (_, label) in enumerate(EXPORT_COLUMNS, start=1):
+        worksheet.column_dimensions[get_column_letter(index)].width = EXCEL_COLUMN_WIDTHS.get(label, 16)
+    for row in rows:
+        worksheet.append(["" if key == "image_preview" else row.get(key, "") for key, _ in EXPORT_COLUMNS])
+        excel_row = worksheet.max_row
+        worksheet.row_dimensions[excel_row].height = 64
+        image_bytes = (thumbnails or {}).get(row.get("image_url", ""))
+        if image_bytes:
+            image = ExcelImage(BytesIO(image_bytes))
+            image.width = SCAN_HISTORY_THUMBNAIL_SIZE[0]
+            image.height = SCAN_HISTORY_THUMBNAIL_SIZE[1]
+            worksheet.add_image(image, f"{get_column_letter(preview_col)}{excel_row}")
+        else:
+            cell = worksheet.cell(excel_row, preview_col)
+            cell.value = "Image unavailable"
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    workbook.save(output)
+    return output.getvalue()
+
+
+def build_history_pdf(rows: list[dict[str, str]], filters: dict[str, str | None], thumbnails: dict[str, bytes] | None = None) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Image as PdfImage
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=10 * mm, rightMargin=10 * mm, topMargin=10 * mm, bottomMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    body = styles["BodyText"]
+    body.fontSize = 7
+    body.leading = 8
+    applied = ", ".join(f"{key}: {value}" for key, value in filters.items() if value) or "None"
+    data = [PDF_EXPORT_COLUMNS]
+    for row in rows:
+        image_bytes = (thumbnails or {}).get(row.get("image_url", ""))
+        preview = PdfImage(BytesIO(image_bytes), width=18 * mm, height=18 * mm) if image_bytes else Paragraph("Image unavailable", body)
+        data.append([
+            row["scan_id"][:8],
+            row["datetime"],
+            row["corrected_category"],
+            row["confidence"],
+            row["status"],
+            row["recommended_route"],
+            preview,
+        ])
+    if len(data) == 1:
+        data.append(["No scans to export.", "", "", "", "", "", ""])
+    table_data = [[cell if hasattr(cell, "wrapOn") else Paragraph(str(cell), body) for cell in record] for record in data]
+    table = Table(table_data, repeatRows=1, colWidths=[24 * mm, 44 * mm, 34 * mm, 24 * mm, 42 * mm, 77 * mm, 28 * mm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#edf5f0")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#17251e")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d9e4dc")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fbfdfb")]),
+    ]))
+
+    def page_number(canvas, document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(document.pagesize[0] - 10 * mm, 6 * mm, f"Page {document.page}")
+        canvas.restoreState()
+
+    story = [
+        Paragraph("PurityLoop AI Audit History", styles["Title"]),
+        Paragraph(f"Exported {format_malaysia_datetime(datetime.now(timezone.utc))} · {len(rows)} records", styles["Normal"]),
+        Paragraph(f"Applied filters: {applied}", styles["Normal"]),
+        Spacer(1, 6 * mm),
+        table,
+    ]
+    doc.build(story, onFirstPage=page_number, onLaterPages=page_number)
+    return output.getvalue()
 
 
 def config_path(env_name: str, default_relative: str) -> Path:
@@ -557,7 +1456,7 @@ def material_status(category: str) -> tuple[str, str]:
 
 def evaluate_material(category: str, confidence: float) -> dict:
     material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
-    review_required = confidence < CONFIRMATION_THRESHOLD
+    review_required = category == "general_trash" or confidence < CONFIRMATION_THRESHOLD
     decision_status = "review_needed" if review_required else "confirmed"
     if review_required:
         display_status = "Review Needed"
@@ -666,6 +1565,7 @@ def _load_review_decisions(database: SupabaseExecutor, scan_result_id: UUID | st
 
 
 def _scan_response(scan: dict, materials: list[dict]) -> dict:
+    video_summary = scan.get("video_tracking_summary") if isinstance(scan.get("video_tracking_summary"), dict) else {}
     return {
         "scan_result_id": scan["id"],
         "overall_status": scan.get("overall_status"),
@@ -682,6 +1582,17 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "drive_web_url": scan.get("drive_web_url"),
         "image_url": scan.get("image_url"),
         "preview_image_url": scan.get("preview_image_url"),
+        "result_kind": scan.get("result_kind"),
+        "legacy_result": scan.get("legacy_result"),
+        "total_unique_objects": scan.get("total_unique_objects"),
+        "counts_by_class": video_summary.get("counts_by_class"),
+        "hazards": video_summary.get("hazards"),
+        "annotated_video_url": scan.get("annotated_video_url") or video_summary.get("annotated_video_url"),
+        "annotated_video_storage_path": scan.get("annotated_video_storage_path") or video_summary.get("annotated_video_storage_path"),
+        "annotated_video_status": scan.get("annotated_video_status") or video_summary.get("annotated_video_status"),
+        "annotated_video_error": scan.get("annotated_video_error") or video_summary.get("annotated_video_error"),
+        "annotated_video_probe": video_summary.get("annotated_video_probe"),
+        "tracked_objects": materials if str(scan.get("result_kind") or "") in {"tracked_video_object", "video_track_object"} else None,
         "detected_materials": materials,
     }
 
@@ -871,6 +1782,16 @@ def persist_scan(
     saved_scan_id = scan_data[0]["id"]
     stored_material_keys = {
         "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
+        "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category", "stable_object_id",
+        "object_uid", "source_track_ids", "track_id", "track_first_frame", "track_last_frame", "track_first_timestamp",
+        "track_last_timestamp", "track_duration_seconds", "track_avg_confidence",
+        "track_max_confidence", "track_frame_count", "track_hazard_status", "track_counted",
+        "track_start_center", "track_end_center", "track_avg_width", "track_avg_height",
+        "track_avg_aspect_ratio", "track_debug", "track_path", "segmentation_mask", "best_box",
+        "best_bbox_norm", "result_type",
+    }
+    legacy_material_keys = {
+        "material_name", "category", "confidence", "recyclable_status", "contaminant_status",
         "bbox_x", "bbox_y", "bbox_width", "bbox_height", "original_category",
     }
     linked_materials = []
@@ -879,7 +1800,7 @@ def persist_scan(
             key: value for key, value in item.items() if key in stored_material_keys
         } | {"scan_result_id": saved_scan_id}
         if scan_result_id:
-            linked["id"] = str(uuid5(scan_result_id, f"material:{index}"))
+            linked["id"] = str(uuid5(scan_result_id, f"material:{item.get('object_uid') or index}"))
         if frame_time_seconds is not None:
             linked["frame_time_seconds"] = frame_time_seconds
         linked_materials.append(linked)
@@ -903,10 +1824,10 @@ def persist_scan(
                 recover=recover_materials,
             )
         except Exception as exc:
-            if frame_time_seconds is not None and getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
+            if getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
                 database.execute(
                     lambda client: client.table(DETECTED_MATERIALS_TABLE).insert(
-                        [{key: value for key, value in item.items() if key != "frame_time_seconds"} for item in missing_materials]
+                        [{key: value for key, value in item.items() if key in legacy_material_keys or key in {"id", "scan_result_id"}} for item in missing_materials]
                     ).execute().data or [],
                     recover=recover_materials,
                 )
@@ -1049,7 +1970,7 @@ def validate_browser_detections(
         if detection.verified_class not in BROWSER_MODEL_CLASSES:
             raise HTTPException(status_code=400, detail="Verified class is outside the fixed model contract.")
         if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -1108,7 +2029,7 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
         if detection.model_class_name != category_name:
             raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
         if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail="Detection confidence must be between 0.32 and 1.")
+            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -1148,6 +2069,110 @@ class UploadStartInput(BaseModel):
     mime: str
 
 
+class UploadStartFailure(RuntimeError):
+    def __init__(self, code: str, message: str, *, status_code: int = 500, stage: str = "unknown"):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+        self.stage = stage
+
+
+def _upload_start_log(event: str, **fields) -> None:
+    safe_fields = {}
+    for key, value in fields.items():
+        lowered = key.lower()
+        if lowered in {"token", "authorization", "upload_url", "signed_url", "service_role_key", "api_key", "password"}:
+            safe_fields[key] = "[redacted]"
+        elif isinstance(value, Path):
+            safe_fields[key] = str(value)
+        else:
+            safe_fields[key] = value
+    print(f"[upload-start] {event} {json.dumps(safe_fields, sort_keys=True, default=str)}")
+
+
+def _upload_start_error_response(exc: UploadStartFailure) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={
+            "code": exc.code,
+            "message": str(exc),
+            "stage": exc.stage,
+        },
+    )
+
+
+def _validate_upload_start_payload(payload: UploadStartInput) -> tuple[str, int, str]:
+    filename = str(payload.filename or "").strip()
+    mime = str(payload.mime or "").strip().lower()
+    try:
+        size_bytes = int(payload.size_bytes)
+    except Exception as exc:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "Upload size must be an integer.", status_code=400, stage="validate_payload") from exc
+    if not filename:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "Filename is required.", status_code=400, stage="validate_payload")
+    if size_bytes <= 0:
+        raise UploadStartFailure("INVALID_UPLOAD_PAYLOAD", "MP4 upload must be non-empty.", status_code=400, stage="validate_payload")
+    if MAX_VIDEO_UPLOAD_BYTES and size_bytes > MAX_VIDEO_UPLOAD_BYTES:
+        raise UploadStartFailure("UPLOAD_TOO_LARGE", "MP4 upload exceeds the configured size limit.", status_code=413, stage="validate_payload")
+    if mime != "video/mp4":
+        raise UploadStartFailure("UNSUPPORTED_MEDIA_TYPE", "Only video/mp4 uploads are supported by /api/uploads/start.", status_code=415, stage="validate_payload")
+    return filename, size_bytes, mime
+
+
+def _create_drive_resumable_upload(filename: str, size_bytes: int, mime: str) -> str:
+    if not GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID:
+        raise UploadStartFailure(
+            "MISSING_ENVIRONMENT_VARIABLE",
+            "GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID is not configured.",
+            status_code=503,
+            stage="validate_environment",
+        )
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+        credentials = oauth_drive_credentials()
+        session = AuthorizedSession(credentials)
+    except UploadStartFailure:
+        raise
+    except Exception as exc:
+        raise UploadStartFailure(
+            "MISSING_ENVIRONMENT_VARIABLE",
+            safe_error_message(exc) or "Google Drive OAuth credentials are not configured.",
+            status_code=503,
+            stage="load_drive_credentials",
+        ) from exc
+
+    try:
+        response = session.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+            headers={
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": mime,
+                "X-Upload-Content-Length": str(size_bytes),
+            },
+            json={"name": filename, "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID]},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None) or getattr(locals().get("response", None), "status_code", None)
+        raise UploadStartFailure(
+            "STORAGE_UPLOAD_INIT_FAILED",
+            f"Google Drive resumable upload session failed{f' with status {status_code}' if status_code else ''}.",
+            status_code=502,
+            stage="create_drive_resumable_upload",
+        ) from exc
+
+    upload_url = response.headers.get("Location")
+    if not upload_url:
+        raise UploadStartFailure(
+            "STORAGE_UPLOAD_INIT_FAILED",
+            "Google Drive did not return a resumable upload URL.",
+            status_code=502,
+            stage="create_drive_resumable_upload",
+        )
+    return upload_url
+
+
 class IngestInput(BaseModel):
     source: str
     ref: str
@@ -1159,9 +2184,7 @@ def health():
     return {
         "ok": True,
         "mode": "public_demo",
-        "model_available": MODEL_PATH.exists(),
-        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
-        "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
+        **safe_startup_diagnostics(),
     }
 
 
@@ -1196,6 +2219,837 @@ def _find_video_frame_scan(database: SupabaseExecutor, job_id: str, filename: st
     return str(response.data["id"]) if response and response.data else None
 
 
+def _clip_box(box: list[float], width: int, height: int) -> tuple[int, int, int, int]:
+    x1 = max(0, min(width - 1, int(round(_coerce_float(box[0]))))) if width else 0
+    y1 = max(0, min(height - 1, int(round(_coerce_float(box[1]))))) if height else 0
+    x2 = max(x1 + 1, min(width, int(round(_coerce_float(box[2]))))) if width else 0
+    y2 = max(y1 + 1, min(height, int(round(_coerce_float(box[3]))))) if height else 0
+    return x1, y1, x2, y2
+
+
+def _encode_detection_crop(frame, box: list[float]) -> bytes | None:
+    import cv2
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = _clip_box(box, width, height)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        crop = frame
+    ok, encoded = cv2.imencode(".jpg", crop)
+    return encoded.tobytes() if ok else None
+
+
+def _encode_frame_jpeg(frame) -> bytes | None:
+    import cv2
+    ok, encoded = cv2.imencode(".jpg", frame)
+    return encoded.tobytes() if ok else None
+
+
+def _mask_polygon(result, index: int) -> list | None:
+    masks = getattr(result, "masks", None)
+    if not masks:
+        return None
+    polygons = getattr(masks, "xyn", None) or getattr(masks, "xy", None)
+    if polygons is None or index >= len(polygons):
+        return None
+    polygon = polygons[index]
+    if hasattr(polygon, "tolist"):
+        polygon = polygon.tolist()
+    return polygon
+
+
+def _result_track_observations(result, frame, frame_index: int, timestamp: float) -> list[dict]:
+    boxes = getattr(result, "boxes", None)
+    if boxes is None:
+        return []
+    names = getattr(result, "names", {}) or {}
+    image_height, image_width = getattr(result, "orig_shape", frame.shape[:2])
+    track_ids = getattr(boxes, "id", None)
+    detections = []
+    frame_bytes = _encode_frame_jpeg(frame)
+    for index, box in enumerate(boxes):
+        xyxy = [float(value) for value in box.xyxy[0].tolist()]
+        confidence = float(box.conf[0])
+        class_id = int(box.cls[0])
+        material_name = str(names.get(class_id, f"class_{class_id}"))
+        track_id = None
+        if track_ids is not None:
+            try:
+                track_id = int(track_ids[index].item())
+            except (AttributeError, IndexError, TypeError, ValueError):
+                track_id = None
+        detections.append({
+            "track_id": track_id,
+            "material_name": material_name,
+            "category": material_category(material_name),
+            "confidence": confidence,
+            "bbox": [
+                xyxy[0] / image_width if image_width else 0,
+                xyxy[1] / image_height if image_height else 0,
+                xyxy[2] / image_width if image_width else 0,
+                xyxy[3] / image_height if image_height else 0,
+            ],
+            "bbox_percent": {
+                "x": round((xyxy[0] / image_width) * 100, 2) if image_width else 0,
+                "y": round((xyxy[1] / image_height) * 100, 2) if image_height else 0,
+                "width": round(((xyxy[2] - xyxy[0]) / image_width) * 100, 2) if image_width else 0,
+                "height": round(((xyxy[3] - xyxy[1]) / image_height) * 100, 2) if image_height else 0,
+            },
+            "best_box": {
+                "xyxy": [round(value, 2) for value in xyxy],
+                "frame": frame_index,
+                "timestamp": round(timestamp, 3),
+            },
+            "mask": _mask_polygon(result, index),
+            "frame_bytes": frame_bytes,
+            "frame_width": int(image_width or frame.shape[1]),
+            "frame_height": int(image_height or frame.shape[0]),
+            "crop_bytes": _encode_detection_crop(frame, xyxy),
+        })
+    return detections
+
+
+def _video_class_color(category: str) -> tuple[int, int, int]:
+    palette = {
+        "plastic": (40, 180, 99),
+        "metal": (245, 158, 11),
+        "glass": (14, 165, 233),
+        "paper": (234, 179, 8),
+        "cardboard": (168, 85, 247),
+        "battery": (37, 99, 235),
+        "textile": (236, 72, 153),
+        "food_organics": (34, 197, 94),
+        "general_trash": (239, 68, 68),
+    }
+    return palette.get(material_category(category), (20, 184, 166))
+
+
+def _mask_to_points(mask, width: int, height: int):
+    import numpy as np
+    if not mask:
+        return None
+    points = []
+    for point in mask:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        x = _coerce_float(point[0])
+        y = _coerce_float(point[1])
+        if x <= 1 and y <= 1:
+            x *= width
+            y *= height
+        points.append([max(0, min(width - 1, int(round(x)))), max(0, min(height - 1, int(round(y))))])
+    if len(points) < 3:
+        return None
+    return np.array(points, dtype=np.int32)
+
+
+def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | None = None):
+    import cv2
+    height, width = frame.shape[:2]
+    if not detections:
+        return frame
+    annotated = frame.copy()
+    mask_layer = annotated.copy()
+    has_mask = False
+    line_width = max(2, round(min(width, height) / 360))
+    font_scale = max(0.45, min(1.1, min(width, height) / 900))
+    label_padding = max(4, round(line_width * 2))
+    for detection in detections:
+        category = material_category(detection.get("category") or detection.get("material_name"))
+        color_rgb = _video_class_color(category)
+        color = (color_rgb[2], color_rgb[1], color_rgb[0])
+        box = detection.get("best_box", {}).get("xyxy") if isinstance(detection.get("best_box"), dict) else None
+        if not box:
+            norm = detection.get("bbox") or []
+            box = [
+                _coerce_float(norm[0]) * width if len(norm) > 0 else 0,
+                _coerce_float(norm[1]) * height if len(norm) > 1 else 0,
+                _coerce_float(norm[2]) * width if len(norm) > 2 else 0,
+                _coerce_float(norm[3]) * height if len(norm) > 3 else 0,
+            ]
+        x1, y1, x2, y2 = _clip_box(box, width, height)
+        mask_points = _mask_to_points(detection.get("mask"), width, height)
+        if mask_points is not None:
+            cv2.fillPoly(mask_layer, [mask_points], color)
+            has_mask = True
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, line_width)
+        confidence = _coerce_float(detection.get("confidence"))
+        track_id = detection.get("track_id")
+        hazard = " | HAZARD" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else ""
+        label = f"{display_label(category)} | {confidence:.2f} | ID {track_id or '-'}{hazard}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (label_width, label_height), baseline = cv2.getTextSize(label, font, font_scale, line_width)
+        label_width = min(label_width + label_padding * 2, width)
+        label_height = label_height + baseline + label_padding * 2
+        label_x = max(0, min(x1, width - label_width))
+        label_y = y1 - label_height if y1 - label_height >= 0 else min(height - label_height, y2 + line_width)
+        label_y = max(0, label_y)
+        cv2.rectangle(annotated, (label_x, label_y), (label_x + label_width, label_y + label_height), color, -1)
+        text_x = label_x + label_padding
+        text_y = label_y + label_padding + label_height - baseline - label_padding
+        cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (255, 255, 255), max(1, line_width - 1), cv2.LINE_AA)
+    if has_mask:
+        annotated = cv2.addWeighted(mask_layer, 0.28, annotated, 0.72, 0)
+    if footer_count is not None:
+        label = f"{footer_count} object{'s' if footer_count != 1 else ''} detected"
+        footer_height = max(26, round(height * 0.055))
+        footer_y = max(0, height - footer_height)
+        cv2.rectangle(annotated, (0, footer_y), (width, height), (4, 8, 6), -1)
+        cv2.putText(
+            annotated,
+            label,
+            (max(8, round(width * 0.025)), min(height - 8, footer_y + round(footer_height * 0.68))),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            max(0.45, min(0.9, min(width, height) / 850)),
+            (46, 204, 113),
+            max(1, round(line_width * 0.8)),
+            cv2.LINE_AA,
+        )
+    return annotated
+
+
+class VideoDecodeError(RuntimeError):
+    pass
+
+
+def _video_processing_log(event: str, **fields) -> None:
+    safe_fields = {}
+    for key, value in fields.items():
+        if key.lower() in {"token", "authorization", "api_key", "service_role_key", "password"}:
+            safe_fields[key] = "[redacted]"
+        elif isinstance(value, Path):
+            safe_fields[key] = str(value)
+        else:
+            safe_fields[key] = value
+    print(f"[video-processing] {event} {json.dumps(safe_fields, sort_keys=True, default=str)}")
+
+
+def _video_job_dir(scan_id: str) -> Path:
+    safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", str(scan_id or "scan")).strip("._") or "scan"
+    path = VIDEO_WORK_ROOT / safe_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _source_video_path(job_dir: Path, filename: str | None) -> Path:
+    safe_name = safe_drive_filename(filename or "source.mp4")
+    if not safe_name.lower().endswith(".mp4"):
+        safe_name = f"{safe_name}.mp4"
+    return job_dir / f"source-{safe_name}"
+
+
+def _even_video_dimensions(width: int, height: int) -> tuple[int, int]:
+    return max(2, int(width) - int(width) % 2), max(2, int(height) - int(height) % 2)
+
+
+def _normalize_video_frame(frame, width: int, height: int):
+    import cv2
+    normalized = frame
+    if normalized.shape[1] != width or normalized.shape[0] != height:
+        normalized = cv2.resize(normalized, (width, height), interpolation=cv2.INTER_AREA)
+    if len(normalized.shape) == 2:
+        normalized = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
+    elif normalized.shape[2] == 4:
+        normalized = cv2.cvtColor(normalized, cv2.COLOR_BGRA2BGR)
+    return normalized
+
+
+def _require_executable(name: str) -> str:
+    path = shutil.which(name)
+    if not path:
+        raise RuntimeError(f"{name} is not installed or is not available on PATH")
+    return path
+
+
+def _encode_browser_mp4(input_path: str | Path, output_path: str | Path) -> list[str]:
+    ffmpeg = _require_executable("ffmpeg")
+    command = [
+        ffmpeg,
+        "-y",
+        "-i", str(input_path),
+        "-an",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    _video_processing_log("ffmpeg_started", ffmpeg_path=ffmpeg, arguments=command[1:], input_path=str(input_path), output_path=str(output_path))
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=900)
+    output_exists = Path(output_path).exists()
+    output_size = Path(output_path).stat().st_size if output_exists else 0
+    _video_processing_log(
+        "ffmpeg_completed",
+        exit_code=completed.returncode,
+        stderr=(completed.stderr or "")[-1200:],
+        stdout=(completed.stdout or "")[-400:],
+        output_exists=output_exists,
+        output_size=output_size,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"FFmpeg H.264 encoding failed with exit code {completed.returncode}: {(completed.stderr or completed.stdout or '').strip()[-1200:]}")
+    if not output_exists or output_size <= 0:
+        raise RuntimeError("FFmpeg H.264 encoding produced an empty output file.")
+    return command
+
+
+def _ffprobe_mp4(path: str | Path) -> dict:
+    ffprobe = _require_executable("ffprobe")
+    command = [
+        ffprobe,
+        "-v", "error",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        str(path),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout or "ffprobe validation failed").strip()[-500:])
+    payload = json.loads(completed.stdout or "{}")
+    streams = payload.get("streams") or []
+    video = next((stream for stream in streams if stream.get("codec_type") == "video"), {})
+    audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), {})
+    diagnostics = {
+        "container": (payload.get("format") or {}).get("format_name"),
+        "video_codec": video.get("codec_name"),
+        "pixel_format": video.get("pix_fmt"),
+        "dimensions": f"{video.get('width')}x{video.get('height')}" if video.get("width") and video.get("height") else None,
+        "frame_rate": video.get("avg_frame_rate") or video.get("r_frame_rate"),
+        "duration": (payload.get("format") or {}).get("duration") or video.get("duration"),
+        "audio_codec": audio.get("codec_name") if audio else None,
+    }
+    print(f"[video-annotation] ffprobe {json.dumps(diagnostics, sort_keys=True)}")
+    if diagnostics["video_codec"] != "h264" or diagnostics["pixel_format"] != "yuv420p":
+        raise RuntimeError(f"Annotated MP4 is not browser-compatible H.264/yuv420p: {diagnostics}")
+    return diagnostics
+
+
+def _video_tracking_summary(tracked_objects: list[dict]) -> dict:
+    counts_by_class: dict[str, int] = {}
+    hazards = []
+    public_objects = []
+    for item in tracked_objects:
+        category = str(item.get("category") or "unknown")
+        counts_by_class[category] = counts_by_class.get(category, 0) + 1
+        public = {key: value for key, value in item.items() if not key.startswith("_")}
+        public_objects.append(public)
+        if item.get("track_hazard_status") == "hazard" or item.get("contaminant_status") == "contaminated":
+            hazards.append(public)
+    return {
+        "total_unique_objects": len(tracked_objects),
+        "counts_by_class": counts_by_class,
+        "hazards": hazards,
+        "tracked_objects": public_objects,
+        "result_kind": "tracked_video",
+    }
+
+
+def _track_time_overlap(first: dict, second: dict) -> bool:
+    return not (
+        _coerce_float(first.get("track_last_frame"), -1) < _coerce_float(second.get("track_first_frame"), 0)
+        or _coerce_float(second.get("track_last_frame"), -1) < _coerce_float(first.get("track_first_frame"), 0)
+    )
+
+
+def _track_temporal_gap(first: dict, second: dict) -> int:
+    return max(0, int(_coerce_float(second.get("track_first_frame"))) - int(_coerce_float(first.get("track_last_frame"))))
+
+
+def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
+    if first.get("category") != second.get("category"):
+        return False, "class mismatch"
+    if _track_time_overlap(first, second):
+        return False, "tracks overlap in time"
+    ordered = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    previous, current = ordered
+    gap = _track_temporal_gap(previous, current)
+    if gap > VIDEO_LOGICAL_MERGE_MAX_GAP:
+        return False, f"temporal gap {gap} exceeds {VIDEO_LOGICAL_MERGE_MAX_GAP}"
+    previous_end = previous.get("track_end_center") or {}
+    current_start = current.get("track_start_center") or {}
+    distance = math.hypot(
+        _coerce_float(previous_end.get("x")) - _coerce_float(current_start.get("x")),
+        _coerce_float(previous_end.get("y")) - _coerce_float(current_start.get("y")),
+    )
+    if distance > VIDEO_LOGICAL_MERGE_CENTER_DISTANCE:
+        return False, f"centre distance {distance:.3f} exceeds {VIDEO_LOGICAL_MERGE_CENTER_DISTANCE}"
+    width_a, width_b = _coerce_float(previous.get("track_avg_width")), _coerce_float(current.get("track_avg_width"))
+    height_a, height_b = _coerce_float(previous.get("track_avg_height")), _coerce_float(current.get("track_avg_height"))
+    aspect_a, aspect_b = _coerce_float(previous.get("track_avg_aspect_ratio")), _coerce_float(current.get("track_avg_aspect_ratio"))
+    width_ratio = min(width_a, width_b) / max(width_a, width_b) if max(width_a, width_b) > 0 else 1
+    height_ratio = min(height_a, height_b) / max(height_a, height_b) if max(height_a, height_b) > 0 else 1
+    aspect_ratio = min(aspect_a, aspect_b) / max(aspect_a, aspect_b) if max(aspect_a, aspect_b) > 0 else 1
+    if min(width_ratio, height_ratio, aspect_ratio) < VIDEO_LOGICAL_MERGE_SIZE_RATIO:
+        return False, "size/aspect mismatch"
+    return True, f"class compatible; gap={gap}; centre_distance={distance:.3f}; size ratios ok"
+
+
+def _merge_two_tracks(first: dict, second: dict) -> dict:
+    tracks = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    primary = max(tracks, key=lambda item: _coerce_float(item.get("track_max_confidence") or item.get("confidence")))
+    merged_observations = []
+    merged_path = []
+    class_votes: dict[str, float] = {}
+    source_track_ids = []
+    for track in tracks:
+        source_track_ids.extend([str(item) for item in track.get("source_track_ids") or str(track.get("track_id") or "").split(",") if item])
+        debug = track.get("track_debug") or {}
+        merged_observations.extend(pl for pl in debug.get("frame_observations", []) if isinstance(pl, dict))
+        merged_path.extend(pl for pl in track.get("track_path", []) if isinstance(pl, dict))
+        for category, value in (debug.get("class_votes") or {}).items():
+            class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
+    source_track_ids = sorted(set(source_track_ids), key=str)
+    first_frame = min(int(_coerce_float(track.get("track_first_frame"))) for track in tracks)
+    last_frame = max(int(_coerce_float(track.get("track_last_frame"))) for track in tracks)
+    first_timestamp = min(_coerce_float(track.get("track_first_timestamp")) for track in tracks)
+    last_timestamp = max(_coerce_float(track.get("track_last_timestamp")) for track in tracks)
+    frame_count = sum(int(_coerce_float(track.get("track_frame_count"))) for track in tracks)
+    max_confidence = max(_coerce_float(track.get("track_max_confidence") or track.get("confidence")) for track in tracks)
+    weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
+    avg_confidence = (
+        sum(_coerce_float(track.get("track_avg_confidence")) * int(_coerce_float(track.get("track_frame_count"))) for track in tracks) / frame_count
+        if frame_count else _coerce_float(primary.get("track_avg_confidence"))
+    )
+    recyclable_status, contaminant_status = material_status(weighted_category)
+    hazard_status = "hazard" if any(track.get("track_hazard_status") == "hazard" for track in tracks) or CATEGORY_CLASS_MAP.get(weighted_category) == "contaminant" else "clear"
+    merged = {
+        **primary,
+        "source_track_ids": source_track_ids,
+        "track_id": ",".join(source_track_ids),
+        "category": weighted_category,
+        "material_name": weighted_category,
+        "confidence": round(max_confidence, 4),
+        "track_avg_confidence": round(avg_confidence, 4),
+        "track_max_confidence": round(max_confidence, 4),
+        "track_first_frame": first_frame,
+        "track_last_frame": last_frame,
+        "track_first_timestamp": round(first_timestamp, 3),
+        "track_last_timestamp": round(last_timestamp, 3),
+        "track_duration_seconds": round(max(0.0, last_timestamp - first_timestamp), 3),
+        "track_frame_count": frame_count,
+        "track_hazard_status": hazard_status,
+        "recyclable_status": recyclable_status,
+        "contaminant_status": contaminant_status,
+        "track_path": sorted(merged_path, key=lambda point: int(_coerce_float(point.get("frame")))),
+        "track_debug": {
+            "frame_observations": sorted(merged_observations, key=lambda item: int(_coerce_float(item.get("frame")))),
+            "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
+            "raw_track_ids": source_track_ids,
+        },
+        **evaluate_material(weighted_category, max_confidence),
+    }
+    return merged
+
+
+def merge_track_fragments(raw_tracks: list[dict], upload_id: str) -> list[dict]:
+    logical = sorted(raw_tracks, key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    changed = True
+    merge_reasons = []
+    while changed:
+        changed = False
+        for i, first in enumerate(logical):
+            for j in range(i + 1, len(logical)):
+                second = logical[j]
+                should_merge, reason = _track_merge_score(first, second)
+                if not should_merge:
+                    continue
+                merged = _merge_two_tracks(first, second)
+                merge_reasons.append({
+                    "source_track_ids": merged.get("source_track_ids"),
+                    "reason": reason,
+                })
+                logical = [item for index, item in enumerate(logical) if index not in {i, j}] + [merged]
+                logical.sort(key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+                changed = True
+                break
+            if changed:
+                break
+    for index, item in enumerate(logical, start=1):
+        source_track_ids = item.get("source_track_ids") or [item.get("track_id") or index]
+        object_uid = f"{upload_id}-object-{index:04d}"
+        item["object_uid"] = object_uid
+        item["stable_object_id"] = object_uid
+        item["source_track_ids"] = source_track_ids
+        item.setdefault("track_debug", {})["merge_reasons"] = [
+            reason for reason in merge_reasons if set(reason.get("source_track_ids") or []).issubset(set(source_track_ids))
+        ]
+        _video_debug(
+            "logical_object_finalized",
+            scan_id=upload_id,
+            logical_object_id=object_uid,
+            source_track_ids=source_track_ids,
+            first_frame=item.get("track_first_frame"),
+            last_frame=item.get("track_last_frame"),
+            observations=item.get("track_frame_count"),
+            final_class=item.get("category"),
+        )
+    return logical
+
+
+def _persist_tracked_video_objects(
+    *,
+    tracked_objects: list[dict],
+    source_name: str,
+    file_id: str,
+    job: dict,
+    principal: Principal | None,
+    database: SupabaseExecutor,
+    existing_drive_metadata: dict,
+    annotated_video_metadata: dict | None = None,
+) -> list[str]:
+    scan_ids: list[str] = []
+    namespace = UUID(str(job["id"]))
+    for item in tracked_objects:
+        stable_object_id = str(item["stable_object_id"])
+        crop_bytes = item.get("_best_crop_bytes")
+        if not crop_bytes:
+            continue
+        public_material = {key: value for key, value in item.items() if not key.startswith("_")}
+        try:
+            with Image.open(BytesIO(crop_bytes)) as crop_image:
+                crop_width, crop_height = crop_image.size
+        except Exception:
+            crop_width, crop_height = 100, 100
+        public_material["bbox_x"] = 2.0
+        public_material["bbox_y"] = 2.0
+        public_material["bbox_width"] = 96.0
+        public_material["bbox_height"] = 96.0
+        public_material["material_name"] = (
+            public_material.get("material_name")
+            or public_material.get("category")
+            or "Detected object"
+        )
+        public_material["confidence"] = float(
+            public_material.get("confidence")
+            or public_material.get("track_max_confidence")
+            or public_material.get("track_avg_confidence")
+            or 0
+        )
+        preview_bytes = crop_bytes
+        try:
+            import cv2
+            import numpy as np
+            crop_frame = cv2.imdecode(np.frombuffer(crop_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if crop_frame is None:
+                raise ValueError("Unable to decode tracked-object preview crop")
+            crop_height, crop_width = crop_frame.shape[:2]
+            inset_x = max(0, round(crop_width * 0.02))
+            inset_y = max(0, round(crop_height * 0.02))
+            x2 = min(crop_width - 1, round(crop_width * 0.98))
+            y2 = min(crop_height - 1, round(crop_height * 0.98))
+            if x2 <= inset_x:
+                x2 = min(crop_width - 1, inset_x + 1)
+            if y2 <= inset_y:
+                y2 = min(crop_height - 1, inset_y + 1)
+            preview_detection = {
+                "track_id": public_material.get("track_id"),
+                "category": public_material.get("category"),
+                "material_name": public_material.get("material_name"),
+                "confidence": public_material.get("confidence"),
+                "best_box": {"xyxy": [inset_x, inset_y, x2, y2]},
+                "bbox": [0.02, 0.02, 0.98, 0.98],
+            }
+            annotated_crop = _annotate_video_frame(crop_frame, [preview_detection], footer_count=1)
+            ok, encoded_crop = cv2.imencode(".jpg", annotated_crop)
+            if not ok:
+                raise ValueError("Unable to encode tracked-object annotated preview")
+            preview_bytes = encoded_crop.tobytes()
+        except Exception as exc:
+            _video_processing_log(
+                "tracked_preview_annotation_failed",
+                scan_id=str(job["id"]),
+                logical_object_id=stable_object_id,
+                error_type=type(exc).__name__,
+                error=safe_error_message(exc),
+            )
+        if not isinstance(public_material.get("track_debug"), dict):
+            public_material["track_debug"] = {}
+        public_material["track_debug"]["preview_bbox"] = {
+            "format": "crop_relative_display_inset",
+            "crop_width": crop_width,
+            "crop_height": crop_height,
+            "x1": round(crop_width * 0.02, 2),
+            "y1": round(crop_height * 0.02, 2),
+            "x2": round(crop_width * 0.98, 2),
+            "y2": round(crop_height * 0.98, 2),
+        }
+        public_material["result_type"] = "video_track_object"
+        object_summary = summarize([public_material])
+        object_summary.update({
+            "result_kind": "video_track_object",
+            "legacy_result": False,
+            "total_unique_objects": 1,
+            "video_tracking_summary": {
+                "total_unique_objects": 1,
+                "counts_by_class": {public_material["category"]: 1},
+                "hazards": [public_material] if public_material.get("track_hazard_status") == "hazard" else [],
+                "tracked_objects": [public_material],
+                **(annotated_video_metadata or {}),
+            },
+        })
+        scan_uuid = uuid5(namespace, stable_object_id)
+        filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
+        _video_debug(
+            "database_write",
+            scan_id=str(scan_uuid),
+            logical_object_id=stable_object_id,
+            source_track_ids=public_material.get("source_track_ids"),
+            class_name=public_material.get("category"),
+            confidence=public_material.get("confidence"),
+        )
+        result = persist_scan(
+            preview_bytes,
+            filename,
+            "tracked_video",
+            [public_material],
+            object_summary,
+            source_ref=file_id,
+            batch_id=str(job["id"]),
+            principal=principal,
+            content_type="image/jpeg",
+            existing_drive_metadata=existing_drive_metadata,
+            database=database,
+            scan_result_id=scan_uuid,
+            model_version=os.getenv("MODEL_VERSION", "yolov8m-seg-bytetrack"),
+        )
+        scan_ids.append(str(result["scan_result_id"]))
+    return scan_ids
+
+
+def _process_video_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor, existing: dict, payload: bytes, name: str) -> list[str]:
+    import cv2
+    scan_id = str(job["id"])
+    job_dir = _video_job_dir(scan_id)
+    tmp_path = _source_video_path(job_dir, name)
+    annotated_tmp_path = job_dir / "annotated-intermediate.mp4"
+    encoded_tmp_path = job_dir / "result.mp4"
+    annotated_writer = None
+    capture = None
+    annotated_video_metadata = {
+        "annotated_video_url": None,
+        "annotated_video_storage_path": None,
+        "annotated_video_status": "unavailable",
+        "annotated_video_error": None,
+        "annotated_video_probe": None,
+    }
+    scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
+    options = job.get("options") or {}
+    aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
+    last_checkpoint_at = time.monotonic()
+    annotated_frames_written = 0
+    frame_total = 0
+    fps = DEFAULT_VIDEO_FPS
+    try:
+        payload_size = len(payload or b"")
+        _video_processing_log(
+            "upload_received",
+            scan_id=scan_id,
+            file_id=file_id,
+            filename=name,
+            mime_type=existing.get("drive_mime_type") or "video/mp4",
+            upload_size=payload_size,
+        )
+        if payload_size <= 0:
+            raise VideoDecodeError("Downloaded MP4 source is empty.")
+        tmp_path.write_bytes(payload)
+        source_size = tmp_path.stat().st_size if tmp_path.exists() else 0
+        _video_processing_log("source_saved", scan_id=scan_id, input_path=tmp_path, input_exists=tmp_path.exists(), input_size=source_size)
+        if source_size <= 0:
+            raise VideoDecodeError("Saved MP4 source is empty.")
+        capture = cv2.VideoCapture(str(tmp_path))
+        capture_opened = bool(capture.isOpened())
+        raw_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        raw_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        raw_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+        frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        fps = raw_fps if math.isfinite(raw_fps) and raw_fps > 0 else DEFAULT_VIDEO_FPS
+        fps_fallback_used = fps != raw_fps
+        _video_processing_log(
+            "capture_opened",
+            scan_id=scan_id,
+            is_opened=capture_opened,
+            metadata_width=raw_width,
+            metadata_height=raw_height,
+            metadata_fps=raw_fps,
+            fps=fps,
+            fps_fallback_used=fps_fallback_used,
+            frame_count=frame_total,
+        )
+        if not capture_opened:
+            raise VideoDecodeError("OpenCV could not open the MP4 source.")
+        first_ok, first_frame = capture.read()
+        _video_processing_log("first_frame_decoded", scan_id=scan_id, ok=bool(first_ok), has_frame=first_frame is not None)
+        if not first_ok or first_frame is None:
+            raise VideoDecodeError("Unable to decode the first video frame.")
+        frame_height, frame_width = first_frame.shape[:2]
+        width, height = _even_video_dimensions(frame_width, frame_height)
+        if width <= 0 or height <= 0:
+            raise VideoDecodeError(f"Invalid decoded video dimensions: {frame_width}x{frame_height}")
+        annotated_tmp_path = job_dir / "annotated-intermediate.mp4"
+        encoded_tmp_path = job_dir / "result.mp4"
+        video_model = get_model()
+        tracker_path = str(APP_ROOT / VIDEO_TRACKER_CONFIG)
+        if not Path(tracker_path).exists():
+            tracker_path = VIDEO_TRACKER_CONFIG
+        _video_debug("video_tracking_started", scan_id=scan_id, source_name=name, frame_total=frame_total, tracker=tracker_path, stride=1)
+        _update_job(job["id"], database, total_count=None, result_summary={"mode": "tracked_video", "frame_total": frame_total})
+        frame_index = 0
+        pending_frame = first_frame
+        while True:
+            if pending_frame is None:
+                ok, frame = capture.read()
+                if not ok:
+                    break
+            else:
+                frame = pending_frame
+                pending_frame = None
+            frame = _normalize_video_frame(frame, width, height)
+            timestamp = frame_index / fps if fps else 0.0
+            results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False)
+            result = results[0] if results else None
+            detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
+            aggregator.observe(frame_index, timestamp, detections)
+            if annotated_video_metadata.get("annotated_video_status") != "failed":
+                try:
+                    if annotated_writer is None:
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        annotated_writer = cv2.VideoWriter(str(annotated_tmp_path), fourcc, fps, (width, height))
+                        writer_opened = bool(annotated_writer.isOpened())
+                        _video_processing_log(
+                            "writer_opened",
+                            scan_id=scan_id,
+                            writer_path=annotated_tmp_path,
+                            codec="mp4v",
+                            fps=fps,
+                            width=width,
+                            height=height,
+                            is_opened=writer_opened,
+                        )
+                        if not writer_opened:
+                            raise RuntimeError("OpenCV VideoWriter could not open annotated MP4 output")
+                        annotated_video_metadata["annotated_video_status"] = "processing"
+                    output_frame = _annotate_video_frame(frame, detections) if detections else frame
+                    output_frame = _normalize_video_frame(output_frame, width, height)
+                    annotated_writer.write(output_frame)
+                    annotated_frames_written += 1
+                except Exception as exc:
+                    annotated_video_metadata.update({
+                        "annotated_video_status": "failed",
+                        "annotated_video_error": safe_error_message(exc),
+                    })
+                    _video_processing_log("annotation_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                    traceback.print_exc()
+                    if annotated_writer is not None:
+                        annotated_writer.release()
+                        annotated_writer = None
+            now = time.monotonic()
+            if now - last_checkpoint_at >= 8:
+                summary = _video_tracking_summary(aggregator.finalized)
+                summary["frame_detections"] = sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in aggregator.finalized)
+                summary["raw_track_count"] = len(aggregator.finalized) + len(aggregator.active)
+                summary.update(annotated_video_metadata)
+                _update_job(job["id"], database, processed_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
+                last_checkpoint_at = now
+            frame_index += 1
+        capture.release()
+        capture = None
+        if annotated_writer is not None:
+            annotated_writer.release()
+            annotated_writer = None
+        _video_processing_log(
+            "annotation_completed",
+            scan_id=scan_id,
+            annotated_status=annotated_video_metadata.get("annotated_video_status"),
+            annotated_frames_written=annotated_frames_written,
+            intermediate_path=annotated_tmp_path,
+            intermediate_exists=Path(annotated_tmp_path).exists() if annotated_tmp_path else False,
+            intermediate_size=Path(annotated_tmp_path).stat().st_size if annotated_tmp_path and Path(annotated_tmp_path).exists() else 0,
+        )
+        if annotated_tmp_path and annotated_video_metadata.get("annotated_video_status") != "failed":
+            try:
+                if annotated_frames_written <= 0:
+                    raise RuntimeError("Annotated writer did not write any frames.")
+                _encode_browser_mp4(annotated_tmp_path, encoded_tmp_path)
+                probe = _ffprobe_mp4(encoded_tmp_path)
+                storage_path = f"annotated-videos/{job['id']}/result.mp4"
+                upload = upload_file_to_supabase_storage(
+                    encoded_tmp_path,
+                    storage_path,
+                    "video/mp4",
+                    database,
+                )
+                annotated_video_metadata.update({
+                    "annotated_video_url": upload["public_url"],
+                    "annotated_video_storage_path": storage_path,
+                    "annotated_video_status": "ready",
+                    "annotated_video_error": None,
+                    "annotated_video_probe": probe,
+                })
+                _video_processing_log("supabase_upload_completed", scan_id=scan_id, storage_path=storage_path, content_type="video/mp4", has_url=bool(upload.get("public_url")))
+            except Exception as exc:
+                annotated_video_metadata.update({
+                    "annotated_video_url": None,
+                    "annotated_video_status": "failed",
+                    "annotated_video_error": safe_error_message(exc),
+                })
+                _video_processing_log("annotated_mp4_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                traceback.print_exc()
+        aggregator.finish(frame_index)
+        raw_tracks = aggregator.finalized
+        logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
+        scan_ids = _persist_tracked_video_objects(
+            tracked_objects=logical_objects,
+            source_name=name,
+            file_id=file_id,
+            job=job,
+            principal=principal,
+            database=database,
+            existing_drive_metadata=existing,
+            annotated_video_metadata=annotated_video_metadata,
+        )
+        summary = _video_tracking_summary(logical_objects)
+        summary.update({
+            "scan_id": str(job["id"]),
+            "result_type": "video_tracking",
+            "frame_total": frame_total,
+            "frame_detections": sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in raw_tracks),
+            "raw_track_count": len(raw_tracks),
+            "filtered_tracks": max(0, len(raw_tracks) - len(logical_objects)),
+            "database_rows_written": len(scan_ids),
+            **annotated_video_metadata,
+        })
+        _video_debug(
+            "video_tracking_completed",
+            scan_id=str(job["id"]),
+            frame_total=frame_total,
+            frame_detections=summary["frame_detections"],
+            raw_track_count=len(raw_tracks),
+            final_logical_objects=len(logical_objects),
+            database_rows_written=len(scan_ids),
+        )
+        _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
+        _video_processing_log("scan_completed", scan_id=scan_id, final_scan_ids=scan_ids, annotated_video_status=annotated_video_metadata.get("annotated_video_status"))
+        return scan_ids
+    except Exception:
+        _video_processing_log("scan_failed", scan_id=scan_id, final_status="failed")
+        traceback.print_exc()
+        raise
+    finally:
+        try:
+            if annotated_writer is not None:
+                annotated_writer.release()
+        except Exception:
+            pass
+        try:
+            if capture is not None:
+                capture.release()
+        except Exception:
+            pass
+        shutil.rmtree(job_dir, ignore_errors=True)
+        _video_processing_log("temp_cleanup_completed", scan_id=scan_id, job_dir=job_dir, exists=job_dir.exists())
+
+
 def _process_drive_file(file_id: str, job: dict, principal: Principal | None, database: SupabaseExecutor) -> list[str]:
     info = _drive_file_info(file_id)
     if info.get("trashed"):
@@ -1204,6 +3058,7 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
         "storage_provider": "google_drive_and_supabase_storage",
         "drive_file_id": info.get("id"),
         "drive_file_name": info.get("name"),
+        "drive_mime_type": info.get("mimeType"),
         "drive_web_url": info.get("webViewLink"),
         "image_url": info.get("webViewLink"),
     }
@@ -1211,53 +3066,7 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
     mime = str(info.get("mimeType") or "")
     name = info.get("name") or file_id
     if mime == "video/mp4" or name.lower().endswith(".mp4"):
-        import cv2
-        stride = max(1, int((job.get("options") or {}).get("vid_stride", 30)))
-        tmp_path = None
-        scan_ids = [str(scan_id) for scan_id in job.get("scan_ids") or []]
-        last_checkpoint_count = len(scan_ids)
-        last_checkpoint_at = time.monotonic()
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp.write(payload)
-                tmp_path = tmp.name
-            capture = cv2.VideoCapture(tmp_path)
-            fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
-            frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-            sampled_total = (frame_total + stride - 1) // stride if frame_total else None
-            _update_job(job["id"], database, total_count=sampled_total)
-            frame_index = 0
-            while True:
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                if frame_index % stride == 0:
-                    encoded_ok, encoded = cv2.imencode(".jpg", frame)
-                    if encoded_ok:
-                        frame_name = f"{Path(name).stem}_frame_{frame_index:08d}.jpg"
-                        scan_id = _find_video_frame_scan(database, str(job["id"]), frame_name)
-                        if not scan_id:
-                            result = run_scan(
-                                encoded.tobytes(), frame_name, "video_frame", source_ref=file_id,
-                                batch_id=str(job["id"]), principal=principal, content_type="image/jpeg",
-                                existing_drive_metadata=existing,
-                                frame_time_seconds=(frame_index / fps if fps else None), database=database,
-                            )
-                            scan_id = str(result["scan_result_id"])
-                        if scan_id not in scan_ids:
-                            scan_ids.append(scan_id)
-                        now = time.monotonic()
-                        if len(scan_ids) - last_checkpoint_count >= 10 or now - last_checkpoint_at >= 5:
-                            _update_job(job["id"], database, processed_count=len(scan_ids), scan_ids=scan_ids)
-                            last_checkpoint_count = len(scan_ids)
-                            last_checkpoint_at = now
-                frame_index += 1
-            capture.release()
-            _update_job(job["id"], database, processed_count=len(scan_ids), total_count=sampled_total or len(scan_ids), scan_ids=scan_ids)
-            return scan_ids
-        finally:
-            if tmp_path:
-                Path(tmp_path).unlink(missing_ok=True)
+        return _process_video_drive_file(file_id, job, principal, database, existing, payload, name)
     result = run_scan(
         payload,
         name,
@@ -1273,9 +3082,19 @@ def _process_drive_file(file_id: str, job: dict, principal: Principal | None, da
 
 
 def _update_job(job_id: str, database: SupabaseExecutor, **fields) -> None:
-    database.execute(
-        lambda client: client.table(JOBS_TABLE).update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
-    )
+    payload = {**fields, "updated_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        database.execute(
+            lambda client: client.table(JOBS_TABLE).update(payload).eq("id", job_id).execute()
+        )
+    except Exception as exc:
+        if "result_summary" in payload and getattr(exc, "code", "") in {"PGRST204", "PGRST205", "42703"}:
+            payload.pop("result_summary", None)
+            database.execute(
+                lambda client: client.table(JOBS_TABLE).update(payload).eq("id", job_id).execute()
+            )
+            return
+        raise
 
 
 def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
@@ -1366,6 +3185,7 @@ def _worker_loop() -> None:
 
 @app.on_event("startup")
 def start_worker() -> None:
+    print(f"[startup] diagnostics {json.dumps(safe_startup_diagnostics(), sort_keys=True)}")
     if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and os.getenv("DISABLE_WORKER", "false").lower() != "true":
         try:
             startup_database = SupabaseExecutor()
@@ -1379,32 +3199,40 @@ def start_worker() -> None:
 
 @app.post("/api/uploads/start")
 def start_upload(payload: UploadStartInput, principal: Principal = Depends(require_scope("scan:write"))):
-    if payload.mime != "video/mp4" or payload.size_bytes <= 0:
-        raise HTTPException(status_code=400, detail="Only non-empty MP4 uploads are supported.")
+    upload_id = None
     try:
-        from google.auth.transport.requests import AuthorizedSession
-        credentials = oauth_drive_credentials()
-        session = AuthorizedSession(credentials)
-        name = safe_drive_filename(payload.filename)
-        response = session.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
-            headers={
-                "Content-Type": "application/json; charset=UTF-8",
-                "X-Upload-Content-Type": payload.mime,
-                "X-Upload-Content-Length": str(payload.size_bytes),
-            },
-            json={"name": name, "parents": [GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID]},
-            timeout=30,
+        filename, size_bytes, mime = _validate_upload_start_payload(payload)
+        name = safe_drive_filename(filename)
+        _upload_start_log(
+            "request_validated",
+            filename=filename,
+            safe_filename=name,
+            mime_type=mime,
+            size_bytes=size_bytes,
+            upload_type="video/mp4",
+            principal_kind=getattr(principal, "kind", None),
+            principal_id=getattr(principal, "id", None),
+            drive_folder_configured=bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
         )
-        response.raise_for_status()
-        upload_url = response.headers.get("Location")
-        if not upload_url:
-            raise RuntimeError("Google Drive did not return a resumable upload URL")
+        _upload_start_log("drive_resumable_init_started", filename=name, mime_type=mime, size_bytes=size_bytes, storage_operation="google_drive_resumable_upload")
+        upload_url = _create_drive_resumable_upload(name, size_bytes, mime)
         upload_id = str(uuid4())
         UPLOAD_SESSIONS[upload_id] = upload_url
-        return {"upload_id": upload_id, "filename": name, "chunk_size": 8 * 1024 * 1024}
+        _upload_start_log("drive_resumable_init_completed", upload_id=upload_id, filename=name, chunk_size=UPLOAD_CHUNK_SIZE_BYTES, storage_operation="google_drive_resumable_upload")
+        return {"upload_id": upload_id, "filename": name, "chunk_size": UPLOAD_CHUNK_SIZE_BYTES}
+    except UploadStartFailure as exc:
+        _upload_start_log("failed", upload_id=upload_id, code=exc.code, stage=exc.stage, status_code=exc.status_code, error_type=type(exc.__cause__ or exc).__name__, error=safe_error_message(exc))
+        traceback.print_exc()
+        raise _upload_start_error_response(exc) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Unable to start Google Drive upload.") from exc
+        _upload_start_log("failed", upload_id=upload_id, code="UPLOAD_START_INTERNAL_ERROR", stage="unexpected", status_code=500, error_type=type(exc).__name__, error=safe_error_message(exc))
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "UPLOAD_START_INTERNAL_ERROR", "message": "Unexpected upload-start failure.", "stage": "unexpected"},
+        ) from exc
 
 
 @app.put("/api/uploads/{upload_id}")
@@ -1676,9 +3504,9 @@ async def save_browser_detected_scan(
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
     if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+        raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+        raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)
     file_bytes = await file.read()
     if not file_bytes or len(file_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="Image must be non-empty and no larger than 10 MB.")
@@ -1730,9 +3558,9 @@ async def save_browser_verified_scan(
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
     if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser confidence threshold must be 0.32.")
+        raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
-        raise HTTPException(status_code=400, detail="Browser NMS IoU threshold must be 0.70.")
+        raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)
     if verification_outcome != "verified":
         raise HTTPException(status_code=400, detail="Browser detections must be human verified before saving.")
 
@@ -1870,7 +3698,7 @@ def create_review(decision: ReviewDecisionInput, principal: Principal = Depends(
 
 @app.get("/api/scans")
 def get_scan_history(
-    limit: int = 50,
+    limit: int = SCAN_HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
     start_date: str | None = None,
     end_date: str | None = None,
@@ -1884,82 +3712,87 @@ def get_scan_history(
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     try:
-        limit = max(1, min(int(limit), 200))
+        limit = max(1, min(int(limit), SCAN_HISTORY_MAX_LIMIT))
         offset = max(0, int(offset))
-        scan_query = supabase.table(SCAN_RESULTS_TABLE).select("*", count="exact")
-        if start_date:
-            scan_query = scan_query.gte("created_at", start_date)
-        if end_date:
-            scan_query = scan_query.lt("created_at", end_date)
-        if search:
-            scan_query = scan_query.ilike("source_name", f"%{search.strip()}%")
-        normalized_status = str(status or "").lower()
-        if normalized_status == "review_needed":
-            scan_query = scan_query.eq("human_review_required", True)
-        elif normalized_status == "rejected":
-            scan_query = scan_query.in_("overall_status", ["rejected", "quarantined"])
-        elif normalized_status == "confirmed":
-            scan_query = scan_query.eq("human_review_required", False)
+        filters = scan_history_filters(start_date, end_date, search, status)
+        normalized_status = filters["status"] or ""
         order_column = "overall_confidence" if sort == "confidence" else "created_at"
         descending = str(direction).lower() != "asc"
-        ordered_scan_query = scan_query.order(order_column, desc=descending)
         category_key = canonical_category_key(category) if category else ""
         if category and category_key == "unknown":
             return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0}}
 
         if category_key:
-            candidate_scans = []
-            candidate_offset = 0
-            while True:
-                response = scoped_query(
-                    ordered_scan_query.range(candidate_offset, candidate_offset + 199), principal
-                ).execute()
-                batch = response.data or []
-                candidate_scans.extend(batch)
-                if len(batch) < 200:
-                    break
-                candidate_offset += len(batch)
-            candidate_ids = [str(scan.get("id")) for scan in candidate_scans if scan.get("id")]
-            candidate_materials, candidate_decisions = [], []
-            for start in range(0, len(candidate_ids), 200):
-                scan_ids = candidate_ids[start:start + 200]
-                candidate_materials.extend(supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
-                candidate_decisions.extend(supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or [])
-            filtered_scans = filter_scans_by_final_category(candidate_scans, candidate_materials, candidate_decisions, category_key)
-            total = len(filtered_scans)
-            scans = filtered_scans[offset:offset + limit]
-            rejected = sum(str(scan.get("overall_status", "")).lower() in {"rejected", "quarantined"} for scan in filtered_scans)
-            needs_review = sum(bool(scan.get("human_review_required")) for scan in filtered_scans)
-            confirmed = max(0, total - rejected - needs_review)
+            def category_rpc(status_value: str | None, rpc_limit: int = limit, rpc_offset: int = offset):
+                return execute_scan_read(f"category {status_value or 'page'} query", lambda client: scoped_query(client.rpc("scan_history_page", {
+                    "p_limit": rpc_limit,
+                    "p_offset": rpc_offset,
+                    "p_start_date": filters["start_date"],
+                    "p_end_date": filters["end_date"],
+                    "p_search": filters["search"],
+                    "p_category_key": category_key,
+                    "p_status": status_value,
+                    "p_sort": "confidence" if sort == "confidence" else "timestamp",
+                    "p_direction": "asc" if not descending else "desc",
+                }), principal).execute())
+
+            def category_count(status_value: str | None) -> int:
+                rows = category_rpc(status_value, 1, 0).data or []
+                return int(rows[0].get("total_count") or 0) if rows else 0
+
+            rpc_response = category_rpc(normalized_status or None)
+            rpc_rows = rpc_response.data or []
+            scans = [row.get("scan") for row in rpc_rows if isinstance(row, dict) and row.get("scan")]
+            total = int(rpc_rows[0].get("total_count") or 0) if rpc_rows else 0
+            if normalized_status:
+                rejected = total if normalized_status == "rejected" else 0
+                needs_review = total if normalized_status == "review_needed" else 0
+                confirmed = total if normalized_status == "confirmed" else 0
+            else:
+                rejected = category_count("rejected")
+                needs_review = category_count("review_needed")
+                confirmed = max(0, total - rejected - needs_review)
         else:
-            scan_response = scoped_query(
-                ordered_scan_query.range(offset, offset + limit - 1), principal
-            ).execute()
+            def build_page_query(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("*")
+                query = apply_scan_history_filters(query, filters)
+                return scoped_query(query.order(order_column, desc=descending).range(offset, offset + limit - 1), principal).execute()
+
+            def build_count_query(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+                query = apply_scan_history_filters(query, filters)
+                return scoped_query(query, principal).execute()
+
+            scan_response = execute_scan_read("page data query", build_page_query)
             scans = scan_response.data or []
-            count_value = getattr(scan_response, "count", None)
+            count_response = execute_scan_read("count query", build_count_query)
+            count_value = getattr(count_response, "count", None)
             if count_value is None:
                 raise RuntimeError("Supabase did not return an exact scan count")
             total = int(count_value)
-        def exact_count(query):
-            response = scoped_query(query, principal).execute()
+
+        def exact_count(status_value: str) -> int:
+            def run(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
+                query = apply_scan_history_filters(query, filters, status_value)
+                return scoped_query(query, principal).execute()
+            response = execute_scan_read(f"{status_value} count query", run)
             value = getattr(response, "count", None)
             return int(value) if value is not None else 0
 
         if not category_key:
-            rejected_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-            needs_review_query = supabase.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-            for query in (rejected_query, needs_review_query):
-                if start_date:
-                    query.gte("created_at", start_date)
-                if end_date:
-                    query.lt("created_at", end_date)
-            rejected = exact_count(rejected_query.in_("overall_status", ["rejected", "quarantined"]))
-            needs_review = exact_count(needs_review_query.eq("human_review_required", True))
-            confirmed = max(0, total - rejected - needs_review)
+            if normalized_status:
+                rejected = total if normalized_status == "rejected" else 0
+                needs_review = total if normalized_status == "review_needed" else 0
+                confirmed = total if normalized_status == "confirmed" else 0
+            else:
+                rejected = exact_count("rejected")
+                needs_review = exact_count("review_needed")
+                confirmed = max(0, total - rejected - needs_review)
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
         if scan_ids:
-            materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
-            decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute().data or []
+            materials = execute_scan_read("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+            decisions = execute_scan_read("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
         else:
             materials = []
             decisions = []
@@ -1995,8 +3828,87 @@ def get_scan_history(
             },
         }
     except Exception as exc:
-        print(f"[scans] Supabase history fetch failed: {safe_error_message(exc)}")
+        if not isinstance(exc, (SupabaseTemporarilyUnavailable, RuntimeError)):
+            print(f"[scans] history response failed: {type(exc).__name__}: {safe_error_message(exc)}")
         raise HTTPException(status_code=500, detail="Unable to load scan history.") from exc
+
+
+@app.get("/api/history/export")
+def export_scan_history(
+    format: str = "excel",
+    scope: str = "audit",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    search: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
+    sort: str = "timestamp",
+    direction: str = "desc",
+    principal: Principal = Depends(require_scope("scan:read")),
+):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    export_format = str(format or "").strip().lower()
+    if export_format not in {"pdf", "excel"}:
+        raise HTTPException(status_code=400, detail="Export format must be pdf or excel.")
+    normalized_scope = "scan" if str(scope or "").strip().lower() == "scan" else "audit"
+    filters = {
+        "scope": normalized_scope,
+        "search": search.strip() if search and search.strip() else None,
+        "start_date": start_date,
+        "end_date": end_date,
+        "category": category,
+        "status": status,
+        "sort": "confidence" if sort == "confidence" else "timestamp",
+        "direction": "asc" if str(direction).lower() == "asc" else "desc",
+    }
+    try:
+        started = time.perf_counter()
+        rows = fetch_history_export_rows(
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            category=category,
+            status=status,
+            sort=filters["sort"] or "timestamp",
+            direction=filters["direction"] or "desc",
+            principal=principal,
+        )
+        print(f"[history-export] records fetched rows={len(rows)}")
+        thumbnail_started = time.perf_counter()
+        thumbnails, thumbnail_stats = fetch_history_thumbnails(rows)
+        print(
+            "[history-export] images processed "
+            f"requested={thumbnail_stats['requested']} unique={thumbnail_stats['unique']} "
+            f"cache_hits={thumbnail_stats['cache_hits']} failed={thumbnail_stats['failed']} "
+            f"duration={time.perf_counter() - thumbnail_started:.2f}s"
+        )
+        stamp = datetime.now(ANALYTICS_MALAYSIA_TZ).strftime("%Y%m%d-%H%M%S")
+        prefix = "purityloop-scan-history" if normalized_scope == "scan" else "purityloop-audit-history"
+        if export_format == "excel":
+            content = build_history_excel(rows, thumbnails)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            filename = f"{prefix}-{stamp}.xlsx"
+        else:
+            content = build_history_pdf(rows, filters, thumbnails)
+            media_type = "application/pdf"
+            filename = f"{prefix}-{stamp}.pdf"
+        print(f"[history-export] report generated format={export_format} bytes={len(content)}")
+        print(f"[history-export] {export_format} scope={normalized_scope} rows={len(rows)} duration={time.perf_counter() - started:.2f}s")
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except ImportError as exc:
+        print(f"[history-export] dependency missing: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="History export dependency is not installed.") from exc
+    except Exception as exc:
+        print(f"[history-export] failed: {type(exc).__name__}: {safe_error_message(exc)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Unable to export history.") from exc
 
 
 @app.get("/api/scans/{scan_result_id}")
@@ -2004,11 +3916,30 @@ def get_scan_result(scan_result_id: str, principal: Principal = Depends(require_
     """Return the persisted material IDs needed to review a previously loaded scan."""
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
-    scan_response = scoped_query(supabase.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute()
-    if not scan_response.data:
-        raise HTTPException(status_code=404, detail="Scan result was not found.")
-    materials = supabase.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
-    decisions = supabase.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute().data or []
+    try:
+        UUID(scan_result_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Scan result was not found.") from exc
+    try:
+        scan_response = execute_scan_read(
+            "selected scan query",
+            lambda client: scoped_query(client.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_result_id), principal).execute(),
+        )
+        if not scan_response.data:
+            raise HTTPException(status_code=404, detail="Scan result was not found.")
+        materials = execute_scan_read(
+            "selected scan materials query",
+            lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute(),
+        ).data or []
+        decisions = execute_scan_read(
+            "selected scan decisions query",
+            lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").eq("scan_result_id", scan_result_id).execute(),
+        ).data or []
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[scans] selected scan query failed for {scan_result_id[:8]}…: {type(exc).__name__}: {safe_error_message(exc)}")
+        raise HTTPException(status_code=500, detail="Unable to load selected scan.") from exc
     latest_decisions = {}
     for item in sorted(decisions, key=lambda entry: str(entry.get("created_at", ""))):
         latest_decisions[str(item.get("detected_material_id", ""))] = item

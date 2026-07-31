@@ -40,9 +40,11 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
     candidates.push({ classId, className: MODEL_CONFIG.classes[classId], confidence, ...box });
   }
 
+  const reviewDetections = classAwareNms(candidates, MODEL_CONFIG.nmsIouThreshold);
   return {
     rawCandidates: CANDIDATE_COUNT,
     confidenceCandidates: candidates.length,
-    detections: classAwareNms(candidates, MODEL_CONFIG.nmsIouThreshold)
+    detections: reviewDetections.filter(detection => detection.className !== "general_trash"),
+    reviewDetections
   };
 }

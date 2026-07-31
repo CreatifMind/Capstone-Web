@@ -2,6 +2,7 @@ fastapi
 uvicorn
 python-multipart
 python-dotenv
+httpx
 supabase
 ultralytics
 opencv-python-headless
@@ -11,3 +12,5 @@ google-api-python-client
 google-auth
 google-auth-httplib2
 google-auth-oauthlib
+openpyxl
+reportlab
