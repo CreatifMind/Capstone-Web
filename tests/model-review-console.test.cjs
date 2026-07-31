@@ -47,4 +47,9 @@ assert.match(notificationsRoute, /modelReviewContext\(\["project_manager"\]\)/);
 assert.match(notificationsRoute, /from\("model_review_notifications"\)/);
 assert.match(notificationsRoute, /TEAMS = new Set\(\["model", "web"\]\)/);
 
+const settingsRoute = fs.readFileSync("app/api/model-review/settings/route.ts", "utf8");
+assert.match(settingsRoute, /Only model_team can edit the confidence threshold/);
+assert.match(settingsRoute, /Only web_team or project_manager can edit the retrain threshold/);
+assert.match(settingsRoute, /from\("model_review_settings"\)/);
+
 console.log("model review console tests passed");
