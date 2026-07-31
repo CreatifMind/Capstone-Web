@@ -40,3 +40,9 @@ test("MP4 upload flow surfaces structured backend errors", () => {
   assert.match(script, /plApiErrorMessage\(ingestPayload, "Unable to queue MP4 processing\."\)/);
   assert.match(script, /plApiErrorMessage\(job, "Unable to read MP4 job status\."\)/);
 });
+
+test("image upload uses browser ONNX instead of backend PyTorch fallback", () => {
+  assert.match(script, /Browser ONNX is required for image detection/);
+  assert.doesNotMatch(script, /Backend PyTorch — best\.pt/);
+  assert.match(script, /Browser ONNX — best\.onnx/);
+});

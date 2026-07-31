@@ -118,6 +118,7 @@ ANALYTICS_MATERIAL_ESTIMATES = {
 BROWSER_CONFIDENCE_THRESHOLD = 0.32
 BROWSER_NMS_IOU_THRESHOLD = 0.70
 BROWSER_MODEL_NAME = "best.onnx"
+BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
 BROWSER_MODEL_VERSION = "v3_ffremask_9cls"
 BROWSER_INFERENCE_ENGINE = "browser-onnx"
 BROWSER_MODEL_CLASSES = (
@@ -614,9 +615,16 @@ def get_model():
 
 
 def safe_startup_diagnostics() -> dict:
+    browser_model_available = BROWSER_MODEL_PATH.exists()
     return {
-        "model_path": str(MODEL_PATH),
-        "model_available": MODEL_PATH.exists(),
+        "model_path": str(BROWSER_MODEL_PATH),
+        "model_name": BROWSER_MODEL_NAME,
+        "model_engine": BROWSER_INFERENCE_ENGINE,
+        "model_available": browser_model_available,
+        "browser_model_path": str(BROWSER_MODEL_PATH),
+        "browser_model_available": browser_model_available,
+        "backend_pytorch_model_path": str(MODEL_PATH),
+        "backend_pytorch_model_available": MODEL_PATH.exists(),
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY),
         "storage_bucket": PREVIEW_BUCKET,
         "storage_private": os.getenv("SUPABASE_STORAGE_PRIVATE", "false").lower() == "true",

@@ -62,6 +62,10 @@ function plApiBaseUrl() {
   return String(plConfig().apiBaseUrl || "").replace(/\/$/, "");
 }
 
+function plBrowserModelUrl() {
+  return "/models/purityloop/best.onnx";
+}
+
 function plApiErrorMessage(payload, fallback) {
   const detail = payload?.detail ?? payload?.error;
   if (!detail) return fallback;
@@ -2500,11 +2504,7 @@ function initUploadPage() {
         } else if (shouldUseBrowserOnnxForItem(item)) {
           await runBrowserDetection(item);
         } else {
-          item.inferenceLabel = "Backend PyTorch — best.pt";
-          renderQueue();
-          const scan = await plRunBackendPrediction(item.file, { showUploadProgress: false });
-          item.scanId = scan.id;
-          item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+          throw new Error("Browser ONNX is required for image detection. Enable browser ONNX for this upload source.");
         }
       } catch (error) {
         item.status = "failed";
@@ -4487,10 +4487,15 @@ async function initSettingsPage() {
   renderTheme();
   window.addEventListener("purityloop:theme-change", renderTheme);
   window.addEventListener("purityloop:page-cleanup", () => window.removeEventListener("purityloop:theme-change", renderTheme), { once: true });
+  try {
+    const response = await fetch(plBrowserModelUrl(), { method: "HEAD" });
+    if (modelStatus) modelStatus.textContent = response.ok ? "Browser ONNX available" : "Browser ONNX unavailable";
+  } catch {
+    if (modelStatus) modelStatus.textContent = "Browser ONNX unavailable";
+  }
   const apiBase = plApiBaseUrl();
   if (!apiBase) {
     if (backendStatus) backendStatus.textContent = "Backend unavailable";
-    if (modelStatus) modelStatus.textContent = "Status unavailable";
     return;
   }
   try {
@@ -4498,10 +4503,8 @@ async function initSettingsPage() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) throw new Error("Health check failed");
     if (backendStatus) backendStatus.textContent = "Connected";
-    if (modelStatus) modelStatus.textContent = payload.model_available ? "YOLOv8 available" : "YOLOv8 unavailable";
   } catch {
     if (backendStatus) backendStatus.textContent = "Backend unavailable";
-    if (modelStatus) modelStatus.textContent = "Status unavailable";
   }
 }
 

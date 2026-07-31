@@ -1,6 +1,6 @@
 # PurityLoop AI Backend
 
-FastAPI backend for PurityLoop AI image classification. It accepts an uploaded waste image, runs YOLO inference with the bundled model, summarizes contamination risk, and stores scan results in Supabase.
+FastAPI backend for PurityLoop AI persistence and video-processing support. Browser image inference uses the ONNX model served by the frontend at `/models/purityloop/best.onnx`; verified detections are then saved through this backend.
 
 ## Files
 
@@ -10,7 +10,7 @@ backend/
 ├── requirements.txt
 ├── .env.example
 └── models/
-    └── best.pt
+    └── best.pt  # legacy PyTorch backend model, not used by browser image inference
 ```
 
 ## Requirements
@@ -18,7 +18,7 @@ backend/
 - Python 3.10 or newer
 - FFmpeg and FFprobe available on `PATH` for browser-compatible annotated MP4 output
 - Supabase project with the expected scan result tables
-- YOLO model file at `backend/models/best.pt`
+- Browser ONNX model served by the frontend at `public/models/purityloop/best.onnx`
 
 Install Python dependencies:
 
@@ -42,7 +42,6 @@ Required values:
 ```text
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-MODEL_PATH=backend/models/best.pt
 ALLOWED_ORIGINS=http://localhost:3000,https://purityloop-ai.vercel.app
 SUPABASE_STORAGE_BUCKET=mock_uploaded_images
 SUPABASE_STORAGE_PRIVATE=false
@@ -78,26 +77,27 @@ Health check:
 curl http://127.0.0.1:8000/api/health
 ```
 
-The health response includes safe diagnostics for model availability, FFmpeg/FFprobe availability, Supabase configuration, and the storage bucket. It does not print secret values.
+The health response includes safe diagnostics for browser ONNX model availability, FFmpeg/FFprobe availability, Supabase configuration, and the storage bucket. It does not print secret values.
 
 ## API
 
 ### `GET /api/health`
 
-Returns backend status and the resolved model path.
+Returns backend status and the resolved browser ONNX model path.
 
 Example response:
 
 ```json
 {
   "ok": true,
-  "model_path": "/absolute/path/backend/models/best.pt"
+  "model_engine": "browser-onnx",
+  "model_path": "/absolute/path/public/models/purityloop/best.onnx"
 }
 ```
 
-### `POST /api/predict`
+### `POST /api/predict` legacy endpoint
 
-Accepts one image upload using multipart form data.
+Accepts one image upload using multipart form data for the legacy PyTorch backend path. The current web upload flow uses browser ONNX detection and saves verified detections through `/api/scans/browser-detected`.
 
 Example:
 
@@ -159,7 +159,7 @@ SUPABASE_STORAGE_PRIVATE
 VIDEO_WORK_ROOT
 DEFAULT_VIDEO_FPS
 MAX_VIDEO_UPLOAD_BYTES
-MODEL_PATH
+MODEL_PATH only if legacy `/api/predict` or backend PyTorch video inference is intentionally enabled
 MODEL_VERSION
 ALLOWED_ORIGINS
 GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID
@@ -232,4 +232,4 @@ supabase/schema.sql
 - CORS is configured from `ALLOWED_ORIGINS`.
 - Only image uploads are accepted by `/api/predict`.
 - The YOLO model is loaded lazily on the first prediction request.
-- If `backend/models/best.pt` is missing, prediction returns a server error.
+- Browser image inference does not require `backend/models/best.pt`; it requires `/models/purityloop/best.onnx` to be served by the frontend.
