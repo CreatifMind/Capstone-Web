@@ -31,4 +31,10 @@ assert.match(flagsRoute, /from\("model_review_flags"\)/);
 assert.match(flagsRoute, /FLAG_TYPES = new Set\(\["fp", "fn"\]\)/);
 assert.match(flagsRoute, /is\("resolved_at", null\)/);
 
+const retrainRoute = fs.readFileSync("app/api/model-review/retrain/route.ts", "utf8");
+assert.match(retrainRoute, /modelReviewContext\(\["model_team"\]\)/);
+assert.match(retrainRoute, /modelReviewContext\(\["web_team"\]\)/);
+assert.match(retrainRoute, /Not enough flagged false signals to trigger a retrain yet/);
+assert.match(retrainRoute, /A retrain is already in progress/);
+
 console.log("model review console tests passed");
