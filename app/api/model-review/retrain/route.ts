@@ -57,8 +57,13 @@ export async function POST() {
     .from("model_review_retrain_runs")
     .select("id", { count: "exact", head: true })
     .in("status", ["queued", "training"]);
-  if (activeError) return failure("Unable to check retrain status.", 500);
-  if ((activeCount || 0) > 0) return failure("A retrain is already in progress.", 409);
+  const { count: pendingCompleteCount, error: pendingCompleteError } = await service
+    .from("model_review_retrain_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "complete")
+    .eq("integrated", false);
+  if (activeError || pendingCompleteError) return failure("Unable to check retrain status.", 500);
+  if (((activeCount || 0) + (pendingCompleteCount || 0)) > 0) return failure("A retrain is already in progress.", 409);
 
   const { data: settings, error: settingsError } = await service.from("model_review_settings").select("retrain_threshold").eq("id", true).single();
   if (settingsError || !settings) return failure("Unable to load retrain threshold.", 500);
