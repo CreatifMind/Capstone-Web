@@ -233,11 +233,11 @@ Created and verified:
 | Role | Email | Status |
 | --- | --- | --- |
 | `operator` | `dummy.operator@example.com` | active |
-| `team_lead` | `dummy.team.lead@example.com` | active |
-| `operations_manager` | `dummy.operations.manager@example.com` | active |
-| `model_team` | `dummy.model.team@example.com` | active |
-| `project_manager` | `dummy.project.manager@example.com` | active |
-| `web_team` | `dummy.web.team@example.com` | active |
+| `operator` | `dummy.team.lead@example.com` | active |
+| `plant_manager` | `dummy.operations.manager@example.com` | active |
+| `development_team` | `dummy.model.team@example.com` | active |
+| `development_team` | `dummy.project.manager@example.com` | active |
+| `development_team` | `dummy.web.team@example.com` | active |
 | `admin` | `dummy.admin@example.com` | active |
 
 Verification:

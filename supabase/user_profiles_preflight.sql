@@ -4,7 +4,7 @@ with issues as (
   union all
   select 'duplicate_normalized_email', min(id::text) from public.user_profiles where nullif(trim(coalesce(email, '')), '') is not null group by lower(trim(email)) having count(*) > 1
   union all
-  select 'unknown_role', id::text from public.user_profiles where lower(regexp_replace(trim(coalesce(role, '')), '\\s+', '_', 'g')) not in ('operator', 'team_lead', 'operations_manager', 'model_team', 'project_manager', 'web_team', 'admin')
+  select 'unknown_role', id::text from public.user_profiles where lower(regexp_replace(trim(coalesce(role, '')), '\\s+', '_', 'g')) not in ('operator', 'development_team', 'admin', 'plant_manager')
   union all
   select 'duplicate_auth_email', min(id::text) from auth.users where email is not null group by lower(trim(email)) having count(*) > 1
 )

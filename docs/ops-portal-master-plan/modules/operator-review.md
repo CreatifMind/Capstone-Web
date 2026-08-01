@@ -1,8 +1,8 @@
-# Team Lead Module
+# Operator Module
 
 ## Purpose
 
-Team Lead protects label quality and queue SLA. It turns Operator suggestions into validated operational labels.
+Operator protects label quality and queue SLA. It turns Operator suggestions into validated operational labels.
 
 ## Primary Task
 
@@ -10,7 +10,7 @@ Resolve urgent work first, then validate pending suggestions with enough context
 
 ## Inputs
 
-| Input | Why Team Lead needs it |
+| Input | Why Operator needs it |
 | --- | --- |
 | Operator submission | Review suggested label and evidence |
 | Original model output | Compare model error to human judgment |
@@ -46,7 +46,7 @@ System selects random sample: 10 percent, minimum three. One failed sample stops
 
 ## Queue Health
 
-Team Lead sees team-only data:
+Operator sees team-only data:
 
 - Assigned, started, unstarted, returned, and overdue count.
 - Critical and High SLA countdown.
@@ -54,13 +54,13 @@ Team Lead sees team-only data:
 - Repeated correction pattern.
 - Training need summary.
 
-Team Lead does not see whole-operation recovery weighting or make model decisions.
+Operator does not see whole-operation recovery weighting or make model decisions.
 
 ## Handoffs
 
 - Approved label becomes trusted HITL data.
-- Critical final label escalates to Operations Manager where required.
-- Repeated pattern goes to Operations Manager as operational signal, not direct model-class request.
+- Critical final label escalates to Plant Manager where required.
+- Repeated pattern goes to Plant Manager as operational signal, not direct model-class request.
 - Returned case goes back to suitable Operator with preserved audit trail.
 
 ## Permissions
@@ -83,4 +83,4 @@ Team Lead does not see whole-operation recovery weighting or make model decision
 
 - Team-specific SLA targets after real workload study.
 - Exact escalation list for Critical case.
-- Team Lead authority boundaries for battery-trained reassignment.
+- Operator authority boundaries for battery-trained reassignment.

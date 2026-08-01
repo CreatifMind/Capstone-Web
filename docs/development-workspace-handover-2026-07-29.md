@@ -4,12 +4,12 @@ Generated: 2026-07-29, Malaysia time.
 
 ## Purpose
 
-This handover is for a teammate to pick up the next workspace: a role-gated Model Improvement workspace for the Model Team and Web Team.
+This handover is for a teammate to pick up the next workspace: a role-gated Model Improvement workspace for the Development Team and Development Team.
 
 The workspace should only appear for registered Gmail accounts whose `user_profiles.role` is either:
 
-- `model_team`
-- `web_team`
+- `development_team`
+- `development_team`
 
 The account must also be active, linked to Supabase Auth, and not soft-deleted.
 
@@ -34,11 +34,11 @@ Completed before this handover:
 - Logout now clears session and redirects to `/login`.
 - Supported roles are centralized in `lib/admin.ts`:
   - `operator`
-  - `team_lead`
-  - `operations_manager`
-  - `model_team`
-  - `project_manager`
-  - `web_team`
+  - `operator`
+  - `plant_manager`
+  - `development_team`
+  - `development_team`
+  - `development_team`
   - `admin`
 - Existing non-admin authenticated users currently route into the operational app, mainly `/upload`.
 - Browser ONNX single-image inference is already integrated through:
@@ -58,14 +58,14 @@ Current auth middleware behavior:
 - other active roles are redirected to `/upload` when they hit `/login` or `/`.
 - `/admin/*` is only for admins.
 
-This means the new Model Improvement workspace must add explicit route handling for `model_team` and `web_team`. Do not rely on the current default `/upload` redirect.
+This means the new Model Improvement workspace must add explicit route handling for `development_team` and `development_team`. Do not rely on the current default `/upload` redirect.
 
 ## Required Workspace
 
 Build a new workspace for model improvement work. Suggested route:
 
 ```text
-/model-improvement
+/development
 ```
 
 Visibility/access rule:
@@ -74,7 +74,7 @@ Visibility/access rule:
 - require `deleted_at IS NULL`
 - require `auth.users.id = user_profiles.auth_user_id`
 - require Gmail address if the product rule is literal Gmail-only
-- allow only `model_team` and `web_team`
+- allow only `development_team` and `development_team`
 - reject all other roles
 
 Suggested helper:
@@ -83,20 +83,20 @@ Suggested helper:
 export function canAccessModelImprovement(profile: UserProfile) {
   return profile.status === "active" &&
     !profile.deleted_at &&
-    ["model_team", "web_team"].includes(profile.role) &&
+    ["development_team", "development_team"].includes(profile.role) &&
     profile.email.toLowerCase().endsWith("@gmail.com");
 }
 ```
 
 If Gmail-only means "normal registered email account" instead of literal `@gmail.com`, remove the domain check and keep Supabase Auth + profile linkage as the source of truth.
 
-## Model Team Role Scope
+## Development Team Role Scope
 
-Model Team workspace should help them:
+Development Team workspace should help them:
 
 - review assigned case evidence
 - inspect original image, model version, predicted class, confidence, and boxes
-- compare operator/team-lead correction
+- compare operator/operator-review correction
 - mark examples usable or unusable with reason
 - identify failure pattern:
   - small object
@@ -109,20 +109,20 @@ Model Team workspace should help them:
 - write RCA hypothesis
 - state next evidence needed
 - set dataset readiness recommendation
-- prepare technical model handover to Web Team
+- prepare technical model handover to Development Team
 
-Do not let Model Team:
+Do not let Development Team:
 
 - change live labels directly
 - approve business release
 - deploy to operations
 - browse global evidence without assignment
 
-Source doc: `docs/ops-portal-master-plan/modules/model-team.md`.
+Source doc: `docs/ops-portal-master-plan/modules/development-model.md`.
 
-## Web Team Role Scope
+## Development Team Role Scope
 
-Web Team workspace should help them:
+Development Team workspace should help them:
 
 - receive approved model handover
 - verify exact model artifact and hash
@@ -134,14 +134,14 @@ Web Team workspace should help them:
 - record rollback target
 - report deployment readiness
 
-Do not let Web Team:
+Do not let Development Team:
 
 - change class order
 - silently replace model contract
-- change threshold or NMS without Model Team handover
+- change threshold or NMS without Development Team handover
 - display `general_trash` as a confident live result
 
-Source doc: `docs/ops-portal-master-plan/modules/web-team.md`.
+Source doc: `docs/ops-portal-master-plan/modules/development-integration.md`.
 
 ## Current Model Contract
 
@@ -158,20 +158,20 @@ Current approved browser model contract:
 - NMS IoU: `0.7`
 - source of truth: `docs/model-handover/MODEL_FREEZE.md`
 
-Do not change these values unless Model Team sends a new approved handover.
+Do not change these values unless Development Team sends a new approved handover.
 
 ## Suggested Implementation Plan
 
 1. Add shared role-access helper for non-admin workspaces.
-2. Add middleware route rule for `/model-improvement`.
-3. Add `app/model-improvement/page.tsx`.
-4. Add navigation entry only for `model_team` and `web_team`.
+2. Add middleware route rule for `/development`.
+3. Add `app/development/page.tsx`.
+4. Add navigation entry only for `development_team` and `development_team`.
 5. Split UI by role:
-   - `model_team`: RCA, evidence quality, dataset readiness, release handover draft
-   - `web_team`: model contract checklist, integration checklist, rollback readiness
+   - `development_team`: RCA, evidence quality, dataset readiness, release handover draft
+   - `development_team`: model contract checklist, integration checklist, rollback readiness
 6. Store status data only after schema decision is confirmed.
 7. Add minimal tests for access rules and route redirects.
-8. Run local browser smoke test with model-team and web-team accounts.
+8. Run local browser smoke test with development-model and development-integration accounts.
 
 ## Suggested First UI Version
 
@@ -197,10 +197,10 @@ git diff --check
 
 Manual checks:
 
-- unauthenticated `/model-improvement` redirects to `/login`
-- active `model_team` Gmail user can open `/model-improvement`
-- active `web_team` Gmail user can open `/model-improvement`
-- active `operator` cannot open `/model-improvement`
+- unauthenticated `/development` redirects to `/login`
+- active `development_team` Gmail user can open `/development`
+- active `development_team` Gmail user can open `/development`
+- active `operator` cannot open `/development`
 - active `admin` behavior is still `/admin/users`
 - inactive user redirects to `/login?reason=inactive`
 - `/upload`, `/review`, `/analytics`, and admin user management still work
@@ -217,9 +217,9 @@ python3 -m pytest backend/test_scan_history_contract.py backend/test_browser_ver
 After teammate builds the first Model Improvement workspace:
 
 - decide whether workspace data needs new Supabase tables or can start as existing scan/review metadata
-- design assigned-case lifecycle for Model Team
-- add Web Team release checklist persistence
-- define export format for validated model-improvement examples
+- design assigned-case lifecycle for Development Team
+- add Development Team release checklist persistence
+- define export format for validated model-development examples
 - define final retrain thresholds by class
 - define model acceptance criteria before release
 - add hosted verification after Vercel environment is fixed
@@ -247,16 +247,16 @@ After teammate builds the first Model Improvement workspace:
 - `components/MobileNav.tsx`
 - `docs/session-progress-2026-07-28.md`
 - `docs/model-handover/MODEL_FREEZE.md`
-- `docs/model-handover/WEB_TEAM_HANDOVER.md`
-- `docs/ops-portal-master-plan/modules/model-team.md`
-- `docs/ops-portal-master-plan/modules/web-team.md`
+- `docs/model-handover/DEVELOPMENT_HANDOVER.md`
+- `docs/ops-portal-master-plan/modules/development-model.md`
+- `docs/ops-portal-master-plan/modules/development-integration.md`
 
 ## Suggested Prompt For Teammate
 
 ```text
-Please build the PurityLoop Model Improvement workspace from docs/model-improvement-workspace-handover-2026-07-29.md.
+Please build the PurityLoop Model Improvement workspace from docs/development-workspace-handover-2026-07-29.md.
 
-Keep the first version minimal. Add a protected /model-improvement route visible only to active registered Gmail users whose user_profiles.role is model_team or web_team. Reuse existing Supabase Auth/profile logic. Do not change the model contract, class order, threshold, NMS, backend FastAPI flow, or Supabase table names unless required and explained.
+Keep the first version minimal. Add a protected /development route visible only to active registered Gmail users whose user_profiles.role is development_team or development_team. Reuse existing Supabase Auth/profile logic. Do not change the model contract, class order, threshold, NMS, backend FastAPI flow, or Supabase table names unless required and explained.
 
-Verify with pnpm exec tsc --noEmit, git diff --check, and manual login checks for model_team, web_team, operator, admin, inactive, and unauthenticated users.
+Verify with pnpm exec tsc --noEmit, git diff --check, and manual login checks for development_team, development_team, operator, admin, inactive, and unauthenticated users.
 ```

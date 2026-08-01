@@ -39,7 +39,7 @@ export async function GET() {
 }
 
 export async function POST() {
-  const checked = await modelReviewContext(["model_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
 
@@ -90,7 +90,7 @@ export async function POST() {
 }
 
 export async function PATCH(request: Request) {
-  const checked = await modelReviewContext(["web_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;

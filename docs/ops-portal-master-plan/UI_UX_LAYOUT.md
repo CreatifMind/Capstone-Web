@@ -45,7 +45,7 @@ Rules:
 
 ## Operator: My Review Queue
 
-Goal: submit one complete image suggestion for Team Lead validation.
+Goal: submit one complete image suggestion for Operator validation.
 
 ```text
 +-----------------------+-----------------------------------------------+
@@ -75,7 +75,7 @@ Behaviour:
 - Critical safe-handling acknowledgement appears before submission.
 - After save, next auto-assigned case opens. Empty state says no assigned reviews.
 
-## Team Lead: Approval and SLA Queue
+## Operator: Approval and SLA Queue
 
 Goal: finalize labels and protect queue health.
 
@@ -99,9 +99,9 @@ Behaviour:
 - Critical and SLA-breach work precedes normal approvals.
 - Direct correction requires reason and retains original suggestion.
 - Batch approval only for matching low-risk cases. System samples 10 percent, minimum three. One failed sample stops batch action.
-- Team Lead can reassign case, but cannot change policy or model settings.
+- Operator can reassign case, but cannot change policy or model settings.
 
-## Operations Manager: Operations Health
+## Plant Manager: Operations Health
 
 Goal: decide where operational risk needs action.
 
@@ -128,7 +128,7 @@ Behaviour:
 - Manager sees team-level, not individual Operator performance by default.
 - Manager can approve operations policy, collection priority, Critical labels, and live release.
 
-## Model Team: RCA Case Workspace
+## Development Team: RCA Case Workspace
 
 Goal: explain failure and confirm data or model readiness.
 
@@ -148,10 +148,10 @@ Behaviour:
 
 - Only assigned cases expose original evidence.
 - Individual training example can be marked unusable with reason, never silently deleted.
-- Model Team can request targeted collection. Operations Manager approves workload priority.
+- Development Team can request targeted collection. Plant Manager approves workload priority.
 - No live label, policy, or release controls.
 
-## Project Manager: Coordination Board
+## Development Team: Coordination Board
 
 Goal: remove blocked work and keep teams aligned.
 
@@ -160,8 +160,8 @@ Goal: remove blocked work and keep teams aligned.
 | BLOCKED WORK                                                  |
 +--------------------+-------------+------------+-------------+
 | Case               | Owner       | Blocker    | Next action |
-| PL-0248            | Model Team  | More data  | 30 Jul      |
-| PL-0231            | Web Team    | Handover   | 29 Jul      |
+| PL-0248            | Development Team  | More data  | 30 Jul      |
+| PL-0231            | Development Team    | Handover   | 29 Jul      |
 +--------------------+-------------+------------+-------------+
 | [ Send reminder ]   Timeline   Decision history   Linked cases |
 +---------------------------------------------------------------+
@@ -171,7 +171,7 @@ Behaviour:
 
 - Read-only workflow status by default.
 - Manual reminder requires recipient, reason, and due date.
-- No raw evidence unless Operations Manager grants case access.
+- No raw evidence unless Plant Manager grants case access.
 
 ## System Administrator: Access Control
 
@@ -192,7 +192,7 @@ Goal: keep role and evidence access safe.
 
 Behaviour:
 
-- Default Model Team access is read-only, case-scoped, and expires after evaluation plus 30 days.
+- Default Development Team access is read-only, case-scoped, and expires after evaluation plus 30 days.
 - 90 days is maximum without explicit extension.
 - Every evidence view, export, download, role switch, and access change is logged.
 

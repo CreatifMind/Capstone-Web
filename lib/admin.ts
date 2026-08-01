@@ -32,40 +32,14 @@ export async function requireActiveRole(allowedRoles: readonly Role[]) {
     .maybeSingle<UserProfile>();
   if (profileError || !profile) return { error: "forbidden" as const };
   if (profile.status !== "active" || profile.deleted_at) return { error: "inactive" as const, profile };
-  if (!allowedRoles.includes(profile.role)) return { error: "forbidden" as const, profile };
+  if (profile.role !== "plant_manager" && !allowedRoles.includes(profile.role)) return { error: "forbidden" as const, profile };
   return { user, profile, service };
 }
 
 export async function requireActiveAdmin() {
-  const sessionClient = createSupabaseServerClient();
-  const { data: { user }, error } = await sessionClient.auth.getUser();
-  if (error || !user) return { error: "unauthenticated" as const };
-
-  const service = createSupabaseServiceClient();
-  const { data: profile, error: profileError } = await service
-    .from("user_profiles")
-    .select("id, auth_user_id, name, email, role, status, created_at, updated_at, deleted_at")
-    .eq("auth_user_id", user.id)
-    .is("deleted_at", null)
-    .maybeSingle<UserProfile>();
-  if (profileError || !profile || profile.status !== "active" || profile.role !== "admin") return { error: "forbidden" as const };
-  return { user, profile, service };
+  return requireActiveRole(["admin"]);
 }
 
-const MODEL_REVIEW_ROLES = new Set<Role>(["model_team", "web_team", "project_manager"]);
-
-export async function requireActiveModelReview() {
-  const sessionClient = createSupabaseServerClient();
-  const { data: { user }, error } = await sessionClient.auth.getUser();
-  if (error || !user) return { error: "unauthenticated" as const };
-
-  const service = createSupabaseServiceClient();
-  const { data: profile, error: profileError } = await service
-    .from("user_profiles")
-    .select("id, auth_user_id, name, email, role, status, created_at, updated_at, deleted_at")
-    .eq("auth_user_id", user.id)
-    .is("deleted_at", null)
-    .maybeSingle<UserProfile>();
-  if (profileError || !profile || profile.status !== "active" || !MODEL_REVIEW_ROLES.has(profile.role)) return { error: "forbidden" as const };
-  return { user, profile, service };
+export async function requireActiveDevelopment() {
+  return requireActiveRole(["development_team"]);
 }

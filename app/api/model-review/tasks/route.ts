@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { failure, modelReviewContext } from "@/lib/model-review/context";
 
 const STATUSES = new Set(["todo", "in_progress", "blocked", "done"]);
-const ASSIGNEE_ROLES = new Set(["model_team", "web_team", "project_manager"]);
+const ASSIGNEE_ROLES = new Set(["development_team", "plant_manager"]);
 
 export async function GET() {
   const checked = await modelReviewContext();
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;

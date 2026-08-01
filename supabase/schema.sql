@@ -5,7 +5,7 @@ create table if not exists user_profiles (
   auth_user_id uuid unique references auth.users(id) on delete set null,
   name text not null,
   email text not null,
-  role text not null default 'operator' check (role in ('operator', 'team_lead', 'operations_manager', 'model_team', 'project_manager', 'web_team', 'admin')),
+  role text not null default 'operator' check (role in ('operator', 'development_team', 'admin', 'plant_manager')),
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),

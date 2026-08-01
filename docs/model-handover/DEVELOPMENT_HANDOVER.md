@@ -1,9 +1,9 @@
-# Web team handover — in-browser waste detection model
+# Development team handover — in-browser waste detection model
 
 **22 July 2026. This supersedes every version of this document you received before today** —
 if your copy does not have a §0, it is stale and §4 in particular has since been reversed.
 
-Also supersedes the serving sections of `WEB_TEAM_SPEC.md` (§3 of that document describes a
+Also supersedes the serving sections of `DEVELOPMENT_SPEC.md` (§3 of that document describes a
 FastAPI service that was never actually built — ignore it).
 
 The model runs **in the user's browser** via ONNX Runtime Web. No server, no GPU, no hosting.

@@ -1,4 +1,5 @@
-export type ModelReviewRole = "model_team" | "web_team" | "project_manager";
+export type DevelopmentRole = "development_team" | "plant_manager";
+export type DevelopmentAssigneeRole = DevelopmentRole;
 
 export type FlagRow = {
   id: string;
@@ -30,7 +31,7 @@ export type RetrainRun = {
 export type TaskRow = {
   id: string;
   title: string;
-  assignee_role: ModelReviewRole;
+  assignee_role: DevelopmentAssigneeRole;
   status: "todo" | "in_progress" | "blocked" | "done";
   url: string;
   created_by_email: string;
@@ -40,7 +41,7 @@ export type TaskRow = {
 
 export type NotificationRow = {
   id: string;
-  team: "model" | "web";
+  team: "development";
   notified_by_email: string;
   created_at: string;
 };

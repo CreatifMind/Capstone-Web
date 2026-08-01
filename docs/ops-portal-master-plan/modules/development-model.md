@@ -1,21 +1,21 @@
-# Model Team Module
+# Development Team Module
 
 ## Purpose
 
-Model Team performs RCA, protects training-data quality, confirms retrain readiness, and controls model-related technical handover.
+Development Team performs RCA, protects training-data quality, confirms retrain readiness, and controls model-related technical handover.
 
 ## Primary Task
 
-Turn validated field evidence into explained model-improvement decision.
+Turn validated field evidence into explained model-development decision.
 
 ## Case Evidence
 
-Model Team sees only assigned cases. Each case should include:
+Development Team sees only assigned cases. Each case should include:
 
 - Original image and source reference.
 - Model version, model class ID, class name, confidence, and original boxes.
 - Operator suggestion, edited or missed-object boxes, false-positive state, and cause.
-- Team Lead final label and correction reason.
+- Operator final label and correction reason.
 - Urgency, recovery-risk summary, category pattern, and timeline.
 - Access scope and expiry.
 
@@ -32,7 +32,7 @@ Model Team sees only assigned cases. Each case should include:
 
 ## Dataset Readiness
 
-Retraining must not begin from simple label total. Model Team sets technical recommendation for:
+Retraining must not begin from simple label total. Development Team sets technical recommendation for:
 
 - Minimum validated examples per affected class.
 - Image variety across batch, lighting, scale, and source.
@@ -41,22 +41,22 @@ Retraining must not begin from simple label total. Model Team sets technical rec
 - Train and unseen validation split.
 - Comparison metrics before and after release.
 
-Operations Manager approves collection workload, not technical standard.
+Plant Manager approves collection workload, not technical standard.
 
 ## Candidate Class Workflow
 
-Operations proposes new candidate based on sorting problem. Model Team returns one decision:
+Operations proposes new candidate based on sorting problem. Development Team returns one decision:
 
 - Accept for future model work.
 - Merge with existing candidate.
 - Defer until evidence target reached.
 - Reject with plain-language reason.
 
-Candidate remains staging metadata. It becomes live class only after new model validates and Operations Manager approves release.
+Candidate remains staging metadata. It becomes live class only after new model validates and Plant Manager approves release.
 
 ## Technical Handover
 
-Model Team sends Web Team approved release contract directly. PM and Operations Manager are copied. Handover must state model artifact hash, class IDs, preprocessing, output handling, thresholds, NMS, general-trash serving rule, validation result, known limits, release version, and rollback version.
+Development Team sends Development Team approved release contract directly. PM and Plant Manager are copied. Handover must state model artifact hash, class IDs, preprocessing, output handling, thresholds, NMS, general-trash serving rule, validation result, known limits, release version, and rollback version.
 
 ## Permissions
 

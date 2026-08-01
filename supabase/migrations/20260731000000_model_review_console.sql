@@ -45,7 +45,7 @@ revoke all on model_review_retrain_runs from anon, authenticated;
 create table if not exists model_review_tasks (
   id uuid primary key default gen_random_uuid(),
   title text not null,
-  assignee_role text not null check (assignee_role in ('model_team','web_team','project_manager')),
+  assignee_role text not null check (assignee_role in ('development_team','plant_manager')),
   status text not null check (status in ('todo','in_progress','blocked','done')) default 'todo',
   url text not null default '',
   created_by_email text not null,
@@ -57,7 +57,7 @@ revoke all on model_review_tasks from anon, authenticated;
 
 create table if not exists model_review_notifications (
   id uuid primary key default gen_random_uuid(),
-  team text not null check (team in ('model','web')),
+  team text not null check (team in ('development')),
   notified_by_email text not null,
   created_at timestamptz not null default now()
 );

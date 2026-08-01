@@ -18,13 +18,13 @@ Give each person only access needed for active job and prove who accessed sensit
 
 ## Case-Scoped Evidence Access
 
-Model Team receives read-only access to assigned feedback case only. Original images, model output, and HITL data are not globally searchable.
+Development Team receives read-only access to assigned feedback case only. Original images, model output, and HITL data are not globally searchable.
 
 | Action | Default rule |
 | --- | --- |
 | View assigned evidence | Allowed, logged |
 | Edit evidence | Not allowed |
-| Download case file | Operations Manager approval required |
+| Download case file | Plant Manager approval required |
 | Extend access | Approved extension and reason required |
 | Closed case access | Ends after evaluation plus 30 days |
 | Long access | 90-day maximum without explicit approved extension |
@@ -41,7 +41,7 @@ Log at minimum:
 
 ## Separation of Duties
 
-Operations Manager approves operations and release. System Administrator manages access. This avoids one role both approving sensitive work and changing who can inspect its evidence.
+Plant Manager approves operations and release. System Administrator manages access. This avoids one role both approving sensitive work and changing who can inspect its evidence.
 
 ## Completion Evidence
 

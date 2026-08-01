@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Role } from "@/lib/admin";
 
 type AdminUser = { id: string; name: string; email: string; role: Role; status: "active" | "inactive"; last_login: string | null };
-const ROLES: Role[] = ["operator", "team_lead", "operations_manager", "model_team", "project_manager", "web_team", "admin"];
+const ROLES: Role[] = ["operator", "development_team", "admin", "plant_manager"];
 const title = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const date = (value: string | null) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Never";
 

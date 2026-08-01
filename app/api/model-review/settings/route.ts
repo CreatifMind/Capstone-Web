@@ -21,7 +21,7 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
 
   if (typeof body?.confidenceThreshold === "number") {
-    if (profile.role !== "model_team") return failure("Only model_team can edit the confidence threshold.", 403);
+    if (profile.role !== "development_team" && profile.role !== "plant_manager") return failure("Only the development team can edit the confidence threshold.", 403);
     const value = body.confidenceThreshold;
     if (value < 0.1 || value > 0.9) return failure("confidenceThreshold must be between 0.1 and 0.9.", 422);
     const { data: settings, error } = await service
@@ -35,7 +35,7 @@ export async function PATCH(request: Request) {
   }
 
   if (typeof body?.retrainThreshold === "number") {
-    if (!["web_team", "project_manager"].includes(profile.role)) return failure("Only web_team or project_manager can edit the retrain threshold.", 403);
+    if (profile.role !== "development_team" && profile.role !== "plant_manager") return failure("Only the development team can edit the retrain threshold.", 403);
     const value = body.retrainThreshold;
     if (!Number.isInteger(value) || value < 1 || value > 30) return failure("retrainThreshold must be an integer between 1 and 30.", 422);
     const { data: settings, error } = await service

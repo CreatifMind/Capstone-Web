@@ -8,7 +8,7 @@ it is stale, and §4 in particular has since been reversed.
 | file | what it is |
 |---|---|
 | `best.onnx` | the model, fp16, 640 px, 9 classes — the file you load |
-| `WEB_TEAM_HANDOVER.md` | **start here.** Preprocessing, output format, postprocessing, honest limits |
+| `DEVELOPMENT_HANDOVER.md` | **start here.** Preprocessing, output format, postprocessing, honest limits |
 | `MODEL_FREEZE.md` | which model this is, and what may or may not change before 31 July |
 | `classes.json` | the nine class IDs, machine-readable |
 | `onnx_parity_v3_ffremask_9cls.txt` | evidence the fp16 file matches the original |

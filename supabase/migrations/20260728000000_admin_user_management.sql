@@ -5,7 +5,7 @@ begin
     select 1 from public.user_profiles
     where nullif(trim(coalesce(name, '')), '') is null
        or nullif(trim(coalesce(email, '')), '') is null
-       or lower(regexp_replace(trim(coalesce(role, '')), '\s+', '_', 'g')) not in ('operator', 'team_lead', 'operations_manager', 'model_team', 'project_manager', 'web_team', 'admin')
+       or lower(regexp_replace(trim(coalesce(role, '')), '\s+', '_', 'g')) not in ('operator', 'development_team', 'admin', 'plant_manager')
   ) then
     raise exception 'user_profiles migration blocked: run supabase/user_profiles_preflight.sql and repair reported profiles';
   end if;
@@ -44,7 +44,7 @@ begin
     alter table public.user_profiles add constraint user_profiles_auth_user_id_fkey foreign key (auth_user_id) references auth.users(id) on delete set null;
   end if;
   if not exists (select 1 from pg_constraint where conname = 'user_profiles_role_check') then
-    alter table public.user_profiles add constraint user_profiles_role_check check (role in ('operator', 'team_lead', 'operations_manager', 'model_team', 'project_manager', 'web_team', 'admin'));
+    alter table public.user_profiles add constraint user_profiles_role_check check (role in ('operator', 'development_team', 'admin', 'plant_manager'));
   end if;
   if not exists (select 1 from pg_constraint where conname = 'user_profiles_status_check') then
     alter table public.user_profiles add constraint user_profiles_status_check check (status in ('active', 'inactive'));

@@ -1,12 +1,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { roleHomePath } from "@/lib/roles";
+import { ROLES, roleHomePath } from "@/lib/roles";
 
 const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
-const MODEL_REVIEW = "/model-improvement";
-const MODEL_REVIEW_CONSOLE = "/model-review-console";
-const MODEL_REVIEW_CONSOLE_ROLES = new Set(["web_team", "project_manager"]);
+const DEVELOPMENT = "/development";
+const OVERVIEW = "/overview";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -15,8 +14,8 @@ export async function middleware(request: NextRequest) {
   const isAdminApi = pathname.startsWith("/api/admin/");
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isModelReviewApi = pathname.startsWith("/api/model-review/");
-  const isModelReviewPage = pathname === MODEL_REVIEW || pathname.startsWith(`${MODEL_REVIEW}/`);
-  const isModelReviewConsolePage = pathname === MODEL_REVIEW_CONSOLE || pathname.startsWith(`${MODEL_REVIEW_CONSOLE}/`);
+  const isDevelopmentPage = pathname === DEVELOPMENT || pathname.startsWith(`${DEVELOPMENT}/`);
+  const isOverviewPage = pathname === OVERVIEW || pathname.startsWith(`${OVERVIEW}/`);
   const isOperational = OPERATIONAL.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -24,7 +23,7 @@ export async function middleware(request: NextRequest) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !anonKey || !serviceKey) {
     if (isAdminApi || isModelReviewApi) return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
-    return isAdminPage || isOperational || isModelReviewPage || isModelReviewConsolePage ? redirect(request, "/login", response) : response;
+    return isAdminPage || isOperational || isDevelopmentPage || isOverviewPage ? redirect(request, "/login", response) : response;
   }
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -35,7 +34,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     if (isAdminApi || isModelReviewApi) return response;
-    if (isAdminPage || isOperational || isModelReviewPage || isModelReviewConsolePage) return redirect(request, "/login", response);
+    if (isAdminPage || isOperational || isDevelopmentPage || isOverviewPage) return redirect(request, "/login", response);
     return response;
   }
 
@@ -49,20 +48,25 @@ export async function middleware(request: NextRequest) {
     if (isAdminApi || isModelReviewApi) return response;
     return redirect(request, "/login?reason=inactive", response);
   }
+  if (!ROLES.includes(profile.role as (typeof ROLES)[number])) {
+    await supabase.auth.signOut();
+    if (isAdminApi || isModelReviewApi) return response;
+    return redirect(request, "/login?error=role", response);
+  }
+  if (profile.role === "plant_manager") {
+    if (PUBLIC.has(pathname)) return redirect(request, roleHomePath(profile.role), response);
+    return response;
+  }
   if (profile.role === "admin") {
     if (isAdminApi || isAdminPage) return response;
     return redirect(request, roleHomePath(profile.role), response);
   }
-  if (profile.role === "model_team") {
-    if (isModelReviewPage || isModelReviewApi) return response;
+  if (profile.role === "development_team") {
+    if (isDevelopmentPage || isModelReviewApi) return response;
     return redirect(request, roleHomePath(profile.role), response);
   }
-  if (MODEL_REVIEW_CONSOLE_ROLES.has(profile.role)) {
-    if (isModelReviewApi || isModelReviewConsolePage) return response;
-    return redirect(request, MODEL_REVIEW_CONSOLE, response);
-  }
   if (isAdminApi || isModelReviewApi) return response;
-  if (isAdminPage || isModelReviewPage || isModelReviewConsolePage) return redirect(request, "/upload", response);
+  if (isAdminPage || isDevelopmentPage || isOverviewPage) return redirect(request, "/upload", response);
   if (PUBLIC.has(pathname)) return redirect(request, "/upload", response);
   return response;
 }

@@ -266,7 +266,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
 
         <div className="mrc-card">
           <h2>Detections</h2>
-          <p className="mrc-muted">Flag anything wrong — it routes straight to the model team.</p>
+          <p className="mrc-muted">Flag anything wrong — it routes straight to the development team.</p>
           {!detections.length && <p className="mrc-muted">Run detection to see results here.</p>}
           {!!detections.length && !visibleDetections.length && <p className="mrc-muted">No detections meet confidence {confidenceThreshold.toFixed(2)}.</p>}
           <ol className="mrc-detection-list">

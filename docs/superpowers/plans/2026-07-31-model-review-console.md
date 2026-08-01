@@ -1,39 +1,39 @@
-# Model Review Console Implementation Plan
+# Development Workspace Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `/model-review-console`, a role-gated Next.js page that ports the Claude Design "Model Review Console" prototype into a real feature: live ONNX detection testing, persisted false-signal flagging, a persisted retrain workflow, a persisted task log, and a persisted notification log — shared across `model_team`, `web_team`, and `project_manager` accounts.
+**Goal:** Build `/development`, a role-gated Next.js page that ports the Claude Design "Development Workspace" prototype into a real feature: live ONNX detection testing, persisted false-signal flagging, a persisted retrain workflow, a persisted task log, and a persisted notification log — shared across `development_team`, `development_team`, and `development_team` accounts.
 
-**Architecture:** New Supabase tables (service-role only, RLS locked) hold all state that was previously client-only mock data in the prototype. New API routes under `app/api/model-review/` follow the existing `app/api/admin/users/route.ts` pattern (a local role-check helper per file, `NextResponse.json` errors). `middleware.ts` gets a new role branch that locks `model_team`/`web_team`/`project_manager` to `/model-review-console`, mirroring the existing `admin` → `/admin/users` lockout. The page renders one of three client panels based on the signed-in user's role; real detections come from the existing `lib/inference/*` ONNX pipeline already used by `components/ModelTest.tsx`.
+**Architecture:** New Supabase tables (service-role only, RLS locked) hold all state that was previously client-only mock data in the prototype. New API routes under `app/api/model-review/` follow the existing `app/api/admin/users/route.ts` pattern (a local role-check helper per file, `NextResponse.json` errors). `middleware.ts` gets a new role branch that locks `development_team`/`development_team`/`development_team` to `/development`, mirroring the existing `admin` → `/admin/users` lockout. The page renders one of three client panels based on the signed-in user's role; real detections come from the existing `lib/inference/*` ONNX pipeline already used by `components/ModelTest.tsx`.
 
 **Tech Stack:** Next.js 14 app router, TypeScript, Supabase (service-role client), existing `lib/inference/*` ONNX pipeline, plain CSS (no CSS modules, following `app/admin/admin.css`'s pattern).
 
 ## Global Constraints
 
-- Route: `/model-review-console`. Role-gated to `model_team`, `web_team`, `project_manager` only — not `admin` (admin stays locked to `/admin/users`).
+- Route: `/development`. Role-gated to `development_team`, `development_team`, `development_team` only — not `admin` (admin stays locked to `/admin/users`).
 - Detection: real ONNX inference via `lib/inference/{preprocess,onnx-session,postprocess}.ts` — no mock boxes.
 - Confidence-threshold slider is console-local display filtering only. It never writes to `MODEL_CONFIG.confidenceThreshold` and never affects production `/upload`.
 - No real email sending exists or is added. "Notify" actions only write a row to `model_review_notifications`.
 - No real ML training pipeline exists or is added. "Start retrain" only records workflow state (a `model_review_retrain_runs` row) and marks currently-unresolved flags resolved; nothing trains.
 - Retrain-threshold and confidence-threshold values live in one shared singleton row (`model_review_settings`), not per-user.
-- `model_team` may edit `confidence_threshold`. `web_team` and `project_manager` may edit `retrain_threshold`. Any other role/field combination on `PATCH /api/model-review/settings` is a 403.
-- Every new API route requires an active session with role in `["model_team","web_team","project_manager"]` (via `requireActiveModelReview()`), plus the extra per-route role check noted in that task.
-- New tables: `revoke all ... from anon, authenticated` — service-role only, no RLS policies (same convention as `model_rca_entries` in the unrelated, never-implemented `docs/model-improvement-implementation-plan-2026-07-29.md`).
-- This plan does not modify or depend on `docs/model-improvement-implementation-plan-2026-07-29.md` or anything under `docs/model-improvement-workspace/` — that is a separate, never-built feature (RCA on production scan corrections). Do not touch those files.
-- No test framework (Jest/Vitest) exists in this repo. The one precedent, `tests/classification.test.cjs`, is a plain Node script using `node:assert` — regex-matching against page/component source for React/Next files (since JSX can't easily run in bare Node), and real function execution for plain-JS logic. This plan follows that exact convention in a new `tests/model-review-console.test.cjs`, run with `node tests/model-review-console.test.cjs`.
+- `development_team` may edit `confidence_threshold`. `development_team` and `development_team` may edit `retrain_threshold`. Any other role/field combination on `PATCH /api/model-review/settings` is a 403.
+- Every new API route requires an active session with role in `["development_team","development_team","development_team"]` (via `requireActiveDevelopment()`), plus the extra per-route role check noted in that task.
+- New tables: `revoke all ... from anon, authenticated` — service-role only, no RLS policies (same convention as `model_rca_entries` in the unrelated, never-implemented `docs/development-implementation-plan-2026-07-29.md`).
+- This plan does not modify or depend on `docs/development-implementation-plan-2026-07-29.md` or anything under `docs/development-workspace/` — that is a separate, never-built feature (RCA on production scan corrections). Do not touch those files.
+- No test framework (Jest/Vitest) exists in this repo. The one precedent, `tests/classification.test.cjs`, is a plain Node script using `node:assert` — regex-matching against page/component source for React/Next files (since JSX can't easily run in bare Node), and real function execution for plain-JS logic. This plan follows that exact convention in a new `tests/development.test.cjs`, run with `node tests/development.test.cjs`.
 - Verification command for every task that touches a `.ts`/`.tsx` file: `pnpm exec tsc --noEmit`, expected: no output, exit code 0.
 
 ---
 
-## Task 1: Migration + `requireActiveModelReview()`
+## Task 1: Migration + `requireActiveDevelopment()`
 
 **Files:**
 - Create: `supabase/migrations/20260731000000_model_review_console.sql`
 - Modify: `lib/admin.ts` (append after `requireActiveAdmin`, i.e. after the closing `}` currently on line 34)
-- Create: `tests/model-review-console.test.cjs`
+- Create: `tests/development.test.cjs`
 
 **Interfaces:**
-- Produces: `requireActiveModelReview(): Promise<{ error: "unauthenticated" | "forbidden" } | { user: User; profile: UserProfile; service: ReturnType<typeof createSupabaseServiceClient> }>` exported from `lib/admin.ts`. Every later API-route task calls this.
+- Produces: `requireActiveDevelopment(): Promise<{ error: "unauthenticated" | "forbidden" } | { user: User; profile: UserProfile; service: ReturnType<typeof createSupabaseServiceClient> }>` exported from `lib/admin.ts`. Every later API-route task calls this.
 - Produces: six tables — `model_review_runs`, `model_review_flags`, `model_review_retrain_runs`, `model_review_tasks`, `model_review_notifications`, `model_review_settings` — that every later task's API routes read/write.
 
 - [ ] **Step 1: Write the migration SQL**
@@ -88,7 +88,7 @@ revoke all on model_review_retrain_runs from anon, authenticated;
 create table if not exists model_review_tasks (
   id uuid primary key default gen_random_uuid(),
   title text not null,
-  assignee_role text not null check (assignee_role in ('model_team','web_team','project_manager')),
+  assignee_role text not null check (assignee_role in ('development_team','development_team','development_team')),
   status text not null check (status in ('todo','in_progress','blocked','done')) default 'todo',
   url text not null default '',
   created_by_email text not null,
@@ -121,14 +121,14 @@ revoke all on model_review_settings from anon, authenticated;
 
 This file is not run automatically (no Supabase CLI config in this repo, same as every prior migration file) — it must be run manually against the live Supabase project before Task 3 onward can work end-to-end. Note this to the user when this task is done.
 
-- [ ] **Step 2: Add `requireActiveModelReview()` to `lib/admin.ts`**
+- [ ] **Step 2: Add `requireActiveDevelopment()` to `lib/admin.ts`**
 
 Append immediately after the existing `requireActiveAdmin` function (after its closing `}`):
 
 ```ts
-const MODEL_REVIEW_ROLES = new Set<Role>(["model_team", "web_team", "project_manager"]);
+const MODEL_REVIEW_ROLES = new Set<Role>(["development_team", "development_team", "development_team"]);
 
-export async function requireActiveModelReview() {
+export async function requireActiveDevelopment() {
   const sessionClient = createSupabaseServerClient();
   const { data: { user }, error } = await sessionClient.auth.getUser();
   if (error || !user) return { error: "unauthenticated" as const };
@@ -147,7 +147,7 @@ export async function requireActiveModelReview() {
 
 - [ ] **Step 3: Create the test file and assert the new pieces exist**
 
-Create `tests/model-review-console.test.cjs`:
+Create `tests/development.test.cjs`:
 
 ```js
 const assert = require("node:assert/strict");
@@ -163,16 +163,16 @@ assert.match(migration, /create table if not exists model_review_tasks/);
 assert.match(migration, /create table if not exists model_review_notifications/);
 assert.match(migration, /create table if not exists model_review_settings/);
 assert.match(migration, /revoke all on model_review_runs from anon, authenticated/);
-assert.match(adminLib, /export async function requireActiveModelReview\(\)/);
-assert.match(adminLib, /MODEL_REVIEW_ROLES = new Set<Role>\(\["model_team", "web_team", "project_manager"\]\)/);
+assert.match(adminLib, /export async function requireActiveDevelopment\(\)/);
+assert.match(adminLib, /MODEL_REVIEW_ROLES = new Set<Role>\(\["development_team", "development_team", "development_team"\]\)/);
 
-console.log("model review console tests passed");
+console.log("development workspace tests passed");
 ```
 
 - [ ] **Step 4: Run it to confirm it passes**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 5: Type-check**
 
@@ -182,8 +182,8 @@ Expected: no output, exit code 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260731000000_model_review_console.sql lib/admin.ts tests/model-review-console.test.cjs
-git commit -m "feat: add model review console tables and requireActiveModelReview"
+git add supabase/migrations/20260731000000_model_review_console.sql lib/admin.ts tests/development.test.cjs
+git commit -m "feat: add development workspace tables and requireActiveDevelopment"
 ```
 
 ---
@@ -192,11 +192,11 @@ git commit -m "feat: add model review console tables and requireActiveModelRevie
 
 **Files:**
 - Modify: `middleware.ts` (whole-file replace — the file is 61 lines, easier to replace in full than patch piecemeal)
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
 - Consumes: nothing from Task 1 directly (middleware queries `user_profiles` over REST, not via `lib/admin.ts`).
-- Produces: `model_team`/`web_team`/`project_manager` requests to any path other than `/model-review-console*` or `/api/model-review/*` redirect to `/model-review-console`. Later manual verification (Task 14) depends on this.
+- Produces: `development_team`/`development_team`/`development_team` requests to any path other than `/development*` or `/api/model-review/*` redirect to `/development`. Later manual verification (Task 14) depends on this.
 
 - [ ] **Step 1: Replace `middleware.ts` in full**
 
@@ -206,7 +206,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
-const MODEL_REVIEW_ROLES = new Set(["model_team", "web_team", "project_manager"]);
+const MODEL_REVIEW_ROLES = new Set(["development_team", "development_team", "development_team"]);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -215,7 +215,7 @@ export async function middleware(request: NextRequest) {
   const isAdminApi = pathname.startsWith("/api/admin/");
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isModelReviewApi = pathname.startsWith("/api/model-review/");
-  const isModelReviewPage = pathname === "/model-review-console" || pathname.startsWith("/model-review-console/");
+  const isModelReviewPage = pathname === "/development" || pathname.startsWith("/development/");
   const isOperational = OPERATIONAL.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -254,7 +254,7 @@ export async function middleware(request: NextRequest) {
   }
   if (MODEL_REVIEW_ROLES.has(profile.role)) {
     if (isModelReviewApi || isModelReviewPage) return response;
-    return redirect(request, "/model-review-console", response);
+    return redirect(request, "/development", response);
   }
   if (isAdminApi) return response;
   if (isAdminPage) return redirect(request, "/upload", response);
@@ -273,22 +273,22 @@ function redirect(request: NextRequest, path: string, source: NextResponse) {
 export const config = { matcher: ["/((?!api/auth|auth/signout).*)"] };
 ```
 
-- [ ] **Step 2: Append assertions to `tests/model-review-console.test.cjs`**
+- [ ] **Step 2: Append assertions to `tests/development.test.cjs`**
 
 Insert before the final `console.log(...)` line:
 
 ```js
 const middleware = fs.readFileSync("middleware.ts", "utf8");
 assert.match(middleware, /const isModelReviewApi = pathname\.startsWith\("\/api\/model-review\/"\)/);
-assert.match(middleware, /const isModelReviewPage = pathname === "\/model-review-console"/);
+assert.match(middleware, /const isModelReviewPage = pathname === "\/development"/);
 assert.match(middleware, /if \(MODEL_REVIEW_ROLES\.has\(profile\.role\)\) \{/);
-assert.match(middleware, /return redirect\(request, "\/model-review-console", response\)/);
+assert.match(middleware, /return redirect\(request, "\/development", response\)/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -298,8 +298,8 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add middleware.ts tests/model-review-console.test.cjs
-git commit -m "feat: lock model_team/web_team/project_manager to /model-review-console"
+git add middleware.ts tests/development.test.cjs
+git commit -m "feat: lock development_team/development_team/development_team to /development"
 ```
 
 ---
@@ -308,25 +308,25 @@ git commit -m "feat: lock model_team/web_team/project_manager to /model-review-c
 
 **Files:**
 - Create: `app/api/model-review/run/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()` from Task 1; `model_review_runs` table from Task 1.
+- Consumes: `requireActiveDevelopment()` from Task 1; `model_review_runs` table from Task 1.
 - Produces: `GET` → `{ imagesTested: number, latency: { avg: number, p50: number, p95: number, p99: number, samples: number } }`. `POST` body `{ detectionCount: number, durationMs: number }` → `{ run: { id, run_by_email, detection_count, duration_ms, created_at } }`. `ModelTeamPanel` (Task 11) POSTs after every detection run; `ModelReviewConsole` (Task 10) GETs this on load for the shared stats row.
 
 - [ ] **Step 1: Write `app/api/model-review/run/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 
 const RETAIN_RUNS_FOR_LATENCY = 200;
 
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -369,7 +369,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["model_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -393,15 +393,15 @@ export async function POST(request: Request) {
 
 ```js
 const runRoute = fs.readFileSync("app/api/model-review/run/route.ts", "utf8");
-assert.match(runRoute, /modelReviewContext\(\["model_team"\]\)/);
+assert.match(runRoute, /modelReviewContext\(\["development_team"\]\)/);
 assert.match(runRoute, /from\("model_review_runs"\)/);
 assert.match(runRoute, /detectionCount and durationMs must be non-negative numbers/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -411,7 +411,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/run/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/run/route.ts tests/development.test.cjs
 git commit -m "feat: add model review run-logging API route"
 ```
 
@@ -421,17 +421,17 @@ git commit -m "feat: add model review run-logging API route"
 
 **Files:**
 - Create: `app/api/model-review/flags/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()`, `model_review_flags` table.
+- Consumes: `requireActiveDevelopment()`, `model_review_flags` table.
 - Produces: `GET` → `{ flags: FlagRow[], dailyBars: { day: string, count: number }[], weeklyFalseSignals: number }`. `POST` body `{ runId: string|null, className: string, confidence: number, x1: number, y1: number, x2: number, y2: number, signalType: "fp"|"fn", suggestedLabel: string }` → `{ flag: FlagRow }`. `FlagRow = { id, run_id, class_name, confidence, x1, y1, x2, y2, signal_type, suggested_label, flagged_by_email, resolved_at, retrain_run_id, created_at }`. Consumed by `ModelTeamPanel` (flag button), `ModelReviewConsole` shared stats, and `PmPanel`'s handoff stepper.
 
 - [ ] **Step 1: Write `app/api/model-review/flags/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 
 const FLAG_TYPES = new Set(["fp", "fn"]);
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -439,8 +439,8 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -484,7 +484,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["model_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -519,7 +519,7 @@ export async function POST(request: Request) {
 
 ```js
 const flagsRoute = fs.readFileSync("app/api/model-review/flags/route.ts", "utf8");
-assert.match(flagsRoute, /modelReviewContext\(\["model_team"\]\)/);
+assert.match(flagsRoute, /modelReviewContext\(\["development_team"\]\)/);
 assert.match(flagsRoute, /from\("model_review_flags"\)/);
 assert.match(flagsRoute, /FLAG_TYPES = new Set\(\["fp", "fn"\]\)/);
 assert.match(flagsRoute, /is\("resolved_at", null\)/);
@@ -527,8 +527,8 @@ assert.match(flagsRoute, /is\("resolved_at", null\)/);
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -538,7 +538,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/flags/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/flags/route.ts tests/development.test.cjs
 git commit -m "feat: add model review flags API route"
 ```
 
@@ -548,18 +548,18 @@ git commit -m "feat: add model review flags API route"
 
 **Files:**
 - Create: `app/api/model-review/retrain/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()`, `model_review_retrain_runs`, `model_review_flags`, `model_review_settings` tables.
-- Produces: `GET` → `{ current: RetrainRun | null, liveVersion: string, pendingVersion: string | null }`. `POST` (model_team) → `{ retrainRun: RetrainRun }`, 201, or 409/422 on failure. `PATCH` body `{ id: string }` (web_team) → `{ retrainRun: RetrainRun }`. `RetrainRun = { id, status, base_version, new_version, started_by_email, started_at, completed_at, integrated, integrated_by_email, integrated_at }`. Consumed by `WebTeamPanel` (integrate button), `ModelTeamPanel` (start retrain button), `ModelReviewConsole` shared stats.
+- Consumes: `requireActiveDevelopment()`, `model_review_retrain_runs`, `model_review_flags`, `model_review_settings` tables.
+- Produces: `GET` → `{ current: RetrainRun | null, liveVersion: string, pendingVersion: string | null }`. `POST` (development_team) → `{ retrainRun: RetrainRun }`, 201, or 409/422 on failure. `PATCH` body `{ id: string }` (development_team) → `{ retrainRun: RetrainRun }`. `RetrainRun = { id, status, base_version, new_version, started_by_email, started_at, completed_at, integrated, integrated_by_email, integrated_at }`. Consumed by `WebTeamPanel` (integrate button), `ModelTeamPanel` (start retrain button), `ModelReviewConsole` shared stats.
 - Note: this route starts and completes a retrain synchronously in one request — there is no real training pipeline to wait on (per Global Constraints), so there is no `queued`/`training` waiting period in practice even though the schema still allows those status values for future use.
 
 - [ ] **Step 1: Write `app/api/model-review/retrain/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 const INITIAL_MODEL_VERSION = "yolov8-purityloop v1.4.2";
@@ -567,8 +567,8 @@ const INITIAL_MODEL_VERSION = "yolov8-purityloop v1.4.2";
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -609,7 +609,7 @@ export async function GET() {
 }
 
 export async function POST() {
-  const checked = await modelReviewContext(["model_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
 
@@ -650,7 +650,7 @@ export async function POST() {
 }
 
 export async function PATCH(request: Request) {
-  const checked = await modelReviewContext(["web_team"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -672,16 +672,16 @@ export async function PATCH(request: Request) {
 
 ```js
 const retrainRoute = fs.readFileSync("app/api/model-review/retrain/route.ts", "utf8");
-assert.match(retrainRoute, /modelReviewContext\(\["model_team"\]\)/);
-assert.match(retrainRoute, /modelReviewContext\(\["web_team"\]\)/);
+assert.match(retrainRoute, /modelReviewContext\(\["development_team"\]\)/);
+assert.match(retrainRoute, /modelReviewContext\(\["development_team"\]\)/);
 assert.match(retrainRoute, /Not enough flagged false signals to trigger a retrain yet/);
 assert.match(retrainRoute, /A retrain is already in progress/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -691,7 +691,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/retrain/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/retrain/route.ts tests/development.test.cjs
 git commit -m "feat: add model review retrain API route"
 ```
 
@@ -701,26 +701,26 @@ git commit -m "feat: add model review retrain API route"
 
 **Files:**
 - Create: `app/api/model-review/tasks/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()`, `model_review_tasks` table.
-- Produces: `GET` → `{ tasks: TaskRow[] }`. `POST` body `{ title: string, assigneeRole: "model_team"|"web_team"|"project_manager", url: string }` (project_manager only) → `{ task: TaskRow }`, 201. `PATCH` body `{ id: string, status: "todo"|"in_progress"|"blocked"|"done" }` (project_manager only) → `{ task: TaskRow }`. `TaskRow = { id, title, assignee_role, status, url, created_by_email, created_at, updated_at }`. Consumed by `PmPanel`.
+- Consumes: `requireActiveDevelopment()`, `model_review_tasks` table.
+- Produces: `GET` → `{ tasks: TaskRow[] }`. `POST` body `{ title: string, assigneeRole: "development_team"|"development_team"|"development_team", url: string }` (development_team only) → `{ task: TaskRow }`, 201. `PATCH` body `{ id: string, status: "todo"|"in_progress"|"blocked"|"done" }` (development_team only) → `{ task: TaskRow }`. `TaskRow = { id, title, assignee_role, status, url, created_by_email, created_at, updated_at }`. Consumed by `PmPanel`.
 
 - [ ] **Step 1: Write `app/api/model-review/tasks/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 
 const STATUSES = new Set(["todo", "in_progress", "blocked", "done"]);
-const ASSIGNEE_ROLES = new Set(["model_team", "web_team", "project_manager"]);
+const ASSIGNEE_ROLES = new Set(["development_team", "development_team", "development_team"]);
 
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -739,7 +739,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -758,7 +758,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -781,15 +781,15 @@ export async function PATCH(request: Request) {
 
 ```js
 const tasksRoute = fs.readFileSync("app/api/model-review/tasks/route.ts", "utf8");
-assert.match(tasksRoute, /modelReviewContext\(\["project_manager"\]\)/);
+assert.match(tasksRoute, /modelReviewContext\(\["development_team"\]\)/);
 assert.match(tasksRoute, /from\("model_review_tasks"\)/);
 assert.match(tasksRoute, /STATUSES = new Set\(\["todo", "in_progress", "blocked", "done"\]\)/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -799,7 +799,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/tasks/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/tasks/route.ts tests/development.test.cjs
 git commit -m "feat: add model review tasks API route"
 ```
 
@@ -809,25 +809,25 @@ git commit -m "feat: add model review tasks API route"
 
 **Files:**
 - Create: `app/api/model-review/notifications/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()`, `model_review_notifications` table.
-- Produces: `GET` → `{ notifications: NotificationRow[] }`. `POST` body `{ team: "model"|"web" }` (project_manager only) → `{ notification: NotificationRow }`, 201. `NotificationRow = { id, team, notified_by_email, created_at }`. Consumed by `PmPanel`.
+- Consumes: `requireActiveDevelopment()`, `model_review_notifications` table.
+- Produces: `GET` → `{ notifications: NotificationRow[] }`. `POST` body `{ team: "model"|"web" }` (development_team only) → `{ notification: NotificationRow }`, 201. `NotificationRow = { id, team, notified_by_email, created_at }`. Consumed by `PmPanel`.
 
 - [ ] **Step 1: Write `app/api/model-review/notifications/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 
 const TEAMS = new Set(["model", "web"]);
 
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -847,7 +847,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -868,15 +868,15 @@ export async function POST(request: Request) {
 
 ```js
 const notificationsRoute = fs.readFileSync("app/api/model-review/notifications/route.ts", "utf8");
-assert.match(notificationsRoute, /modelReviewContext\(\["project_manager"\]\)/);
+assert.match(notificationsRoute, /modelReviewContext\(\["development_team"\]\)/);
 assert.match(notificationsRoute, /from\("model_review_notifications"\)/);
 assert.match(notificationsRoute, /TEAMS = new Set\(\["model", "web"\]\)/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -886,7 +886,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/notifications/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/notifications/route.ts tests/development.test.cjs
 git commit -m "feat: add model review notifications API route"
 ```
 
@@ -896,23 +896,23 @@ git commit -m "feat: add model review notifications API route"
 
 **Files:**
 - Create: `app/api/model-review/settings/route.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()`, `model_review_settings` table.
-- Produces: `GET` → `{ settings: ConsoleSettings }`. `PATCH` body `{ confidenceThreshold: number }` (model_team only, 0.1–0.9) or `{ retrainThreshold: number }` (web_team/project_manager only, integer 1–30) → `{ settings: ConsoleSettings }`. `ConsoleSettings = { confidence_threshold, retrain_threshold, updated_by_email, updated_at }`. Consumed by `ModelTeamPanel` (confidence slider), `WebTeamPanel` (retrain-threshold slider), `ModelReviewConsole` shared stats.
+- Consumes: `requireActiveDevelopment()`, `model_review_settings` table.
+- Produces: `GET` → `{ settings: ConsoleSettings }`. `PATCH` body `{ confidenceThreshold: number }` (development_team only, 0.1–0.9) or `{ retrainThreshold: number }` (development_team/development_team only, integer 1–30) → `{ settings: ConsoleSettings }`. `ConsoleSettings = { confidence_threshold, retrain_threshold, updated_by_email, updated_at }`. Consumed by `ModelTeamPanel` (confidence slider), `WebTeamPanel` (retrain-threshold slider), `ModelReviewConsole` shared stats.
 
 - [ ] **Step 1: Write `app/api/model-review/settings/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { requireActiveModelReview } from "@/lib/admin";
+import { requireActiveDevelopment } from "@/lib/admin";
 
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
 
 async function modelReviewContext(allowedRoles?: string[]) {
-  let context: Awaited<ReturnType<typeof requireActiveModelReview>>;
-  try { context = await requireActiveModelReview(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  let context: Awaited<ReturnType<typeof requireActiveDevelopment>>;
+  try { context = await requireActiveDevelopment(); } catch { return { response: failure("Authentication is not configured.", 503) }; }
   if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "Model review access required.", context.error === "unauthenticated" ? 401 : 403) };
   if (allowedRoles && !allowedRoles.includes(context.profile.role)) return { response: failure("Your role cannot perform this action.", 403) };
   return { context };
@@ -938,7 +938,7 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
 
   if (typeof body?.confidenceThreshold === "number") {
-    if (profile.role !== "model_team") return failure("Only model_team can edit the confidence threshold.", 403);
+    if (profile.role !== "development_team") return failure("Only development_team can edit the confidence threshold.", 403);
     const value = body.confidenceThreshold;
     if (value < 0.1 || value > 0.9) return failure("confidenceThreshold must be between 0.1 and 0.9.", 422);
     const { data: settings, error } = await service
@@ -952,7 +952,7 @@ export async function PATCH(request: Request) {
   }
 
   if (typeof body?.retrainThreshold === "number") {
-    if (!["web_team", "project_manager"].includes(profile.role)) return failure("Only web_team or project_manager can edit the retrain threshold.", 403);
+    if (!["development_team", "development_team"].includes(profile.role)) return failure("Only development_team or development_team can edit the retrain threshold.", 403);
     const value = body.retrainThreshold;
     if (!Number.isInteger(value) || value < 1 || value > 30) return failure("retrainThreshold must be an integer between 1 and 30.", 422);
     const { data: settings, error } = await service
@@ -973,15 +973,15 @@ export async function PATCH(request: Request) {
 
 ```js
 const settingsRoute = fs.readFileSync("app/api/model-review/settings/route.ts", "utf8");
-assert.match(settingsRoute, /Only model_team can edit the confidence threshold/);
-assert.match(settingsRoute, /Only web_team or project_manager can edit the retrain threshold/);
+assert.match(settingsRoute, /Only development_team can edit the confidence threshold/);
+assert.match(settingsRoute, /Only development_team or development_team can edit the retrain threshold/);
 assert.match(settingsRoute, /from\("model_review_settings"\)/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Type-check**
 
@@ -991,7 +991,7 @@ Expected: no output, exit code 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/api/model-review/settings/route.ts tests/model-review-console.test.cjs
+git add app/api/model-review/settings/route.ts tests/development.test.cjs
 git commit -m "feat: add model review settings API route"
 ```
 
@@ -1000,20 +1000,20 @@ git commit -m "feat: add model review settings API route"
 ## Task 9: Page shell — layout, CSS, page, shared types
 
 **Files:**
-- Create: `app/model-review-console/layout.tsx`
-- Create: `app/model-review-console/model-review-console.css`
-- Create: `app/model-review-console/page.tsx`
-- Create: `components/model-review-console/types.ts`
-- Modify: `tests/model-review-console.test.cjs`
+- Create: `app/development/layout.tsx`
+- Create: `app/development/development.css`
+- Create: `app/development/page.tsx`
+- Create: `components/development/types.ts`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
-- Consumes: `requireActiveModelReview()` from Task 1; `PageHtml` from `components/PageHtml.tsx` (props `{ bodyClass: string; dataPage?: string; children: ReactNode }`).
-- Produces: `ModelReviewRole = "model_team" | "web_team" | "project_manager"`, `FlagRow`, `RetrainRun`, `TaskRow`, `NotificationRow`, `ConsoleSettings`, `SharedStats` types in `components/model-review-console/types.ts`, imported by every component task below. `page.tsx` renders `<ModelReviewConsole role={...} />` (built in Task 10) — this task must NOT try to import `ModelReviewConsole` yet since it doesn't exist; instead this task creates a placeholder import that Task 10 will make real (see Step 1 note).
+- Consumes: `requireActiveDevelopment()` from Task 1; `PageHtml` from `components/PageHtml.tsx` (props `{ bodyClass: string; dataPage?: string; children: ReactNode }`).
+- Produces: `ModelReviewRole = "development_team" | "development_team" | "development_team"`, `FlagRow`, `RetrainRun`, `TaskRow`, `NotificationRow`, `ConsoleSettings`, `SharedStats` types in `components/development/types.ts`, imported by every component task below. `page.tsx` renders `<ModelReviewConsole role={...} />` (built in Task 10) — this task must NOT try to import `ModelReviewConsole` yet since it doesn't exist; instead this task creates a placeholder import that Task 10 will make real (see Step 1 note).
 
-- [ ] **Step 1: Write `components/model-review-console/types.ts`**
+- [ ] **Step 1: Write `components/development/types.ts`**
 
 ```ts
-export type ModelReviewRole = "model_team" | "web_team" | "project_manager";
+export type ModelReviewRole = "development_team" | "development_team" | "development_team";
 
 export type FlagRow = {
   id: string;
@@ -1079,7 +1079,7 @@ export type SharedStats = {
 };
 ```
 
-- [ ] **Step 2: Write `app/model-review-console/model-review-console.css`**
+- [ ] **Step 2: Write `app/development/development.css`**
 
 ```css
 .mrc-shell { display: flex; flex-direction: column; min-height: 100vh; }
@@ -1158,21 +1158,21 @@ input[type="file"] { display: none; }
 .mrc-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary, var(--muted)); }
 ```
 
-- [ ] **Step 3: Write `app/model-review-console/layout.tsx`**
+- [ ] **Step 3: Write `app/development/layout.tsx`**
 
 ```tsx
 "use client";
 
 import type { ReactNode } from "react";
 import PageHtml from "@/components/PageHtml";
-import "./model-review-console.css";
+import "./development.css";
 
 export default function ModelReviewConsoleLayout({ children }: { children: ReactNode }) {
   return <PageHtml bodyClass="ops-pro-page mrc-page lab-ui dark-ai dark-app" dataPage="model-review-console">
     <div className="mrc-shell">
       <header className="mrc-topbar">
         <div>
-          <h1>Model Review Console</h1>
+          <h1>Development Workspace</h1>
           <p>Test the detector, track retrain readiness, and hand off between teams.</p>
         </div>
         <a href="/auth/signout" className="mrc-logout">Log out</a>
@@ -1183,21 +1183,21 @@ export default function ModelReviewConsoleLayout({ children }: { children: React
 }
 ```
 
-- [ ] **Step 4: Write `app/model-review-console/page.tsx`**
+- [ ] **Step 4: Write `app/development/page.tsx`**
 
 ```tsx
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { requireActiveModelReview } from "@/lib/admin";
-import ModelReviewConsole from "@/components/model-review-console/ModelReviewConsole";
+import { requireActiveDevelopment } from "@/lib/admin";
+import ModelReviewConsole from "@/components/development/ModelReviewConsole";
 
-export const metadata: Metadata = { title: "PurityLoop AI | Model Review Console" };
+export const metadata: Metadata = { title: "PurityLoop AI | Development Workspace" };
 export const dynamic = "force-dynamic";
 
 export default async function ModelReviewConsolePage() {
-  const context = await requireActiveModelReview();
+  const context = await requireActiveDevelopment();
   if ("error" in context) redirect("/login");
-  return <ModelReviewConsole role={context.profile.role as "model_team" | "web_team" | "project_manager"} />;
+  return <ModelReviewConsole role={context.profile.role as "development_team" | "development_team" | "development_team"} />;
 }
 ```
 
@@ -1206,26 +1206,26 @@ This imports `ModelReviewConsole` from Task 10, which does not exist yet — `pn
 - [ ] **Step 5: Append assertions**
 
 ```js
-const types = fs.readFileSync("components/model-review-console/types.ts", "utf8");
-const layout = fs.readFileSync("app/model-review-console/layout.tsx", "utf8");
-const page = fs.readFileSync("app/model-review-console/page.tsx", "utf8");
-assert.match(types, /export type ModelReviewRole = "model_team" \| "web_team" \| "project_manager"/);
+const types = fs.readFileSync("components/development/types.ts", "utf8");
+const layout = fs.readFileSync("app/development/layout.tsx", "utf8");
+const page = fs.readFileSync("app/development/page.tsx", "utf8");
+assert.match(types, /export type ModelReviewRole = "development_team" \| "development_team" \| "development_team"/);
 assert.match(types, /export type SharedStats = \{/);
 assert.match(layout, /PageHtml bodyClass="ops-pro-page mrc-page lab-ui dark-ai dark-app"/);
-assert.match(page, /requireActiveModelReview\(\)/);
+assert.match(page, /requireActiveDevelopment\(\)/);
 assert.match(page, /redirect\("\/login"\)/);
 ```
 
 - [ ] **Step 6: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add components/model-review-console/types.ts app/model-review-console/model-review-console.css app/model-review-console/layout.tsx app/model-review-console/page.tsx tests/model-review-console.test.cjs
-git commit -m "feat: add model review console page shell and shared types"
+git add components/development/types.ts app/development/development.css app/development/layout.tsx app/development/page.tsx tests/development.test.cjs
+git commit -m "feat: add development workspace page shell and shared types"
 ```
 
 ---
@@ -1233,14 +1233,14 @@ git commit -m "feat: add model review console page shell and shared types"
 ## Task 10: `ModelReviewConsole.tsx`
 
 **Files:**
-- Create: `components/model-review-console/ModelReviewConsole.tsx`
-- Modify: `tests/model-review-console.test.cjs`
+- Create: `components/development/ModelReviewConsole.tsx`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
 - Consumes: `ModelReviewRole`, `SharedStats` from Task 9's `types.ts`; `GET /api/model-review/run`, `GET /api/model-review/flags`, `GET /api/model-review/retrain`, `GET /api/model-review/settings` from Tasks 3/4/5/8.
-- Produces: default export `ModelReviewConsole({ role: ModelReviewRole })`. Renders the shared stat-card row, then dispatches to `ModelTeamPanel` (Task 11), `WebTeamPanel` (Task 12), or `PmPanel` (Task 13) based on `role`, passing `{ stats: SharedStats; onChanged: () => void }`. This satisfies the `import ModelReviewConsole from "@/components/model-review-console/ModelReviewConsole"` in `page.tsx` from Task 9.
+- Produces: default export `ModelReviewConsole({ role: ModelReviewRole })`. Renders the shared stat-card row, then dispatches to `ModelTeamPanel` (Task 11), `WebTeamPanel` (Task 12), or `PmPanel` (Task 13) based on `role`, passing `{ stats: SharedStats; onChanged: () => void }`. This satisfies the `import ModelReviewConsole from "@/components/development/ModelReviewConsole"` in `page.tsx` from Task 9.
 
-- [ ] **Step 1: Write `components/model-review-console/ModelReviewConsole.tsx`**
+- [ ] **Step 1: Write `components/development/ModelReviewConsole.tsx`**
 
 ```tsx
 "use client";
@@ -1276,9 +1276,9 @@ async function fetchSharedStats(): Promise<SharedStats> {
 }
 
 const ROLE_LABEL: Record<ModelReviewRole, string> = {
-  model_team: "Model team",
-  web_team: "Web team",
-  project_manager: "Project manager"
+  development_team: "Development team",
+  development_team: "Development team",
+  development_team: "Development team"
 };
 
 export default function ModelReviewConsole({ role }: Props) {
@@ -1316,9 +1316,9 @@ export default function ModelReviewConsole({ role }: Props) {
         </div>
       </section>
 
-      {role === "model_team" && <ModelTeamPanel stats={stats} onChanged={refresh} />}
-      {role === "web_team" && <WebTeamPanel stats={stats} onChanged={refresh} />}
-      {role === "project_manager" && <PmPanel stats={stats} onChanged={refresh} />}
+      {role === "development_team" && <ModelTeamPanel stats={stats} onChanged={refresh} />}
+      {role === "development_team" && <WebTeamPanel stats={stats} onChanged={refresh} />}
+      {role === "development_team" && <PmPanel stats={stats} onChanged={refresh} />}
     </>
   );
 }
@@ -1329,23 +1329,23 @@ This imports `ModelTeamPanel`, `WebTeamPanel`, `PmPanel` from Tasks 11/12/13, wh
 - [ ] **Step 2: Append assertions**
 
 ```js
-const console_ = fs.readFileSync("components/model-review-console/ModelReviewConsole.tsx", "utf8");
+const console_ = fs.readFileSync("components/development/ModelReviewConsole.tsx", "utf8");
 assert.match(console_, /export default function ModelReviewConsole\(\{ role \}: Props\)/);
-assert.match(console_, /role === "model_team" && <ModelTeamPanel/);
-assert.match(console_, /role === "web_team" && <WebTeamPanel/);
-assert.match(console_, /role === "project_manager" && <PmPanel/);
+assert.match(console_, /role === "development_team" && <ModelTeamPanel/);
+assert.match(console_, /role === "development_team" && <WebTeamPanel/);
+assert.match(console_, /role === "development_team" && <PmPanel/);
 ```
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/model-review-console/ModelReviewConsole.tsx tests/model-review-console.test.cjs
-git commit -m "feat: add model review console shared shell component"
+git add components/development/ModelReviewConsole.tsx tests/development.test.cjs
+git commit -m "feat: add development workspace shared shell component"
 ```
 
 ---
@@ -1353,14 +1353,14 @@ git commit -m "feat: add model review console shared shell component"
 ## Task 11: `ModelTeamPanel.tsx`
 
 **Files:**
-- Create: `components/model-review-console/ModelTeamPanel.tsx`
-- Modify: `tests/model-review-console.test.cjs`
+- Create: `components/development/ModelTeamPanel.tsx`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
 - Consumes: `SharedStats` from `types.ts`; `MODEL_CONFIG` from `@/lib/inference/model-config`; `runModel` from `@/lib/inference/onnx-session`; `postprocessOutput` from `@/lib/inference/postprocess`; `preprocessImage` from `@/lib/inference/preprocess`; `Detection` type from `@/lib/inference/types`; `POST /api/model-review/run` (Task 3), `POST /api/model-review/flags` (Task 4), `POST /api/model-review/retrain` (Task 5), `PATCH /api/model-review/settings` (Task 8).
 - Produces: default export `ModelTeamPanel({ stats: SharedStats; onChanged: () => void })`, consumed by `ModelReviewConsole` (Task 10).
 
-- [ ] **Step 1: Write `components/model-review-console/ModelTeamPanel.tsx`**
+- [ ] **Step 1: Write `components/development/ModelTeamPanel.tsx`**
 
 ```tsx
 "use client";
@@ -1594,7 +1594,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
 
         <div className="mrc-card">
           <h2>Detections</h2>
-          <p className="mrc-muted">Flag anything wrong — it routes straight to the model team.</p>
+          <p className="mrc-muted">Flag anything wrong — it routes straight to the development team.</p>
           {!detections.length && <p className="mrc-muted">Run detection to see results here.</p>}
           {!!detections.length && !visibleDetections.length && <p className="mrc-muted">No detections meet confidence {confidenceThreshold.toFixed(2)}.</p>}
           <ol className="mrc-detection-list">
@@ -1643,7 +1643,7 @@ function DetectionBox({ detection }: { detection: Detection }) {
 - [ ] **Step 2: Append assertions**
 
 ```js
-const modelPanel = fs.readFileSync("components/model-review-console/ModelTeamPanel.tsx", "utf8");
+const modelPanel = fs.readFileSync("components/development/ModelTeamPanel.tsx", "utf8");
 assert.match(modelPanel, /import \{ runModel \} from "@\/lib\/inference\/onnx-session"/);
 assert.match(modelPanel, /import \{ preprocessImage \} from "@\/lib\/inference\/preprocess"/);
 assert.doesNotMatch(modelPanel, /MOCK_BOXES/);
@@ -1654,14 +1654,14 @@ assert.match(modelPanel, /fetch\("\/api\/model-review\/retrain", \{ method: "POS
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/model-review-console/ModelTeamPanel.tsx tests/model-review-console.test.cjs
-git commit -m "feat: add model team panel with real ONNX detection and flagging"
+git add components/development/ModelTeamPanel.tsx tests/development.test.cjs
+git commit -m "feat: add development team panel with real ONNX detection and flagging"
 ```
 
 ---
@@ -1669,14 +1669,14 @@ git commit -m "feat: add model team panel with real ONNX detection and flagging"
 ## Task 12: `WebTeamPanel.tsx`
 
 **Files:**
-- Create: `components/model-review-console/WebTeamPanel.tsx`
-- Modify: `tests/model-review-console.test.cjs`
+- Create: `components/development/WebTeamPanel.tsx`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
 - Consumes: `SharedStats` from `types.ts`; `PATCH /api/model-review/retrain` (Task 5); `PATCH /api/model-review/settings` (Task 8).
 - Produces: default export `WebTeamPanel({ stats: SharedStats; onChanged: () => void })`, consumed by `ModelReviewConsole` (Task 10).
 
-- [ ] **Step 1: Write `components/model-review-console/WebTeamPanel.tsx`**
+- [ ] **Step 1: Write `components/development/WebTeamPanel.tsx`**
 
 ```tsx
 "use client";
@@ -1743,7 +1743,7 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
           <h2>Current checkpoint</h2>
           <p className="mrc-mono-box">{stats.liveVersion}</p>
           <button type="button" className="mrc-btn-primary" onClick={copySnippet}>Copy integration snippet</button>
-          <p className="mrc-muted">{copyStatus || "Copies the latest model load snippet for the web team's integration branch."}</p>
+          <p className="mrc-muted">{copyStatus || "Copies the latest model load snippet for the development team's integration branch."}</p>
           <label className="mrc-field">
             Retrain threshold ({retrainThreshold})
             <input type="range" min={1} max={30} step={1} value={retrainThreshold}
@@ -1770,7 +1770,7 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
 - [ ] **Step 2: Append assertions**
 
 ```js
-const webPanel = fs.readFileSync("components/model-review-console/WebTeamPanel.tsx", "utf8");
+const webPanel = fs.readFileSync("components/development/WebTeamPanel.tsx", "utf8");
 assert.match(webPanel, /fetch\("\/api\/model-review\/retrain", \{\s*method: "PATCH"/);
 assert.match(webPanel, /fetch\("\/api\/model-review\/settings", \{\s*method: "PATCH"/);
 assert.match(webPanel, /retrainThreshold: value/);
@@ -1778,14 +1778,14 @@ assert.match(webPanel, /retrainThreshold: value/);
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/model-review-console/WebTeamPanel.tsx tests/model-review-console.test.cjs
-git commit -m "feat: add web team panel with checkpoint integration and latency"
+git add components/development/WebTeamPanel.tsx tests/development.test.cjs
+git commit -m "feat: add development team panel with checkpoint integration and latency"
 ```
 
 ---
@@ -1793,14 +1793,14 @@ git commit -m "feat: add web team panel with checkpoint integration and latency"
 ## Task 13: `PmPanel.tsx`
 
 **Files:**
-- Create: `components/model-review-console/PmPanel.tsx`
-- Modify: `tests/model-review-console.test.cjs`
+- Create: `components/development/PmPanel.tsx`
+- Modify: `tests/development.test.cjs`
 
 **Interfaces:**
 - Consumes: `SharedStats`, `TaskRow`, `NotificationRow` from `types.ts`; `GET`/`POST`/`PATCH /api/model-review/tasks` (Task 6); `GET`/`POST /api/model-review/notifications` (Task 7).
 - Produces: default export `PmPanel({ stats: SharedStats; onChanged: () => void })`, consumed by `ModelReviewConsole` (Task 10). After this task, `ModelReviewConsole.tsx` (Task 10) and `page.tsx` (Task 9) both resolve — `tsc --noEmit` should be green.
 
-- [ ] **Step 1: Write `components/model-review-console/PmPanel.tsx`**
+- [ ] **Step 1: Write `components/development/PmPanel.tsx`**
 
 ```tsx
 "use client";
@@ -1821,7 +1821,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [title, setTitle] = useState("");
-  const [assigneeRole, setAssigneeRole] = useState<TaskRow["assignee_role"]>("model_team");
+  const [assigneeRole, setAssigneeRole] = useState<TaskRow["assignee_role"]>("development_team");
   const [url, setUrl] = useState("");
 
   const loadTasksAndNotifications = () => {
@@ -1878,8 +1878,8 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <div className="mrc-card">
           <h2>Request status update</h2>
           <div className="mrc-controls">
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("model")}>Email model team</button>
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("web")}>Email web team</button>
+            <button type="button" className="mrc-btn-secondary" onClick={() => notify("model")}>Email development team</button>
+            <button type="button" className="mrc-btn-secondary" onClick={() => notify("web")}>Email development team</button>
           </div>
         </div>
         <div className="mrc-card">
@@ -1902,9 +1902,9 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <form className="mrc-controls" onSubmit={createTask}>
           <input type="text" placeholder="Task title" value={title} onChange={(event) => setTitle(event.target.value)} />
           <select value={assigneeRole} onChange={(event) => setAssigneeRole(event.target.value as TaskRow["assignee_role"])}>
-            <option value="model_team">Model team</option>
-            <option value="web_team">Web team</option>
-            <option value="project_manager">Project manager</option>
+            <option value="development_team">Development team</option>
+            <option value="development_team">Development team</option>
+            <option value="development_team">Development team</option>
           </select>
           <input type="text" placeholder="URL (optional)" value={url} onChange={(event) => setUrl(event.target.value)} />
           <button type="submit" className="mrc-btn-primary">Add task</button>
@@ -1941,7 +1941,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
 - [ ] **Step 2: Append assertions**
 
 ```js
-const pmPanel = fs.readFileSync("components/model-review-console/PmPanel.tsx", "utf8");
+const pmPanel = fs.readFileSync("components/development/PmPanel.tsx", "utf8");
 assert.match(pmPanel, /fetch\("\/api\/model-review\/tasks", \{\s*method: "POST"/);
 assert.match(pmPanel, /fetch\("\/api\/model-review\/tasks", \{\s*method: "PATCH"/);
 assert.match(pmPanel, /fetch\("\/api\/model-review\/notifications", \{/);
@@ -1949,8 +1949,8 @@ assert.match(pmPanel, /fetch\("\/api\/model-review\/notifications", \{/);
 
 - [ ] **Step 3: Run the test**
 
-Run: `node tests/model-review-console.test.cjs`
-Expected: prints `model review console tests passed`, exit code 0.
+Run: `node tests/development.test.cjs`
+Expected: prints `development workspace tests passed`, exit code 0.
 
 - [ ] **Step 4: Full type-check (first time everything resolves)**
 
@@ -1960,8 +1960,8 @@ Expected: no output, exit code 0. If there are errors, they are almost certainly
 - [ ] **Step 5: Commit**
 
 ```bash
-git add components/model-review-console/PmPanel.tsx tests/model-review-console.test.cjs
-git commit -m "feat: add project manager panel with task log and notifications"
+git add components/development/PmPanel.tsx tests/development.test.cjs
+git commit -m "feat: add development team panel with task log and notifications"
 ```
 
 ---
@@ -1978,49 +1978,49 @@ Apply `supabase/migrations/20260731000000_model_review_console.sql` against the 
 
 - [ ] **Step 2: Confirm at least one test account per role exists**
 
-Check `user_profiles` for an active `model_team`, `web_team`, and `project_manager` account (create via `/admin/users` if missing).
+Check `user_profiles` for an active `development_team`, `development_team`, and `development_team` account (create via `/admin/users` if missing).
 
-- [ ] **Step 3: Start the dev server and sign in as `model_team`**
+- [ ] **Step 3: Start the dev server and sign in as `development_team`**
 
 Run: `pnpm dev`
-Visit `/model-review-console`. Confirm:
+Visit `/development`. Confirm:
 - Header stat cards render (Images tested, Flagged for review, Role, Checkpoint).
 - Selecting a real image and clicking "Run detection" shows real bounding boxes (not `MOCK_BOXES` shapes) and the "Images tested" stat increments on reload.
 - Flagging a detection (False positive or False negative) makes it show "✓ Flagged" and persists after a page reload.
 - Moving the confidence-threshold slider changes which detections are visible without needing to re-run detection.
-- Visiting `/upload` bounces back to `/model-review-console`.
+- Visiting `/upload` bounces back to `/development`.
 
-- [ ] **Step 4: Sign in as `web_team`**
+- [ ] **Step 4: Sign in as `development_team`**
 
 Confirm:
-- Web team panel renders (not the model team panel).
+- Development team panel renders (not the development team panel).
 - Latency numbers are non-zero after Step 3 ran at least one detection.
-- Retrain-threshold slider updates and is reflected for `model_team` on next load (shared setting).
-- `/upload` bounces back to `/model-review-console`.
+- Retrain-threshold slider updates and is reflected for `development_team` on next load (shared setting).
+- `/upload` bounces back to `/development`.
 
 - [ ] **Step 5: Trigger and integrate a retrain**
 
-As `model_team`, flag detections until "Flagged for review" reaches the retrain threshold (default 5), then click "Start retrain". Confirm the flagged count resets to 0 and a new checkpoint version appears. As `web_team`, confirm the "Retrained checkpoint ready" banner appears and "Mark integrated" updates the Checkpoint stat for both roles.
+As `development_team`, flag detections until "Flagged for review" reaches the retrain threshold (default 5), then click "Start retrain". Confirm the flagged count resets to 0 and a new checkpoint version appears. As `development_team`, confirm the "Retrained checkpoint ready" banner appears and "Mark integrated" updates the Checkpoint stat for both roles.
 
-- [ ] **Step 6: Sign in as `project_manager`**
+- [ ] **Step 6: Sign in as `development_team`**
 
 Confirm:
 - Handoff stepper shows real numbers matching Steps 3–5.
 - Creating a task and changing its status persists after reload.
-- "Email model team" / "Email web team" buttons add a row to the notification log (no real email is sent — confirm nothing appears in any inbox, this is expected).
-- `/upload` bounces back to `/model-review-console`.
+- "Email development team" / "Email development team" buttons add a row to the notification log (no real email is sent — confirm nothing appears in any inbox, this is expected).
+- `/upload` bounces back to `/development`.
 
 - [ ] **Step 7: Confirm existing roles/pages are unaffected**
 
-Sign in as an `operator` (or any pre-existing role) and confirm `/upload`, `/review`, `/analytics` still work exactly as before. Sign in as `admin` and confirm they still land on `/admin/users`, and that visiting `/model-review-console` as admin redirects them to `/admin/users`.
+Sign in as an `operator` (or any pre-existing role) and confirm `/upload`, `/review`, `/analytics` still work exactly as before. Sign in as `admin` and confirm they still land on `/admin/users`, and that visiting `/development` as admin redirects them to `/admin/users`.
 
 - [ ] **Step 8: Cross-role 403 checks**
 
-While signed in as `web_team`, run:
+While signed in as `development_team`, run:
 ```bash
-curl -i -X POST http://localhost:3000/api/model-review/run -H "Cookie: <web_team session cookie>"
+curl -i -X POST http://localhost:3000/api/model-review/run -H "Cookie: <development_team session cookie>"
 ```
-Expected: `403`. Repeat for `PATCH /api/model-review/settings` with `{"confidenceThreshold":0.5}` as `web_team` → `403`.
+Expected: `403`. Repeat for `PATCH /api/model-review/settings` with `{"confidenceThreshold":0.5}` as `development_team` → `403`.
 
 - [ ] **Step 9: Final full-repo check**
 

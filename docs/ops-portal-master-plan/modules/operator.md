@@ -6,7 +6,7 @@ Operator creates accurate HITL suggestions for assigned waste-review cases. Oper
 
 ## Primary Task
 
-Review one assigned image, handle every flagged object, and submit complete suggestions for Team Lead validation.
+Review one assigned image, handle every flagged object, and submit complete suggestions for Operator validation.
 
 ## Inputs
 
@@ -65,10 +65,10 @@ Never show confidence as certainty. A high score can still require review becaus
 Potential battery or food-organic contamination shows provisional instruction before final label:
 
 ```text
-Potential battery. Keep out of recyclable stream until Team Lead confirms.
+Potential battery. Keep out of recyclable stream until Operator confirms.
 ```
 
-Operator acknowledges instruction. If no work starts within five minutes, Team Lead receives escalation. Critical case still waits for full image completion before Team Lead approval.
+Operator acknowledges instruction. If no work starts within five minutes, Operator receives escalation. Critical case still waits for full image completion before Operator approval.
 
 ## Return to Queue
 
@@ -77,7 +77,7 @@ Operator can return case only with reason:
 - Needs battery-trained reviewer
 - Image unclear
 - Wrong workload assignment
-- Needs Team Lead review
+- Needs Operator review
 
 System preserves drafts and notes, then reassigns one time or escalates according to SLA.
 
@@ -95,7 +95,7 @@ System preserves drafts and notes, then reassigns one time or escalates accordin
 
 - Every flagged object has a suggestion, box state, and cause where required.
 - Original model output remains unchanged in audit history.
-- Team Lead can see image, original evidence, Operator action, and time record.
+- Operator can see image, original evidence, Operator action, and time record.
 
 ## Open Decisions
 

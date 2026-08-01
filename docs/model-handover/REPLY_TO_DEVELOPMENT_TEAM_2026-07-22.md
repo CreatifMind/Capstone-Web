@@ -29,7 +29,7 @@ right answer. Thank you for checking rather than assuming.
 
 **The whole thing. There is no server-side detector to replace.**
 
-The FastAPI service in `serve/` and in §3 of the old `WEB_TEAM_SPEC.md` **was never deployed** —
+The FastAPI service in `serve/` and in §3 of the old `DEVELOPMENT_SPEC.md` **was never deployed** —
 it exists as code and nothing more. Do not treat it as a system being migrated away from; treat
 it as a prototype that never shipped. Everything runs in the browser.
 

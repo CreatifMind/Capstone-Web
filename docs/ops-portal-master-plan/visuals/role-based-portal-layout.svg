@@ -46,9 +46,9 @@
   <rect x="465" y="930" width="175" height="48" rx="8" class="outline"/><text x="487" y="961" class="badge">Add missed object</text>
   <rect x="860" y="930" width="230" height="48" rx="8" class="btn"/><text x="889" y="961" class="white">Submit suggestions</text>
 
-  <!-- team lead -->
+  <!-- operator -->
   <rect x="1240" y="520" width="1060" height="550" rx="18" class="panel"/>
-  <text x="1275" y="570" class="h2">02 · Team Lead — Approval and SLA Queue</text>
+  <text x="1275" y="570" class="h2">02 · Operator — Approval and SLA Queue</text>
   <text x="1275" y="602" class="body">Validate suggestions, then protect queue health.</text>
   <rect x="1275" y="635" width="280" height="380" rx="12" class="sub"/>
   <text x="1300" y="680" class="h3">NEEDS ACTION</text>
@@ -67,7 +67,7 @@
 
   <!-- ops manager -->
   <rect x="100" y="1130" width="1060" height="550" rx="18" class="panel"/>
-  <text x="135" y="1180" class="h2">03 · Operations Manager — Operations Health</text>
+  <text x="135" y="1180" class="h2">03 · Plant Manager — Operations Health</text>
   <text x="135" y="1212" class="body">See business risk first; then decide policy, safety, and release.</text>
   <rect x="830" y="1150" width="150" height="42" rx="21" class="mint"/><text x="853" y="1177" class="badge">Monthly baseline</text>
   <rect x="990" y="1150" width="110" height="42" rx="21" class="sub"/><text x="1018" y="1177" class="badge">Yearly</text>
@@ -77,11 +77,11 @@
   <rect x="135" y="1410" width="555" height="220" rx="12" class="sub"/><text x="160" y="1450" class="h3">Risk driver by category</text>
   <line x1="180" y1="1580" x2="650" y2="1580" class="line"/><rect x="220" y="1510" width="55" height="70" class="green"/><rect x="330" y="1470" width="55" height="110" class="warn"/><rect x="440" y="1535" width="55" height="45" class="green"/><rect x="550" y="1440" width="55" height="140" class="danger"/>
   <text x="205" y="1615" class="muted">Plastic</text><text x="320" y="1615" class="muted">Food</text><text x="430" y="1615" class="muted">Paper</text><text x="545" y="1615" class="muted">Battery</text>
-  <rect x="720" y="1410" width="375" height="220" rx="12" class="sub"/><text x="745" y="1450" class="h3">Active feedback cases</text><text x="745" y="1490" class="body">PL-0248 · Model Team · RCA</text><text x="745" y="1530" class="body">PL-0231 · Web Team · Handover</text><text x="745" y="1580" class="muted">Estimated value only. Not revenue.</text>
+  <rect x="720" y="1410" width="375" height="220" rx="12" class="sub"/><text x="745" y="1450" class="h3">Active feedback cases</text><text x="745" y="1490" class="body">PL-0248 · Development Team · RCA</text><text x="745" y="1530" class="body">PL-0231 · Development Team · Handover</text><text x="745" y="1580" class="muted">Estimated value only. Not revenue.</text>
 
-  <!-- model team -->
+  <!-- development team -->
   <rect x="1240" y="1130" width="1060" height="550" rx="18" class="panel"/>
-  <text x="1275" y="1180" class="h2">04 · Model Team — RCA Case Workspace</text>
+  <text x="1275" y="1180" class="h2">04 · Development Team — RCA Case Workspace</text>
   <text x="1275" y="1212" class="body">Explain failure, decide data readiness, and prepare technical handover.</text>
   <rect x="1275" y="1250" width="285" height="380" rx="12" class="sub"/><text x="1300" y="1290" class="h3">ASSIGNED RCA CASES</text>
   <rect x="1295" y="1320" width="225" height="55" rx="10" class="mint"/><text x="1310" y="1355" class="h3">PL-0248</text><text x="1300" y="1425" class="body">PL-0231</text><text x="1300" y="1495" class="h3">Dataset readiness</text><text x="1300" y="1530" class="kpi">63 / target TBD</text>
@@ -95,16 +95,16 @@
 
   <!-- PM -->
   <rect x="100" y="1740" width="700" height="550" rx="18" class="panel"/>
-  <text x="135" y="1790" class="h2">05 · Project Manager</text><text x="135" y="1822" class="body">Coordination board: unblock work.</text>
+  <text x="135" y="1790" class="h2">05 · Development Team</text><text x="135" y="1822" class="body">Coordination board: unblock work.</text>
   <rect x="135" y="1860" width="630" height="255" rx="12" class="sub"/><text x="160" y="1900" class="h3">BLOCKED WORK</text>
-  <line x1="160" y1="1930" x2="740" y2="1930" class="line"/><text x="160" y="1965" class="body">PL-0248</text><text x="330" y="1965" class="body">Model Team</text><text x="510" y="1965" class="body">More data</text>
-  <line x1="160" y1="1985" x2="740" y2="1985" class="line"/><text x="160" y="2020" class="body">PL-0231</text><text x="330" y="2020" class="body">Web Team</text><text x="510" y="2020" class="body">Handover</text>
+  <line x1="160" y1="1930" x2="740" y2="1930" class="line"/><text x="160" y="1965" class="body">PL-0248</text><text x="330" y="1965" class="body">Development Team</text><text x="510" y="1965" class="body">More data</text>
+  <line x1="160" y1="1985" x2="740" y2="1985" class="line"/><text x="160" y="2020" class="body">PL-0231</text><text x="330" y="2020" class="body">Development Team</text><text x="510" y="2020" class="body">Handover</text>
   <rect x="160" y="2050" width="180" height="44" rx="8" class="outline"/><text x="182" y="2079" class="badge">Send reminder</text>
   <text x="135" y="2180" class="muted">Read-only status by default. Reminders need recipient, reason, due date.</text>
 
-  <!-- web team -->
+  <!-- development team -->
   <rect x="850" y="1740" width="700" height="550" rx="18" class="panel"/>
-  <text x="885" y="1790" class="h2">06 · Web Team</text><text x="885" y="1822" class="body">Implement the signed model handover exactly.</text>
+  <text x="885" y="1790" class="h2">06 · Development Team</text><text x="885" y="1822" class="body">Implement the signed model handover exactly.</text>
   <rect x="885" y="1860" width="630" height="255" rx="12" class="sub"/><text x="910" y="1900" class="h3">INTEGRATION HANDOVER</text>
   <text x="910" y="1950" class="body">Class map · display rule · confidence rule</text><text x="910" y="1990" class="body">NMS contract · model version · release notes</text>
   <rect x="910" y="2035" width="240" height="44" rx="8" class="mint"/><text x="930" y="2064" class="badge">Complete integration check</text>

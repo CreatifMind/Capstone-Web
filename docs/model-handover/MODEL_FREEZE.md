@@ -37,7 +37,7 @@ The freeze has **two tiers**, and the distinction is the whole reason we can han
 | exported model | `runs/segment/runs/v3_ffremask_9cls/weights/best.onnx` |
 | ONNX sha256 | `ff866a7c3154286de6bf5bef72984f584066eda1c9a1cc7643186a1a81fe3ff0` |
 | ONNX size | 54.6 MB (52.1 MiB), fp16 |
-| confidence threshold | 0.32 (product choice, overrulable — see `WEB_TEAM_HANDOVER.md` §4) |
+| confidence threshold | 0.32 (product choice, overrulable — see `DEVELOPMENT_HANDOVER.md` §4) |
 | NMS IoU | 0.7 |
 | handed over | 22 July 2026 |
 
@@ -106,7 +106,7 @@ OK  parity within tolerance (unmatched 0.0%)
 Reproduced identically across two consecutive runs. **fp16 costs nothing measurable** — ship it
 rather than the 100 MB fp32 build.
 
-> **Correction to the record.** `WEB_TEAM_HANDOVER.md:36-41` previously claimed fp16 was
+> **Correction to the record.** `DEVELOPMENT_HANDOVER.md:36-41` previously claimed fp16 was
 > "verified against the original" by jobs 4349/4350. No log or output for either job exists
 > anywhere in the repo, and the training conda env did not even have `onnx` installed, so
 > nothing in that environment could have produced the claim. It has now been established

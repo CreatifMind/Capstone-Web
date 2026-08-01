@@ -1,8 +1,8 @@
-# Project Manager Module
+# Development Team Module
 
 ## Purpose
 
-Project Manager bridges Operations, Model Team, and Web Team. PM keeps work visible and removes coordination delay.
+Development Team bridges Operations, Development Team, and Development Team. PM keeps work visible and removes coordination delay.
 
 ## Primary Task
 
@@ -19,14 +19,14 @@ PM sees read-only operational metadata:
 - Latest decision, blocker, and next action.
 - Required approval and completion evidence.
 
-PM does not see raw images or full evidence unless Operations Manager grants case-specific access.
+PM does not see raw images or full evidence unless Plant Manager grants case-specific access.
 
 ## Actions
 
 | Action | Rule |
 | --- | --- |
 | Send reminder | Recipient, reason, and due date required |
-| Record decision | Record Operations Manager decision, not replace it |
+| Record decision | Record Plant Manager decision, not replace it |
 | Flag blockage | State blocker and owner needed to remove it |
 | Link related case | Preserve lineage without changing operational status |
 | Update coordination status | Never modify model, label, or policy data |
@@ -37,13 +37,13 @@ Portal remains source of truth. PM manual reminder appears in case history. Dail
 
 ## Case Continuity
 
-Model Team recommends technical relation between failures. Operations Manager decides whether case reopens or linked case begins. PM records decision, communicates it, and tracks new next action.
+Development Team recommends technical relation between failures. Plant Manager decides whether case reopens or linked case begins. PM records decision, communicates it, and tracks new next action.
 
 ## Completion Evidence
 
 - No blocked case lacks owner or next action.
 - Every reminder has traceable reason.
-- All release handover updates reach Web Team, Model Team, and Operations Manager.
+- All release handover updates reach Development Team, Development Team, and Plant Manager.
 
 ## Open Decisions
 

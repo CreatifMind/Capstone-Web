@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ModelReviewRole, SharedStats } from "./types";
+import type { DevelopmentRole, SharedStats } from "./types";
 import ModelTeamPanel from "./ModelTeamPanel";
 import WebTeamPanel from "./WebTeamPanel";
 import PmPanel from "./PmPanel";
 
-type Props = { role: ModelReviewRole };
+type Props = { role: DevelopmentRole };
 
 async function fetchSharedStats(): Promise<SharedStats> {
   const [runRes, flagsRes, retrainRes, settingsRes] = await Promise.all([
@@ -36,10 +36,9 @@ async function fetchSharedStats(): Promise<SharedStats> {
   };
 }
 
-const ROLE_LABEL: Record<ModelReviewRole, string> = {
-  model_team: "Model team",
-  web_team: "Web team",
-  project_manager: "Project manager"
+const ROLE_LABEL: Record<DevelopmentRole, string> = {
+  development_team: "Development team",
+  plant_manager: "Plant manager"
 };
 
 export default function ModelReviewConsole({ role }: Props) {
@@ -85,9 +84,9 @@ export default function ModelReviewConsole({ role }: Props) {
         </div>
       </section>
 
-      {role === "model_team" && <ModelTeamPanel stats={stats} onChanged={refresh} />}
-      {role === "web_team" && <WebTeamPanel stats={stats} onChanged={refresh} />}
-      {role === "project_manager" && <PmPanel stats={stats} onChanged={refresh} />}
+      <ModelTeamPanel stats={stats} onChanged={refresh} />
+      <WebTeamPanel stats={stats} onChanged={refresh} />
+      <PmPanel stats={stats} onChanged={refresh} />
     </>
   );
 }

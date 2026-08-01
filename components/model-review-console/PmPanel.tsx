@@ -16,7 +16,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [title, setTitle] = useState("");
-  const [assigneeRole, setAssigneeRole] = useState<TaskRow["assignee_role"]>("model_team");
+  const [assigneeRole, setAssigneeRole] = useState<TaskRow["assignee_role"]>("development_team");
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
 
@@ -91,7 +91,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
     }
   };
 
-  const notify = async (team: "model" | "web") => {
+  const notify = async (team: "development") => {
     setError("");
     try {
       const response = await fetch("/api/model-review/notifications", {
@@ -131,8 +131,7 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <div className="mrc-card">
           <h2>Request status update</h2>
           <div className="mrc-controls">
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("model")}>Log request to model team</button>
-            <button type="button" className="mrc-btn-secondary" onClick={() => notify("web")}>Log request to web team</button>
+            <button type="button" className="mrc-btn-secondary" onClick={() => notify("development")}>Log request to development team</button>
           </div>
         </div>
         <div className="mrc-card">
@@ -155,9 +154,8 @@ export default function PmPanel({ stats, onChanged }: Props) {
         <form className="mrc-controls" onSubmit={createTask}>
           <input type="text" placeholder="Task title" value={title} onChange={(event) => setTitle(event.target.value)} />
           <select value={assigneeRole} onChange={(event) => setAssigneeRole(event.target.value as TaskRow["assignee_role"])}>
-            <option value="model_team">Model team</option>
-            <option value="web_team">Web team</option>
-            <option value="project_manager">Project manager</option>
+            <option value="development_team">Development team</option>
+            <option value="plant_manager">Plant manager</option>
           </select>
           <input type="text" placeholder="URL (optional)" value={url} onChange={(event) => setUrl(event.target.value)} />
           <button type="submit" className="mrc-btn-primary">Add task</button>

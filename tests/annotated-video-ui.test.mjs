@@ -4,7 +4,7 @@ import test from "node:test";
 
 const resultPage = readFileSync("app/result/page.tsx", "utf8");
 const reviewPage = readFileSync("app/review/page.tsx", "utf8");
-const modelImprovementPage = readFileSync("app/model-improvement/page.tsx", "utf8");
+const developmentPage = readFileSync("app/development/page.tsx", "utf8");
 const middleware = readFileSync("middleware.ts", "utf8");
 const roles = readFileSync("lib/roles.ts", "utf8");
 const loginRoute = readFileSync("app/auth/login/route.ts", "utf8");
@@ -61,18 +61,20 @@ test("image upload uses browser ONNX instead of backend PyTorch fallback", () =>
   assert.match(script, /Browser ONNX — best\.onnx/);
 });
 
-test("model team has a protected Model Review route and role home", () => {
-  assert.match(roles, /model_team/);
-  assert.match(roles, /role === "model_team"\) return "\/model-improvement"/);
-  assert.match(modelImprovementPage, /requireActiveRole\(\["model_team"\]\)/);
-  assert.match(modelImprovementPage, /export const dynamic = "force-dynamic"/);
-  assert.match(modelImprovementPage, /Model Review Workspace/);
+test("development team and plant manager have protected role homes", () => {
+  assert.match(roles, /"development_team"/);
+  assert.match(roles, /"plant_manager"/);
+  assert.match(roles, /role === "development_team"\) return "\/development"/);
+  assert.match(roles, /role === "plant_manager"\) return "\/overview"/);
+  assert.match(developmentPage, /requireActiveDevelopment\(\)/);
+  assert.match(developmentPage, /export const dynamic = "force-dynamic"/);
 });
 
-test("middleware and login route model team users away from operator and admin workspaces", () => {
-  assert.match(middleware, /const MODEL_REVIEW = "\/model-improvement"/);
-  assert.match(middleware, /profile\.role === "model_team"/);
-  assert.match(middleware, /isModelReviewPage \|\| isModelReviewApi\) return response/);
-  assert.match(middleware, /isAdminPage \|\| isModelReviewPage \|\| isModelReviewConsolePage\) return redirect\(request, "\/upload"/);
+test("middleware routes development, admin, operator, and plant manager roles", () => {
+  assert.match(middleware, /const DEVELOPMENT = "\/development"/);
+  assert.match(middleware, /profile\.role === "plant_manager"/);
+  assert.match(middleware, /profile\.role === "development_team"/);
+  assert.match(middleware, /isDevelopmentPage \|\| isModelReviewApi\) return response/);
+  assert.match(middleware, /isAdminPage \|\| isDevelopmentPage \|\| isOverviewPage\) return redirect\(request, "\/upload"/);
   assert.match(loginRoute, /roleHomePath\(profile\.role\)/);
 });

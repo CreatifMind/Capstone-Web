@@ -1,8 +1,8 @@
-# Web Team Module
+# Development Team Module
 
 ## Purpose
 
-Web Team integrates Model Team-approved model contract into portal without changing technical model decisions.
+Development Team integrates Development Team-approved model contract into portal without changing technical model decisions.
 
 ## Primary Task
 
@@ -27,12 +27,12 @@ Implement and verify approved model release, then report integration and rollbac
 - Do not filter general trash before NMS.
 - Do not display class 8 as confident live result.
 - Do not expose candidate subclass as current live class.
-- Do not change model threshold or NMS without Model Team handover.
+- Do not change model threshold or NMS without Development Team handover.
 - Preserve original model evidence for HITL and audit.
 
 ## Status Updates
 
-Web Team reports:
+Development Team reports:
 
 1. Handover received and understood.
 2. Integration in progress or blocked.
@@ -41,7 +41,7 @@ Web Team reports:
 5. Rollback readiness.
 6. Deployed or reverted status.
 
-Model Team sends technical details directly. PM and Operations Manager stay copied. Web Team can request clarification but cannot silently replace contract.
+Development Team sends technical details directly. PM and Plant Manager stay copied. Development Team can request clarification but cannot silently replace contract.
 
 ## Completion Evidence
 

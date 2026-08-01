@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { failure, modelReviewContext } from "@/lib/model-review/context";
 
-const TEAMS = new Set(["model", "web"]);
+const TEAMS = new Set(["development"]);
 
 export async function GET() {
   const checked = await modelReviewContext();
@@ -17,12 +17,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const checked = await modelReviewContext(["project_manager"]);
+  const checked = await modelReviewContext(["development_team"]);
   if ("response" in checked) return checked.response;
   const { service, profile } = checked.context;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const team = typeof body?.team === "string" ? body.team : "";
-  if (!TEAMS.has(team)) return failure("A valid team (model/web) is required.", 422);
+  if (!TEAMS.has(team)) return failure("A valid team is required.", 422);
 
   const { data: notification, error } = await service
     .from("model_review_notifications")

@@ -82,7 +82,7 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
           <h2>Current checkpoint</h2>
           <p className="mrc-mono-box">{stats.liveVersion}</p>
           <button type="button" className="mrc-btn-primary" onClick={copySnippet}>Copy integration snippet</button>
-          <p className="mrc-muted">{copyStatus || "Copies the latest model load snippet for the web team's integration branch."}</p>
+          <p className="mrc-muted">{copyStatus || "Copies the latest model load snippet for the development integration branch."}</p>
           <label className="mrc-field">
             Retrain threshold ({retrainThreshold})
             <input type="range" min={1} max={30} step={1} value={retrainThreshold}
