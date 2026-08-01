@@ -14905,6 +14905,96 @@ body[data-page="analytics"] .analytics-chart-wrap canvas {
   max-width: 100%;
 }
 
+body[data-page="model-improvement"] .model-review-page-body {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  width: min(100%, 1320px);
+  margin-inline: auto;
+}
+
+body[data-page="model-improvement"] .model-review-hero,
+body[data-page="model-improvement"] .model-review-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px;
+}
+
+body[data-page="model-improvement"] .model-review-hero > div,
+body[data-page="model-improvement"] .model-review-panel > div {
+  min-width: 0;
+}
+
+body[data-page="model-improvement"] .model-review-hero h2,
+body[data-page="model-improvement"] .model-review-panel h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font: 700 clamp(2rem, 4vw, 3.2rem)/.95 "IBM Plex Sans Condensed", sans-serif;
+}
+
+body[data-page="model-improvement"] .model-review-panel h2 {
+  font-size: clamp(1.55rem, 2.4vw, 2.2rem);
+}
+
+body[data-page="model-improvement"] .model-review-hero p:not(.eyebrow),
+body[data-page="model-improvement"] .model-review-panel p:not(.panel-kicker) {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+body[data-page="model-improvement"] .model-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+body[data-page="model-improvement"] .model-review-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+}
+
+body[data-page="model-improvement"] .model-review-card > i {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+body[data-page="model-improvement"] .model-review-card h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+body[data-page="model-improvement"] .model-review-card p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+@media (max-width: 1000px) {
+  body[data-page="model-improvement"] .model-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-page="model-improvement"] .model-review-hero,
+  body[data-page="model-improvement"] .model-review-panel {
+    flex-direction: column;
+    padding: 20px;
+  }
+}
+
 @media (max-width: 640px) {
   body[data-page="analytics"].dark-app .topbar-right[data-topbar-actions] {
     display: grid !important;

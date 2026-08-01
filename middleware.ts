@@ -1,8 +1,10 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { roleHomePath } from "@/lib/roles";
 
 const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
+const MODEL_REVIEW = "/model-improvement";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -11,13 +13,14 @@ export async function middleware(request: NextRequest) {
   const isAdminApi = pathname.startsWith("/api/admin/");
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isOperational = OPERATIONAL.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const isModelReview = pathname === MODEL_REVIEW || pathname.startsWith(`${MODEL_REVIEW}/`);
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !anonKey || !serviceKey) {
     if (isAdminApi) return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
-    return isAdminPage || isOperational ? redirect(request, "/login", response) : response;
+    return isAdminPage || isOperational || isModelReview ? redirect(request, "/login", response) : response;
   }
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -28,7 +31,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     if (isAdminApi) return response;
-    if (isAdminPage || isOperational) return redirect(request, "/login", response);
+    if (isAdminPage || isOperational || isModelReview) return redirect(request, "/login", response);
     return response;
   }
 
@@ -44,10 +47,16 @@ export async function middleware(request: NextRequest) {
   }
   if (profile.role === "admin") {
     if (isAdminApi || isAdminPage) return response;
-    return redirect(request, "/admin/users", response);
+    return redirect(request, roleHomePath(profile.role), response);
+  }
+  if (profile.role === "model_team") {
+    if (isModelReview) return response;
+    if (isAdminApi) return response;
+    return redirect(request, roleHomePath(profile.role), response);
   }
   if (isAdminApi) return response;
   if (isAdminPage) return redirect(request, "/upload", response);
+  if (isModelReview) return redirect(request, "/upload", response);
   if (PUBLIC.has(pathname)) return redirect(request, "/upload", response);
   return response;
 }

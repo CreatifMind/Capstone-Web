@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse } from "next/server";
-import { ROLES, normalizeEmail } from "@/lib/admin";
+import { ROLES, normalizeEmail, roleHomePath } from "@/lib/admin";
 
 type AuthCookie = { name: string; value: string; options: CookieOptions };
 
@@ -66,5 +66,5 @@ export async function POST(request: Request) {
     return redirectWithCookies("/login?reason=inactive", request, authCookies);
   }
   if (!ROLES.includes(profile.role as (typeof ROLES)[number])) return redirectWithCookies("/login?error=role", request, authCookies);
-  return redirectWithCookies(profile.role === "admin" ? "/admin/users" : "/upload", request, authCookies);
+  return redirectWithCookies(roleHomePath(profile.role), request, authCookies);
 }

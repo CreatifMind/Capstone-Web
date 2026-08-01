@@ -4,6 +4,10 @@ import test from "node:test";
 
 const resultPage = readFileSync("app/result/page.tsx", "utf8");
 const reviewPage = readFileSync("app/review/page.tsx", "utf8");
+const modelImprovementPage = readFileSync("app/model-improvement/page.tsx", "utf8");
+const middleware = readFileSync("middleware.ts", "utf8");
+const roles = readFileSync("lib/roles.ts", "utf8");
+const loginRoute = readFileSync("app/auth/login/route.ts", "utf8");
 const script = readFileSync("public/js/script.js", "utf8");
 const styles = readFileSync("public/css/style.css", "utf8");
 
@@ -55,4 +59,20 @@ test("image upload uses browser ONNX instead of backend PyTorch fallback", () =>
   assert.match(script, /Browser ONNX is required for image detection/);
   assert.doesNotMatch(script, /Backend PyTorch — best\.pt/);
   assert.match(script, /Browser ONNX — best\.onnx/);
+});
+
+test("model team has a protected Model Review route and role home", () => {
+  assert.match(roles, /model_team/);
+  assert.match(roles, /role === "model_team"\) return "\/model-improvement"/);
+  assert.match(modelImprovementPage, /requireActiveRole\(\["model_team"\]\)/);
+  assert.match(modelImprovementPage, /export const dynamic = "force-dynamic"/);
+  assert.match(modelImprovementPage, /Model Review Workspace/);
+});
+
+test("middleware and login route model team users away from operator and admin workspaces", () => {
+  assert.match(middleware, /const MODEL_REVIEW = "\/model-improvement"/);
+  assert.match(middleware, /profile\.role === "model_team"/);
+  assert.match(middleware, /isModelReview\) return response/);
+  assert.match(middleware, /isModelReview\) return redirect\(request, "\/upload"/);
+  assert.match(loginRoute, /roleHomePath\(profile\.role\)/);
 });
