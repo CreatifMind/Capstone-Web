@@ -1,10 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { Role } from "@/lib/admin";
+import { ROLES, type Role } from "@/lib/roles";
 
 type AdminUser = { id: string; name: string; email: string; role: Role; status: "active" | "inactive"; last_login: string | null };
-const ROLES: Role[] = ["operator", "development_team", "admin", "plant_manager"];
 const title = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const date = (value: string | null) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Never";
 
