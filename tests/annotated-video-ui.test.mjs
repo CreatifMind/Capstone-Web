@@ -72,7 +72,7 @@ test("model team has a protected Model Review route and role home", () => {
 test("middleware and login route model team users away from operator and admin workspaces", () => {
   assert.match(middleware, /const MODEL_REVIEW = "\/model-improvement"/);
   assert.match(middleware, /profile\.role === "model_team"/);
-  assert.match(middleware, /isModelReview\) return response/);
-  assert.match(middleware, /isModelReview\) return redirect\(request, "\/upload"/);
+  assert.match(middleware, /isModelReviewPage \|\| isModelReviewApi\) return response/);
+  assert.match(middleware, /isAdminPage \|\| isModelReviewPage \|\| isModelReviewConsolePage\) return redirect\(request, "\/upload"/);
   assert.match(loginRoute, /roleHomePath\(profile\.role\)/);
 });

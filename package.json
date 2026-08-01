@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs tests/model-review-console.test.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
