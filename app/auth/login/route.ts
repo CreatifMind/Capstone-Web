@@ -3,10 +3,18 @@ import { NextResponse } from "next/server";
 import { ROLES, normalizeEmail, roleHomePath } from "@/lib/admin";
 
 type AuthCookie = { name: string; value: string; options: CookieOptions };
+const ROLE_COOKIE = "purityloop_role";
 
-function redirectWithCookies(path: string, request: Request, cookies: AuthCookie[]) {
+function redirectWithCookies(path: string, request: Request, cookies: AuthCookie[], role?: string) {
   const response = NextResponse.redirect(new URL(path, request.url), 303);
   cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+  if (role) {
+    response.cookies.set(ROLE_COOKIE, role, {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7
+    });
+  }
   return response;
 }
 
@@ -66,5 +74,5 @@ export async function POST(request: Request) {
     return redirectWithCookies("/login?reason=inactive", request, authCookies);
   }
   if (!ROLES.includes(profile.role as (typeof ROLES)[number])) return redirectWithCookies("/login?error=role", request, authCookies);
-  return redirectWithCookies(roleHomePath(profile.role), request, authCookies);
+  return redirectWithCookies(roleHomePath(profile.role), request, authCookies, profile.role);
 }

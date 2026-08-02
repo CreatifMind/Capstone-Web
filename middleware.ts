@@ -6,6 +6,7 @@ const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
 const DEVELOPMENT = "/development";
 const OVERVIEW = "/overview";
+const ROLE_COOKIE = "purityloop_role";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -45,14 +46,21 @@ export async function middleware(request: NextRequest) {
   const profile = profiles[0];
   if (!profile || profile.status !== "active" || profile.deleted_at) {
     await supabase.auth.signOut();
+    response.cookies.delete(ROLE_COOKIE);
     if (isAdminApi || isModelReviewApi) return response;
     return redirect(request, "/login?reason=inactive", response);
   }
   if (!ROLES.includes(profile.role as (typeof ROLES)[number])) {
     await supabase.auth.signOut();
+    response.cookies.delete(ROLE_COOKIE);
     if (isAdminApi || isModelReviewApi) return response;
     return redirect(request, "/login?error=role", response);
   }
+  response.cookies.set(ROLE_COOKIE, profile.role, {
+    path: "/",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7
+  });
   if (profile.role === "plant_manager") {
     if (PUBLIC.has(pathname)) return redirect(request, roleHomePath(profile.role), response);
     return response;

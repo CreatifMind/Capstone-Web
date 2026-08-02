@@ -31,6 +31,7 @@ type WorkspaceProfile = {
 };
 
 const STORAGE_KEY = "purityloop-theme";
+const ROLE_COOKIE = "purityloop_role";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -65,6 +66,24 @@ const PLANT_MANAGER_NAV = [
 
 function isThemePreference(value: string | null): value is ThemePreference {
   return value === "light" || value === "dark" || value === "system";
+}
+
+function isRole(value: string | null): value is Role {
+  return value === "operator" || value === "development_team" || value === "admin" || value === "plant_manager";
+}
+
+function readRoleCookie(): Role | null {
+  if (typeof document === "undefined") return null;
+  const roleCookie = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith(`${ROLE_COOKIE}=`));
+  if (!roleCookie) return null;
+  const value = decodeURIComponent(roleCookie.split("=").slice(1).join("="));
+  return isRole(value) ? value : null;
+}
+
+function roleOnlyProfile(role: Role): WorkspaceProfile {
+  return { name: ROLE_LABEL[role], email: "", role };
 }
 
 function systemTheme(): ResolvedTheme {
@@ -286,7 +305,10 @@ function RoleChromeEnhancer({ profile }: { profile: WorkspaceProfile | null }) {
 export default function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>("system");
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
-  const [profile, setProfile] = useState<WorkspaceProfile | null>(null);
+  const [profile, setProfile] = useState<WorkspaceProfile | null>(() => {
+    const role = readRoleCookie();
+    return role ? roleOnlyProfile(role) : null;
+  });
 
   useLayoutEffect(() => {
     let stored: string | null = null;
