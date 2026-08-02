@@ -16,7 +16,13 @@
 .mrc-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-elevated, var(--surface)); box-shadow: var(--shadow-sm); padding: 20px; }
 .mrc-card h2 { margin: 0 0 12px; font-size: 1.02rem; font-weight: 700; }
 .mrc-muted { color: var(--text-secondary, var(--muted)); }
+.mrc-tab-selector { width: min(100%, 640px); display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface-elevated, var(--surface)) 86%, transparent); box-shadow: var(--shadow-sm); }
+.mrc-tab-selector button { min-height: 42px; border: 0; border-radius: calc(var(--radius-lg) - 4px); background: transparent; color: var(--text-secondary, var(--muted)); font: inherit; font-weight: 700; cursor: pointer; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
+.mrc-tab-selector button:hover, .mrc-tab-selector button:focus-visible { color: var(--text-primary, var(--text)); background: color-mix(in srgb, var(--primary) 8%, transparent); outline: none; }
+.mrc-tab-selector button.active { color: var(--primary); background: var(--surface-elevated, var(--surface)); box-shadow: var(--shadow-sm); }
+.mrc-tab-selector button:disabled { cursor: not-allowed; opacity: .48; background: transparent; box-shadow: none; }
 .mrc-workstream { display: grid; gap: 16px; padding: clamp(16px, 2vw, 22px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface-elevated, var(--surface)) 88%, transparent); box-shadow: var(--shadow-sm); }
+.mrc-workstream[hidden] { display: none; }
 .mrc-workstream-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
 .mrc-workstream-header h2 { margin: 3px 0 0; font-size: clamp(1.08rem, 2vw, 1.28rem); }
 .mrc-workstream-header p { max-width: 520px; margin: 0; color: var(--text-secondary, var(--muted)); line-height: 1.45; }
@@ -84,6 +90,7 @@ input[type="file"] { display: none; }
 
 @media (max-width: 640px) {
   .mrc-body { padding-inline: 14px; }
+  .mrc-tab-selector { grid-template-columns: 1fr; }
   .mrc-controls, .mrc-toolbar, .mrc-retrain-controls { align-items: stretch; flex-direction: column; }
   .mrc-btn-primary, .mrc-btn-secondary { width: 100%; }
   .mrc-stepper { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

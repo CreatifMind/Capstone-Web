@@ -7,6 +7,7 @@ import WebTeamPanel from "./WebTeamPanel";
 import PmPanel from "./PmPanel";
 
 type Props = { role: DevelopmentRole };
+type DevelopmentTab = "model" | "web" | "manager";
 
 async function fetchSharedStats(): Promise<SharedStats> {
   const [runRes, flagsRes, retrainRes, settingsRes] = await Promise.all([
@@ -45,8 +46,14 @@ export default function ModelReviewConsole({ role }: Props) {
   const [stats, setStats] = useState<SharedStats | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [activeTab, setActiveTab] = useState<DevelopmentTab>("model");
 
   const refresh = () => setRefreshToken((token) => token + 1);
+  const tabs: Array<{ id: DevelopmentTab; label: string; disabled?: boolean }> = [
+    { id: "model", label: "Model Team" },
+    { id: "web", label: "Web Team" },
+    { id: "manager", label: "Manager", disabled: role !== "plant_manager" }
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +91,32 @@ export default function ModelReviewConsole({ role }: Props) {
         </div>
       </section>
 
-      <section className="mrc-workstream" aria-labelledby="modelTeamSectionTitle">
+      <div className="mrc-tab-selector" role="tablist" aria-label="Development workspace sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`${tab.id}TeamPanel`}
+            aria-disabled={tab.disabled || undefined}
+            disabled={tab.disabled}
+            id={`${tab.id}TeamTab`}
+            className={activeTab === tab.id ? "active" : ""}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <section
+        id="modelTeamPanel"
+        className="mrc-workstream"
+        aria-labelledby="modelTeamSectionTitle"
+        role="tabpanel"
+        hidden={activeTab !== "model"}
+      >
         <header className="mrc-workstream-header">
           <div>
             <span className="panel-kicker">Model Team</span>
@@ -95,7 +127,13 @@ export default function ModelReviewConsole({ role }: Props) {
         <ModelTeamPanel stats={stats} onChanged={refresh} />
       </section>
 
-      <section className="mrc-workstream" aria-labelledby="webTeamSectionTitle">
+      <section
+        id="webTeamPanel"
+        className="mrc-workstream"
+        aria-labelledby="webTeamSectionTitle"
+        role="tabpanel"
+        hidden={activeTab !== "web"}
+      >
         <header className="mrc-workstream-header">
           <div>
             <span className="panel-kicker">Web Team</span>
@@ -107,7 +145,13 @@ export default function ModelReviewConsole({ role }: Props) {
       </section>
 
       {role === "plant_manager" && (
-        <section className="mrc-workstream" aria-labelledby="managerSectionTitle">
+        <section
+          id="managerTeamPanel"
+          className="mrc-workstream"
+          aria-labelledby="managerSectionTitle"
+          role="tabpanel"
+          hidden={activeTab !== "manager"}
+        >
           <header className="mrc-workstream-header">
             <div>
               <span className="panel-kicker">Manager</span>
