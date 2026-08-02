@@ -84,9 +84,40 @@ export default function ModelReviewConsole({ role }: Props) {
         </div>
       </section>
 
-      <ModelTeamPanel stats={stats} onChanged={refresh} />
-      <WebTeamPanel stats={stats} onChanged={refresh} />
-      <PmPanel stats={stats} onChanged={refresh} />
+      <section className="mrc-workstream" aria-labelledby="modelTeamSectionTitle">
+        <header className="mrc-workstream-header">
+          <div>
+            <span className="panel-kicker">Model Team</span>
+            <h2 id="modelTeamSectionTitle">Model validation console</h2>
+          </div>
+          <p>Run browser inference, flag false signals, and prepare retraining evidence.</p>
+        </header>
+        <ModelTeamPanel stats={stats} onChanged={refresh} />
+      </section>
+
+      <section className="mrc-workstream" aria-labelledby="webTeamSectionTitle">
+        <header className="mrc-workstream-header">
+          <div>
+            <span className="panel-kicker">Web Team</span>
+            <h2 id="webTeamSectionTitle">Deployment integration</h2>
+          </div>
+          <p>Track model version readiness, browser latency, and integration handoff.</p>
+        </header>
+        <WebTeamPanel stats={stats} onChanged={refresh} />
+      </section>
+
+      {role === "plant_manager" && (
+        <section className="mrc-workstream" aria-labelledby="managerSectionTitle">
+          <header className="mrc-workstream-header">
+            <div>
+              <span className="panel-kicker">Manager</span>
+              <h2 id="managerSectionTitle">Coordination and approvals</h2>
+            </div>
+            <p>Monitor handoff status, request updates, and manage cross-team tasks.</p>
+          </header>
+          <PmPanel stats={stats} onChanged={refresh} />
+        </section>
+      )}
     </>
   );
 }

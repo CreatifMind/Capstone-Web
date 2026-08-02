@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import AppShell from "@/components/AppShell";
 import { requireActiveRole, roleHomePath } from "@/lib/admin";
 
 export const metadata: Metadata = { title: "PurityLoop AI | Plant Overview" };
@@ -20,29 +21,26 @@ export default async function OverviewPage() {
     redirect(context.profile ? roleHomePath(context.profile.role) : "/login");
   }
 
-  return <>
-    <header className="topbar">
-      <div className="topbar-left">
-        <div className="topbar-title">
-          <h1>Plant Overview</h1>
-          <p>Full PurityLoop workspace access for plant-level supervision.</p>
-        </div>
-      </div>
-    </header>
+  return <AppShell role="plant_manager" title="Plant Overview" subtitle="Full PurityLoop workspace access for plant-level supervision.">
     <div className="page-body admin-page-body">
-      <section className="admin-card">
-        <h2>Workspace Modules</h2>
+      <section className="admin-card plant-overview-card">
+        <div className="plant-overview-heading">
+          <span className="panel-kicker">Plant Manager</span>
+          <h2>Workspace Modules</h2>
+        </div>
         <p className="admin-dialog-helper">Use this overview as the plant manager entry point into operations, development, and administration.</p>
-        <div className="admin-form-grid">
+        <div className="plant-module-grid">
           {modules.map((module) => (
-            <a key={module.href} href={module.href} className="admin-card" style={{ textDecoration: "none", color: "inherit" }}>
-              <i className={`fa-solid ${module.icon}`} aria-hidden="true" />
-              <h3>{module.title}</h3>
-              <p>{module.text}</p>
+            <a key={module.href} href={module.href} className="plant-module-card">
+              <span className="plant-module-icon"><i className={`fa-solid ${module.icon}`} aria-hidden="true" /></span>
+              <span>
+                <strong>{module.title}</strong>
+                <small>{module.text}</small>
+              </span>
             </a>
           ))}
         </div>
       </section>
     </div>
-  </>;
+  </AppShell>;
 }

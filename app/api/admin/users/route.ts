@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ROLES, normalizeEmail, requireActiveAdmin, type Role, type UserProfile } from "@/lib/admin";
+import { ROLES, normalizeEmail, requireActiveAdmin, requireActiveRole, type Role, type UserProfile } from "@/lib/admin";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 function failure(message: string, status: number) { return NextResponse.json({ error: message }, { status }); }
@@ -23,8 +23,15 @@ async function adminContext() {
   return { context };
 }
 
+async function userListContext() {
+  let context: Awaited<ReturnType<typeof requireActiveRole>>;
+  try { context = await requireActiveRole(["admin", "plant_manager"]); } catch { return { response: failure("Authentication is not configured.", 503) }; }
+  if ("error" in context) return { response: failure(context.error === "unauthenticated" ? "Authentication required." : "User-management access required.", context.error === "unauthenticated" ? 401 : 403) };
+  return { context };
+}
+
 export async function GET() {
-  const checked = await adminContext();
+  const checked = await userListContext();
   if ("response" in checked) return checked.response;
   const { service } = checked.context;
   const { data: profiles, error } = await service
