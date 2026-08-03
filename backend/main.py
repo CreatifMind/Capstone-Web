@@ -1680,16 +1680,82 @@ def to_detected_materials(result) -> list[dict]:
     return materials
 
 
-def _material_bbox_xyxy(material: dict, image_width: int, image_height: int) -> list[float]:
+def _valid_xyxy(box: list[float], width: int, height: int) -> bool:
+    if len(box) < 4:
+        return False
+    x1, y1, x2, y2 = [_coerce_float(value) for value in box[:4]]
+    return (
+        math.isfinite(x1)
+        and math.isfinite(y1)
+        and math.isfinite(x2)
+        and math.isfinite(y2)
+        and x2 > x1
+        and y2 > y1
+        and x1 < width
+        and y1 < height
+        and x2 > 0
+        and y2 > 0
+    )
+
+
+def _normalized_xyxy_to_pixels(box: list[float], image_width: int, image_height: int) -> list[float]:
+    if len(box) < 4 or not all(0 <= _coerce_float(value) <= 1 for value in box[:4]):
+        raise ValueError("Expected normalized xyxy values between 0 and 1")
+    return [
+        _coerce_float(box[0]) * image_width,
+        _coerce_float(box[1]) * image_height,
+        _coerce_float(box[2]) * image_width,
+        _coerce_float(box[3]) * image_height,
+    ]
+
+
+def _percentage_xywh_to_pixels(x: float, y: float, width: float, height: float, image_width: int, image_height: int) -> list[float]:
+    values = [_coerce_float(x), _coerce_float(y), _coerce_float(width), _coerce_float(height)]
+    if not all(0 <= value <= 100 for value in values):
+        raise ValueError("Expected percentage xywh values between 0 and 100")
+    return [
+        (values[0] / 100) * image_width,
+        (values[1] / 100) * image_height,
+        ((values[0] + values[2]) / 100) * image_width,
+        ((values[1] + values[3]) / 100) * image_height,
+    ]
+
+
+def _detection_box_to_pixels(material: dict, image_width: int, image_height: int) -> tuple[list[float], str]:
     best_box = material.get("best_box")
-    xyxy = best_box.get("xyxy") if isinstance(best_box, dict) else None
-    if isinstance(xyxy, list) and len(xyxy) >= 4:
-        return [_coerce_float(value) for value in xyxy[:4]]
-    x1 = (_coerce_float(material.get("bbox_x")) / 100) * image_width
-    y1 = (_coerce_float(material.get("bbox_y")) / 100) * image_height
-    x2 = x1 + ((_coerce_float(material.get("bbox_width")) / 100) * image_width)
-    y2 = y1 + ((_coerce_float(material.get("bbox_height")) / 100) * image_height)
-    return [x1, y1, x2, y2]
+    if isinstance(best_box, dict):
+        xyxy = best_box.get("xyxy")
+        if isinstance(xyxy, list) and _valid_xyxy(xyxy, image_width, image_height):
+            return [_coerce_float(value) for value in xyxy[:4]], "pixel_xyxy:best_box.xyxy"
+        normalized = best_box.get("normalized_xyxy") or best_box.get("xyxy_normalized")
+        if isinstance(normalized, list):
+            pixels = _normalized_xyxy_to_pixels(normalized, image_width, image_height)
+            if _valid_xyxy(pixels, image_width, image_height):
+                return pixels, "normalized_xyxy:best_box"
+        if all(key in best_box for key in ("x", "y", "width", "height")):
+            pixels = _percentage_xywh_to_pixels(best_box.get("x"), best_box.get("y"), best_box.get("width"), best_box.get("height"), image_width, image_height)
+            if _valid_xyxy(pixels, image_width, image_height):
+                return pixels, "percentage_xywh:best_box"
+    best_bbox_norm = material.get("best_bbox_norm")
+    if isinstance(best_bbox_norm, list):
+        pixels = _normalized_xyxy_to_pixels(best_bbox_norm, image_width, image_height)
+        if _valid_xyxy(pixels, image_width, image_height):
+            return pixels, "normalized_xyxy:best_bbox_norm"
+    bbox = material.get("bbox")
+    if isinstance(bbox, list):
+        pixels = _normalized_xyxy_to_pixels(bbox, image_width, image_height)
+        if _valid_xyxy(pixels, image_width, image_height):
+            return pixels, "normalized_xyxy:bbox"
+    if all(material.get(key) is not None for key in ("bbox_x", "bbox_y", "bbox_width", "bbox_height")):
+        pixels = _percentage_xywh_to_pixels(material.get("bbox_x"), material.get("bbox_y"), material.get("bbox_width"), material.get("bbox_height"), image_width, image_height)
+        if _valid_xyxy(pixels, image_width, image_height):
+            return pixels, "percentage_xywh:material_bbox"
+    raise ValueError("No valid detection box metadata is available")
+
+
+def _material_bbox_xyxy(material: dict, image_width: int, image_height: int) -> list[float]:
+    box, _format = _detection_box_to_pixels(material, image_width, image_height)
+    return box
 
 
 def _material_preview_detection(material: dict, image_width: int, image_height: int) -> dict:
@@ -1710,28 +1776,31 @@ def _material_preview_detection(material: dict, image_width: int, image_height: 
     }
 
 
-def _translate_mask_to_crop(mask, image_width: int, image_height: int, crop_x: int, crop_y: int, crop_width: int, crop_height: int) -> list | None:
+def _translate_mask_to_crop(mask, image_width: int, image_height: int, crop_x: int, crop_y: int, crop_width: int, crop_height: int) -> tuple[list | None, str]:
     if not mask:
-        return None
+        return None, "unavailable"
     translated = []
+    source_format = "pixel"
     for point in mask:
         if not isinstance(point, (list, tuple)) or len(point) < 2:
             continue
         x = _coerce_float(point[0])
         y = _coerce_float(point[1])
-        if x <= 1 and y <= 1:
+        if 0 <= x <= 1 and 0 <= y <= 1:
+            source_format = "normalized"
             x *= image_width
             y *= image_height
         translated.append([
             max(0, min(crop_width - 1, round(x - crop_x))),
             max(0, min(crop_height - 1, round(y - crop_y))),
         ])
-    return translated if len(translated) >= 3 else None
+    return (translated, source_format) if len(translated) >= 3 else (None, source_format)
 
 
 def _tracked_object_crop_bounds(frame, material: dict) -> tuple[int, int, int, int, list[int]]:
     image_height, image_width = frame.shape[:2]
-    x1, y1, x2, y2 = _clip_box(_material_bbox_xyxy(material, image_width, image_height), image_width, image_height)
+    box, _format = _detection_box_to_pixels(material, image_width, image_height)
+    x1, y1, x2, y2 = _clip_box(box, image_width, image_height)
     box_width = max(1, x2 - x1)
     box_height = max(1, y2 - y1)
     padding = max(8, round(max(box_width, box_height) * 0.18))
@@ -1739,6 +1808,20 @@ def _tracked_object_crop_bounds(frame, material: dict) -> tuple[int, int, int, i
     crop_y1 = max(0, y1 - padding)
     crop_x2 = min(image_width, x2 + padding)
     crop_y2 = min(image_height, y2 + padding)
+    min_crop_width = min(image_width, max(180, box_width + padding * 2))
+    min_crop_height = min(image_height, max(120, box_height + padding * 2))
+    extra_width = max(0, min_crop_width - (crop_x2 - crop_x1))
+    extra_height = max(0, min_crop_height - (crop_y2 - crop_y1))
+    grow_left = min(crop_x1, extra_width // 2)
+    crop_x1 -= grow_left
+    crop_x2 = min(image_width, crop_x2 + (extra_width - grow_left))
+    if crop_x2 - crop_x1 < min_crop_width:
+        crop_x1 = max(0, crop_x2 - min_crop_width)
+    grow_top = min(crop_y1, extra_height // 2)
+    crop_y1 -= grow_top
+    crop_y2 = min(image_height, crop_y2 + (extra_height - grow_top))
+    if crop_y2 - crop_y1 < min_crop_height:
+        crop_y1 = max(0, crop_y2 - min_crop_height)
     return crop_x1, crop_y1, crop_x2, crop_y2, [x1, y1, x2, y2]
 
 
@@ -1746,12 +1829,33 @@ def _tracked_object_crop_preview(frame, material: dict) -> tuple[bytes, dict]:
     import cv2
 
     image_height, image_width = frame.shape[:2]
+    bbox_input = {
+        "best_box": material.get("best_box"),
+        "best_bbox_norm": material.get("best_bbox_norm"),
+        "bbox": material.get("bbox"),
+        "bbox_x": material.get("bbox_x"),
+        "bbox_y": material.get("bbox_y"),
+        "bbox_width": material.get("bbox_width"),
+        "bbox_height": material.get("bbox_height"),
+    }
+    _box, bbox_format = _detection_box_to_pixels(material, image_width, image_height)
+    if bbox_format == "percentage_xywh:material_bbox" and (material.get("stable_object_id") or material.get("object_uid") or material.get("result_type") == "video_track_object"):
+        raise ValueError("Tracked-object preview requires representative-frame bbox metadata, not material percentage bbox fallback")
     crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, material)
     x1, y1, x2, y2 = box_xyxy
     crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
     if crop.size == 0:
         raise ValueError("Tracked-object preview crop is empty")
     crop_height, crop_width = crop.shape[:2]
+    translated_mask, mask_format = _translate_mask_to_crop(
+        material.get("segmentation_mask") or material.get("mask"),
+        image_width,
+        image_height,
+        crop_x1,
+        crop_y1,
+        crop_width,
+        crop_height,
+    )
     detection = {
         "track_id": material.get("track_id"),
         "category": material.get("category"),
@@ -1764,17 +1868,9 @@ def _tracked_object_crop_preview(frame, material: dict) -> tuple[bytes, dict]:
             (x2 - crop_x1) / crop_width if crop_width else 0,
             (y2 - crop_y1) / crop_height if crop_height else 0,
         ],
-        "mask": _translate_mask_to_crop(
-            material.get("segmentation_mask") or material.get("mask"),
-            image_width,
-            image_height,
-            crop_x1,
-            crop_y1,
-            crop_width,
-            crop_height,
-        ),
+        "mask": translated_mask,
     }
-    annotated = _annotate_video_frame(crop, [detection], footer_count=1)
+    annotated = _annotate_video_frame(crop, [detection])
     ok, encoded = cv2.imencode(".jpg", annotated)
     if not ok:
         raise ValueError("Unable to encode tracked-object annotated preview")
@@ -1786,6 +1882,9 @@ def _tracked_object_crop_preview(frame, material: dict) -> tuple[bytes, dict]:
         "crop_y": crop_y1,
         "crop_width": crop_width,
         "crop_height": crop_height,
+        "bbox_input": bbox_input,
+        "bbox_format": bbox_format,
+        "mask_format": mask_format,
         "box_xyxy": box_xyxy,
         "translated_box_xyxy": detection["best_box"]["xyxy"],
         "frame": (material.get("best_box") or {}).get("frame") if isinstance(material.get("best_box"), dict) else None,
@@ -2904,15 +3003,19 @@ def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | 
         category = material_category(detection.get("category") or detection.get("material_name"))
         color_rgb = _video_class_color(category)
         color = (color_rgb[2], color_rgb[1], color_rgb[0])
-        box = detection.get("best_box", {}).get("xyxy") if isinstance(detection.get("best_box"), dict) else None
-        if not box:
-            norm = detection.get("bbox") or []
-            box = [
-                _coerce_float(norm[0]) * width if len(norm) > 0 else 0,
-                _coerce_float(norm[1]) * height if len(norm) > 1 else 0,
-                _coerce_float(norm[2]) * width if len(norm) > 2 else 0,
-                _coerce_float(norm[3]) * height if len(norm) > 3 else 0,
-            ]
+        try:
+            box, _box_format = _detection_box_to_pixels(detection, width, height)
+        except Exception as exc:
+            _video_processing_log(
+                "annotation_detection_box_invalid",
+                image_width=width,
+                image_height=height,
+                track_id=detection.get("track_id"),
+                category=category,
+                error_type=type(exc).__name__,
+                error=safe_error_message(exc),
+            )
+            continue
         x1, y1, x2, y2 = _clip_box(box, width, height)
         mask_points = _mask_to_points(detection.get("mask"), width, height)
         if mask_points is not None:
@@ -2968,6 +3071,10 @@ def _video_processing_log(event: str, **fields) -> None:
         else:
             safe_fields[key] = value
     print(f"[video-processing] {event} {json.dumps(safe_fields, sort_keys=True, default=str)}")
+
+
+def _worker_build_revision() -> str:
+    return os.getenv("K_REVISION") or os.getenv("GIT_COMMIT_SHA") or os.getenv("VERCEL_GIT_COMMIT_SHA") or "local"
 
 
 def _video_job_dir(scan_id: str) -> Path:
@@ -3250,6 +3357,7 @@ def _persist_tracked_video_objects(
     namespace = UUID(str(job["id"]))
     for item in tracked_objects:
         stable_object_id = str(item["stable_object_id"])
+        scan_uuid = uuid5(namespace, stable_object_id)
         frame_bytes = item.get("_best_crop_bytes")
         public_material = {key: value for key, value in item.items() if not key.startswith("_")}
         public_material["material_name"] = (
@@ -3281,10 +3389,13 @@ def _persist_tracked_video_objects(
                 _video_processing_log(
                     "tracked_preview_annotation_failed",
                     scan_id=str(job["id"]),
+                    object_scan_id=str(scan_uuid),
                     logical_object_id=stable_object_id,
                     track_id=public_material.get("track_id"),
                     frame=best_box.get("frame"),
                     bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
+                    bbox_input=preview_metadata,
+                    worker_build_revision=_worker_build_revision(),
                     error_type=type(exc).__name__,
                     error=safe_error_message(exc),
                 )
@@ -3299,10 +3410,13 @@ def _persist_tracked_video_objects(
                 _video_processing_log(
                     "tracked_preview_annotated_video_fallback_failed",
                     scan_id=str(job["id"]),
+                    object_scan_id=str(scan_uuid),
                     logical_object_id=stable_object_id,
                     track_id=public_material.get("track_id"),
                     frame=best_box.get("frame"),
                     bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
+                    bbox_input=preview_metadata,
+                    worker_build_revision=_worker_build_revision(),
                     error_type=type(exc).__name__,
                     error=safe_error_message(exc),
                 )
@@ -3313,8 +3427,11 @@ def _persist_tracked_video_objects(
             _video_processing_log(
                 "tracked_preview_unavailable",
                 scan_id=str(job["id"]),
+                object_scan_id=str(scan_uuid),
                 logical_object_id=stable_object_id,
                 track_id=public_material.get("track_id"),
+                preview_source=preview_metadata.get("format"),
+                worker_build_revision=_worker_build_revision(),
             )
             continue
         if not isinstance(public_material.get("track_debug"), dict):
@@ -3322,6 +3439,24 @@ def _persist_tracked_video_objects(
         public_material["track_debug"]["preview_bbox"] = preview_metadata
         public_material["track_debug"]["preview_annotation_status"] = preview_metadata.get("format", "unavailable")
         public_material["result_type"] = "video_track_object"
+        _video_processing_log(
+            "tracked_preview_annotation_completed",
+            job_id=str(job["id"]),
+            scan_id=str(scan_uuid),
+            logical_object_id=stable_object_id,
+            track_id=public_material.get("track_id"),
+            representative_frame_index=preview_metadata.get("frame"),
+            source_width=preview_metadata.get("source_width"),
+            source_height=preview_metadata.get("source_height"),
+            bbox_input=preview_metadata.get("bbox_input"),
+            bbox_format=preview_metadata.get("bbox_format"),
+            converted_pixel_bbox=preview_metadata.get("box_xyxy"),
+            crop_origin={"x": preview_metadata.get("crop_x"), "y": preview_metadata.get("crop_y")},
+            crop_dimensions={"width": preview_metadata.get("crop_width"), "height": preview_metadata.get("crop_height")},
+            preview_source=preview_metadata.get("format"),
+            annotation_status=preview_metadata.get("format"),
+            worker_build_revision=_worker_build_revision(),
+        )
         object_summary = summarize([public_material])
         object_summary.update({
             "result_kind": "video_track_object",
@@ -3335,7 +3470,6 @@ def _persist_tracked_video_objects(
                 **(annotated_video_metadata or {}),
             },
         })
-        scan_uuid = uuid5(namespace, stable_object_id)
         _video_debug(
             "database_write",
             scan_id=str(scan_uuid),

@@ -75,12 +75,13 @@ def backfill(scan_ids: list[str], batch_ids: list[str], *, dry_run: bool = True)
                 continue
             preview_bytes, _metadata = fallback
             storage_path = f"tracked-object-previews/{scan_id}/preview-v2.jpg"
-            upload = main.upload_original_to_supabase_storage(
-                preview_bytes,
-                "preview-v2.jpg",
+            preview_path = Path(tmp) / "preview-v2.jpg"
+            preview_path.write_bytes(preview_bytes)
+            upload = main.upload_file_to_supabase_storage(
+                preview_path,
+                storage_path,
                 "image/jpeg",
                 database,
-                object_path=storage_path,
             )
             database.execute(
                 lambda client, value=scan_id: client.table(main.SCAN_RESULTS_TABLE).update({

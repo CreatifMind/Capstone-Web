@@ -153,6 +153,27 @@ def test_annotated_frame_writing_draws_boxes_masks_and_labels():
     assert int(annotated.sum()) > int(frame.sum())
 
 
+def test_coordinate_conversion_helper_preserves_pixel_xyxy():
+    box, source = main._detection_box_to_pixels({"best_box": {"xyxy": [30, 20, 60, 40]}}, 120, 80)
+
+    assert box == [30, 20, 60, 40]
+    assert source == "pixel_xyxy:best_box.xyxy"
+
+
+def test_coordinate_conversion_helper_converts_normalized_xyxy():
+    box, source = main._detection_box_to_pixels({"bbox": [0.25, 0.25, 0.5, 0.5]}, 120, 80)
+
+    assert box == [30, 20, 60, 40]
+    assert source == "normalized_xyxy:bbox"
+
+
+def test_coordinate_conversion_helper_converts_percentage_xywh():
+    box, source = main._detection_box_to_pixels({"bbox_x": 25, "bbox_y": 25, "bbox_width": 25, "bbox_height": 25}, 120, 80)
+
+    assert box == [30, 20, 60, 40]
+    assert source == "percentage_xywh:material_bbox"
+
+
 def test_tracked_video_preview_uses_full_representative_frame_not_crop():
     frame = np.zeros((80, 120, 3), dtype=np.uint8)
     frame[:, :] = (20, 80, 120)
@@ -202,10 +223,72 @@ def test_tracked_object_crop_preview_uses_real_bbox_mask_label_and_track_id():
     assert preview_bytes != frame_bytes
     assert metadata["format"] == "representative_frame_annotation"
     assert metadata["box_xyxy"] == [30, 20, 60, 40]
-    assert metadata["translated_box_xyxy"][0] > 0
-    assert decoded.shape[0] < 80
-    assert decoded.shape[1] < 120
+    assert metadata["translated_box_xyxy"] != [0, 0, metadata["crop_width"], metadata["crop_height"]]
+    assert decoded.shape[0] <= 80
+    assert decoded.shape[1] <= 120
     assert int(decoded.sum()) != int(frame.sum())
+
+
+def test_tracked_object_crop_preview_translates_mask_and_bbox_coordinates():
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    material = {
+        "track_id": "4",
+        "category": "battery",
+        "material_name": "battery",
+        "confidence": 0.93,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 2, "timestamp": 0.2},
+        "segmentation_mask": [[30, 20], [60, 20], [60, 40], [30, 40]],
+    }
+
+    preview_bytes, metadata = main._tracked_object_crop_preview(frame, material)
+    decoded = cv2.imdecode(np.frombuffer(preview_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert metadata["bbox_format"] == "pixel_xyxy:best_box.xyxy"
+    assert metadata["mask_format"] == "pixel"
+    assert metadata["translated_box_xyxy"] == [30, 20, 60, 40]
+    assert metadata["crop_x"] == 0
+    assert metadata["crop_y"] == 0
+    assert decoded is not None
+
+
+def test_tracked_object_crop_preview_rejects_generic_percentage_box():
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    material = {
+        "stable_object_id": "scan-1-track-4",
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "bbox_x": 2,
+        "bbox_y": 2,
+        "bbox_width": 96,
+        "bbox_height": 96,
+    }
+
+    with pytest.raises(ValueError, match="representative-frame bbox metadata"):
+        main._tracked_object_crop_preview(frame, material)
+
+
+def test_tracked_object_crop_preview_omits_footer(monkeypatch):
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    material = {
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
+    }
+    captured = {}
+    original = main._annotate_video_frame
+
+    def capture_footer(frame_arg, detections, *, footer_count=None):
+        captured["footer_count"] = footer_count
+        return original(frame_arg, detections, footer_count=footer_count)
+
+    monkeypatch.setattr(main, "_annotate_video_frame", capture_footer)
+
+    main._tracked_object_crop_preview(frame, material)
+
+    assert captured["footer_count"] is None
 
 
 def test_tracked_object_crop_preview_without_mask_still_renders_annotation():
@@ -276,7 +359,7 @@ def test_tracked_object_persistence_persists_annotated_crop_with_real_bbox(monke
     assert captured["material"]["best_box"]["xyxy"] == [30, 20, 60, 40]
     assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "representative_frame_annotation"
     assert captured["material"]["track_debug"]["preview_annotation_status"] == "representative_frame_annotation"
-    assert captured["material"]["track_debug"]["preview_bbox"]["translated_box_xyxy"][0] > 0
+    assert captured["material"]["track_debug"]["preview_bbox"]["translated_box_xyxy"] == [30, 20, 60, 40]
 
 
 def test_tracked_object_persistence_falls_back_without_failing_job(monkeypatch):
@@ -357,8 +440,8 @@ def test_tracked_object_preview_uses_annotated_video_frame_fallback(tmp_path):
     preview_bytes, metadata = fallback
     decoded = cv2.imdecode(np.frombuffer(preview_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert metadata["format"] == "annotated_video_frame_fallback"
-    assert decoded.shape[0] < 80
-    assert decoded.shape[1] < 120
+    assert decoded.shape[0] <= 80
+    assert decoded.shape[1] <= 120
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
