@@ -1,16 +1,19 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 
-const migration = fs.readFileSync("supabase/migrations/20260731000000_model_review_console.sql", "utf8");
+const baseline = fs.readFileSync("supabase/migrations/20260802160435_remote_public_schema_baseline.sql", "utf8");
+const permissionCleanup = fs.readFileSync("supabase/migrations/20260802161941_remote_public_schema_baseline.sql", "utf8");
+const migration = `${baseline}\n${permissionCleanup}`;
 const adminLib = fs.readFileSync("lib/admin.ts", "utf8");
 
-assert.match(migration, /create table if not exists model_review_runs/);
-assert.match(migration, /create table if not exists model_review_flags/);
-assert.match(migration, /create table if not exists model_review_retrain_runs/);
-assert.match(migration, /create table if not exists model_review_tasks/);
-assert.match(migration, /create table if not exists model_review_notifications/);
-assert.match(migration, /create table if not exists model_review_settings/);
-assert.match(migration, /revoke all on model_review_runs from anon, authenticated/);
+assert.match(migration, /CREATE TABLE public\.model_review_runs/);
+assert.match(migration, /CREATE TABLE public\.model_review_flags/);
+assert.match(migration, /CREATE TABLE public\.model_review_retrain_runs/);
+assert.match(migration, /CREATE TABLE public\.model_review_tasks/);
+assert.match(migration, /CREATE TABLE public\.model_review_notifications/);
+assert.match(migration, /CREATE TABLE public\.model_review_settings/);
+assert.match(migration, /REVOKE ALL ON public\.model_review_runs FROM anon/);
+assert.match(migration, /REVOKE ALL ON public\.model_review_runs FROM authenticated/);
 assert.match(adminLib, /export async function requireActiveDevelopment\(\)/);
 assert.match(adminLib, /return requireActiveRole\(\["development_team"\]\)/);
 

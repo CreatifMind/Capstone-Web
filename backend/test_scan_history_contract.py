@@ -13,6 +13,10 @@ from PIL import Image
 from backend import main
 
 
+def fake_principal():
+    return main.Principal("user", "11111111-1111-4111-8111-111111111111", frozenset({"scan:read", "review:write"}))
+
+
 class FakeQuery:
     def __init__(self, table, rows):
         self.table = table
@@ -169,7 +173,7 @@ class ScanHistoryContractTests(unittest.TestCase):
     def test_scan_history_returns_one_page_and_exact_total(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
-            payload = main.get_scan_history(limit=10, offset=0, principal=main.require_principal())
+            payload = main.get_scan_history(limit=10, offset=0, principal=fake_principal())
 
         self.assertEqual(payload["total"], 4312)
         self.assertEqual(payload["limit"], 10)
@@ -188,7 +192,7 @@ class ScanHistoryContractTests(unittest.TestCase):
     def test_scan_history_review_page_uses_ten_row_ranges(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
-            payload = main.get_scan_history(limit=10, offset=10, principal=main.require_principal())
+            payload = main.get_scan_history(limit=10, offset=10, principal=fake_principal())
 
         self.assertEqual(payload["total"], 4312)
         self.assertEqual(payload["limit"], 10)
@@ -201,7 +205,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         with self.fake_backend(fake):
             payload = main.get_scan_history(
                 limit=10, offset=10, search="bottle", status="review_needed", sort="confidence", direction="asc",
-                principal=main.require_principal(),
+                principal=fake_principal(),
             )
 
         self.assertEqual(payload["search"], "bottle")
@@ -235,7 +239,7 @@ class ScanHistoryContractTests(unittest.TestCase):
     def test_scan_history_accepts_category_filter(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
-            payload = main.get_scan_history(limit=10, offset=0, category="plastic", principal=main.require_principal())
+            payload = main.get_scan_history(limit=10, offset=0, category="plastic", principal=fake_principal())
 
         self.assertEqual(payload["category"], "plastic")
         self.assertEqual(payload["total"], 548)
@@ -248,7 +252,7 @@ class ScanHistoryContractTests(unittest.TestCase):
     def test_scan_history_search_filter_applies_to_summary_counts(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
-            main.get_scan_history(limit=10, offset=0, search="missing", principal=main.require_principal())
+            main.get_scan_history(limit=10, offset=0, search="missing", principal=fake_principal())
 
         self.assertEqual(fake.queries[1].filters["source_name"], "%missing%")
         self.assertEqual(fake.queries[2].filters["source_name"], "%missing%")
@@ -258,7 +262,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         fake = FakeSupabase()
         with self.fake_backend(fake):
             with self.assertRaises(HTTPException) as raised:
-                main.get_scan_result("not-a-uuid", principal=main.require_principal())
+                main.get_scan_result("not-a-uuid", principal=fake_principal())
 
         self.assertEqual(raised.exception.status_code, 404)
         self.assertFalse(fake.queries)
@@ -288,7 +292,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         fake = FakeSupabase()
         with self.fake_backend(fake):
             with self.assertRaises(HTTPException) as raised:
-                main.export_scan_history(format="csv", principal=main.require_principal())
+                main.export_scan_history(format="csv", principal=fake_principal())
 
         self.assertEqual(raised.exception.status_code, 400)
         self.assertFalse(fake.queries)
@@ -305,7 +309,7 @@ class ScanHistoryContractTests(unittest.TestCase):
                 status="confirmed",
                 sort="confidence",
                 direction="asc",
-                principal=main.require_principal(),
+                principal=fake_principal(),
             )
 
         self.assertEqual(response.media_type, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -325,7 +329,7 @@ class ScanHistoryContractTests(unittest.TestCase):
     def test_history_export_pdf_response_headers(self):
         fake = FakeSupabase(scan_count=1)
         with self.fake_backend(fake), patch.object(main, "build_history_pdf", return_value=b"pdf"):
-            response = main.export_scan_history(format="pdf", scope="scan", principal=main.require_principal())
+            response = main.export_scan_history(format="pdf", scope="scan", principal=fake_principal())
 
         self.assertEqual(response.media_type, "application/pdf")
         self.assertIn("purityloop-scan-history", response.headers["content-disposition"])

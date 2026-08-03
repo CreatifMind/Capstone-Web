@@ -14,12 +14,13 @@ RUN apt-get update \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
     && python -m pip install -r requirements.txt
 
-COPY . .
+COPY backend/ .
+COPY config/ config/
 
 CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]

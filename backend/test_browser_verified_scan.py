@@ -8,6 +8,10 @@ from fastapi import HTTPException
 from backend import main
 
 
+def fake_principal():
+    return main.Principal("user", "11111111-1111-4111-8111-111111111111", frozenset({"scan:write", "review:write"}))
+
+
 class DuplicateRowError(Exception):
     code = "23505"
 
@@ -191,7 +195,7 @@ class BrowserVerifiedScanTests(unittest.TestCase):
                 materials,
                 summary,
                 source_ref="browser-onnx:best.onnx",
-                principal=main.require_principal(),
+                principal=fake_principal(),
                 content_type="image/jpeg",
                 database=database,
                 scan_result_id=submission_id,
@@ -205,7 +209,7 @@ class BrowserVerifiedScanTests(unittest.TestCase):
                 materials,
                 summary,
                 source_ref="browser-onnx:best.onnx",
-                principal=main.require_principal(),
+                principal=fake_principal(),
                 content_type="image/jpeg",
                 database=database,
                 scan_result_id=submission_id,

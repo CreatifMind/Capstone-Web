@@ -40,6 +40,7 @@ function plSafeFiles(files) {
 const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
 const PL_LATEST_SCAN_KEY = "purityloop_latest_scan";
 const PL_UPLOADS_KEY = "purityloop_uploads";
+const PL_VIDEO_JOBS_KEY = "purityloop_video_jobs";
 const PL_SCAN_BOOTSTRAP_PAGE_SIZE = 10;
 const PL_SCAN_META_KEY = "purityloop_scan_meta";
 let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
@@ -83,9 +84,68 @@ function plVideoPollingDelay(transientFailures) {
   return Math.min(15000, 1000 * (2 ** Math.min(4, Math.max(0, transientFailures - 1)))) + Math.round(Math.random() * 250);
 }
 
-async function plAuthHeaders(extra = {}) {
+let plSessionTokenPromise = null;
+
+function plPublicHeaders(extra = {}) {
   const ngrokHeader = plApiBaseUrl().includes(".ngrok-free.dev") ? { "ngrok-skip-browser-warning": "1" } : {};
-  return { ...ngrokHeader, ...extra };
+  return { ...ngrokHeader, ...plPlainHeaders(extra) };
+}
+
+function plPlainHeaders(headers = {}) {
+  if (headers instanceof Headers) {
+    const result = {};
+    headers.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...(headers || {}) };
+}
+
+function plRedirectToLogin() {
+  const path = window.location?.pathname || "";
+  if (path.includes("/login") || path.includes("/auth/login")) return;
+  window.location.assign("/login?reason=session_expired");
+}
+
+async function plAccessToken({ refresh = false } = {}) {
+  if (refresh) plSessionTokenPromise = null;
+  if (!plSessionTokenPromise) {
+    plSessionTokenPromise = fetch("/api/auth/session", {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" }
+    }).then(async response => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.accessToken) {
+        plRedirectToLogin();
+        throw new Error("Your session has expired. Please sign in again.");
+      }
+      return payload.accessToken;
+    }).catch(error => {
+      plSessionTokenPromise = null;
+      throw error;
+    });
+  }
+  return plSessionTokenPromise;
+}
+
+async function plAuthHeaders(extra = {}, options = {}) {
+  const token = await plAccessToken(options);
+  return { ...plPublicHeaders(extra), Authorization: `Bearer ${token}` };
+}
+
+async function plBackendFetch(input, init = {}, options = {}) {
+  const headers = await plAuthHeaders(init.headers || {});
+  const response = await fetch(input, { ...init, headers });
+  if (response.status !== 401 || options.retryAuth === false) return response;
+  const retryHeaders = await plAuthHeaders(init.headers || {}, { refresh: true });
+  const retryResponse = await fetch(input, { ...init, headers: retryHeaders });
+  if (retryResponse.status === 401) plRedirectToLogin();
+  return retryResponse;
 }
 
 function plStoragePreviewUrl(sourceName) {
@@ -309,7 +369,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
   }
   plScanHistoryRefreshPromise = (async () => {
     try {
-      const response = await fetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`, { headers: await plAuthHeaders() });
+      const response = await plBackendFetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`);
       const body = await response.text();
       if (!response.ok) {
         console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
@@ -398,7 +458,7 @@ async function plFetchScanResultById(scanId) {
   if (!apiBase || !scanId) throw new Error("Review persistence is not configured for this scan.");
   let response;
   try {
-    response = await fetch(`${apiBase}/api/scans/${encodeURIComponent(scanId)}`, { headers: await plAuthHeaders() });
+    response = await plBackendFetch(`${apiBase}/api/scans/${encodeURIComponent(scanId)}`);
   } catch {
     throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
   }
@@ -529,7 +589,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
   const action = outcome === "rejected" ? "reject" : "verify";
   let response;
   try {
-    response = await fetch(`${apiBase}/api/reviews`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ scan_result_id: persistedScan.id, detected_material_id: persistedMaterial.id, action, manual_category: chosenCategory }) });
+    response = await plBackendFetch(`${apiBase}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_result_id: persistedScan.id, detected_material_id: persistedMaterial.id, action, manual_category: chosenCategory }) });
   } catch {
     throw new Error("Cannot reach the review backend. Check NEXT_PUBLIC_API_BASE_URL and that FastAPI is running.");
   }
@@ -1339,6 +1399,7 @@ function initUploadPage() {
   if (clearUploadBtn) clearUploadBtn.addEventListener("click", clearQueue);
   if (scanImageBtn) scanImageBtn.addEventListener("click", () => runBatch(queue.filter(item => item.status === "ready")));
   initUploadInfoModals();
+  void resumeVideoJobs();
 
   function addBrowserQueueControls() {
     const actions = document.querySelector(".upload-batch-actions");
@@ -1630,7 +1691,7 @@ function initUploadPage() {
     while (true) {
       let response;
       try {
-        response = await fetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`, { headers: await plAuthHeaders() });
+        response = await plBackendFetch(`${apiBase}/api/jobs/${encodeURIComponent(jobId)}`);
       } catch {
         transientFailures += 1;
         const message = "Connection temporarily interrupted. Retrying…";
@@ -1659,6 +1720,39 @@ function initUploadPage() {
       if (job.status === "failed") throw new Error(job.error || "MP4 processing failed.");
       if (processingStatusEl) processingStatusEl.textContent = `Processing MP4 (${Number(job.processed_count || 0)} unique objects)`;
       await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+
+  function rememberVideoJob(jobId, filename) {
+    const jobs = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_VIDEO_JOBS_KEY), []))
+      .filter(job => job?.jobId && job.jobId !== jobId && job.status !== "completed" && job.status !== "failed");
+    jobs.push({ jobId, filename, status: "queued", updatedAt: Date.now() });
+    plSetJson(PL_VIDEO_JOBS_KEY, jobs.slice(-5));
+  }
+
+  function forgetVideoJob(jobId, status = "completed") {
+    const jobs = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_VIDEO_JOBS_KEY), []))
+      .filter(job => job?.jobId && job.jobId !== jobId);
+    if (status !== "completed") jobs.push({ jobId, status, updatedAt: Date.now() });
+    plSetJson(PL_VIDEO_JOBS_KEY, jobs);
+  }
+
+  async function resumeVideoJobs() {
+    const apiBase = plApiBaseUrl();
+    if (!apiBase) return;
+    const jobs = plSafeArray(plSafeJsonParse(localStorage.getItem(PL_VIDEO_JOBS_KEY), []))
+      .filter(job => job?.jobId && job.status !== "completed" && job.status !== "failed");
+    if (!jobs.length) return;
+    setMessages(`Resuming ${jobs.length} MP4 job${jobs.length === 1 ? "" : "s"}…`);
+    for (const job of jobs) {
+      try {
+        const result = await pollVideoJob(apiBase, job.jobId, job.filename || "MP4");
+        forgetVideoJob(job.jobId, "completed");
+        if (result.scan_ids?.[0]) window.location.href = `/review?scanId=${encodeURIComponent(result.scan_ids[0])}`;
+      } catch (error) {
+        forgetVideoJob(job.jobId, "failed");
+        setMessages(error?.message || "Unable to resume MP4 job.");
+      }
     }
   }
 
@@ -2156,9 +2250,8 @@ function initUploadPage() {
     formData.append("nms_iou_threshold", String(PL_BROWSER_NMS_IOU_THRESHOLD));
     formData.append("detections", JSON.stringify(detections));
     try {
-      const response = await fetch(`${apiBase}/api/scans/browser-detected`, {
+      const response = await plBackendFetch(`${apiBase}/api/scans/browser-detected`, {
         method: "POST",
-        headers: await plAuthHeaders(),
         body: formData
       });
       const payload = await response.json().catch(() => ({}));
@@ -2227,9 +2320,8 @@ function initUploadPage() {
     formData.append("verification_outcome", "verified");
 
     try {
-      const response = await fetch(`${apiBase}/api/scans/browser-verified`, {
+      const response = await plBackendFetch(`${apiBase}/api/scans/browser-verified`, {
         method: "POST",
-        headers: await plAuthHeaders(),
         body: formData
       });
       const payload = await response.json().catch(() => ({}));
@@ -2447,7 +2539,7 @@ function initUploadPage() {
   async function processVideoQueueItem(item) {
     const apiBase = plApiBaseUrl();
     if (!apiBase) throw new Error("Backend API URL is not configured.");
-    const startResponse = await fetch(`${apiBase}/api/uploads/start`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ filename: item.file.name, size_bytes: item.file.size, mime: "video/mp4" }) });
+    const startResponse = await plBackendFetch(`${apiBase}/api/uploads/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: item.file.name, size_bytes: item.file.size, mime: "video/mp4" }) });
     const startPayload = await startResponse.json().catch(() => ({}));
     if (!startResponse.ok || !startPayload.upload_id) throw new Error(plApiErrorMessage(startPayload, "Unable to start MP4 upload."));
     const chunkSize = Number(startPayload.chunk_size || 8 * 1024 * 1024);
@@ -2455,7 +2547,7 @@ function initUploadPage() {
     let driveFile = null;
     while (offset < item.file.size) {
       const end = Math.min(item.file.size, offset + chunkSize);
-      const response = await fetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, { method: "PUT", headers: await plAuthHeaders({ "Content-Range": `bytes ${offset}-${end - 1}/${item.file.size}` }), body: item.file.slice(offset, end) });
+      const response = await plBackendFetch(`${apiBase}/api/uploads/${encodeURIComponent(startPayload.upload_id)}`, { method: "PUT", headers: { "Content-Range": `bytes ${offset}-${end - 1}/${item.file.size}` }, body: item.file.slice(offset, end) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(plApiErrorMessage(payload, `MP4 chunk upload failed (${response.status}).`));
       if (payload.complete) driveFile = payload.drive_file || null;
@@ -2463,10 +2555,12 @@ function initUploadPage() {
       plSetUploadProgress((offset / item.file.size) * 90, `Uploading ${item.file.name}`);
     }
     if (!driveFile?.id) throw new Error("Google Drive did not return the uploaded file id.");
-    const ingestResponse = await fetch(`${apiBase}/api/ingest`, { method: "POST", headers: await plAuthHeaders({ "Content-Type": "application/json" }), body: JSON.stringify({ source: "drive_file", ref: driveFile.id, options: { vid_stride: 30 } }) });
+    const ingestResponse = await plBackendFetch(`${apiBase}/api/ingest`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "drive_file", ref: driveFile.id, options: { vid_stride: 30 } }) });
     const ingestPayload = await ingestResponse.json().catch(() => ({}));
     if (!ingestResponse.ok || !ingestPayload.job_id) throw new Error(plApiErrorMessage(ingestPayload, "Unable to queue MP4 processing."));
+    rememberVideoJob(ingestPayload.job_id, item.file.name);
     const job = await pollVideoJob(apiBase, ingestPayload.job_id, item.file.name);
+    forgetVideoJob(ingestPayload.job_id, "completed");
     item.scanId = job.scan_ids?.[0] || "";
     return job;
   }
@@ -3731,7 +3825,7 @@ function initReviewWorkspace() {
     button.disabled = true;
     button.textContent = format === "pdf" ? "Preparing PDF..." : "Preparing Excel...";
     try {
-      const response = await fetch(`${plApiBaseUrl()}/api/history/export?${params}`, { headers: await plAuthHeaders() });
+      const response = await plBackendFetch(`${plApiBaseUrl()}/api/history/export?${params}`);
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.detail || "Unable to export history.");
@@ -3797,7 +3891,7 @@ function initReviewWorkspace() {
     state.loading = true;
     render();
     try {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(pageSize, (state.page - 1) * pageSize)}`, { headers: await plAuthHeaders() });
+      const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(pageSize, (state.page - 1) * pageSize)}`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || "Unable to load scan history.");
       if (requestId !== state.requestId) return;
@@ -3886,7 +3980,7 @@ function initReviewWorkspace() {
   const resolveAuditScan = async (scanId, materialId = "") => {
     let scan = remote.items.find(item => item.id === scanId) || plGetScanResultById(scanId);
     if (!scan?.detected_materials?.length || (materialId && !scan.detected_materials.some(item => item.id === materialId))) {
-      const response = await fetch(`${plApiBaseUrl()}/api/scans/${encodeURIComponent(scanId)}`, { headers: await plAuthHeaders() });
+      const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans/${encodeURIComponent(scanId)}`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || "Unable to load selected scan.");
       scan = plNormalizeScan(payload.scan_result);
@@ -3925,7 +4019,7 @@ function initReviewWorkspace() {
   const fetchFullHistory = async () => {
     const params = fullHistoryParams(pageSize, (modalState.page - 1) * pageSize);
     fullRange.textContent = "Loading scans";
-    try { const response = await fetch(`${plApiBaseUrl()}/api/scans?${params}`, { headers: await plAuthHeaders() }); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
+    try { const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans?${params}`); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
     catch (error) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); }
     const historyRows = remote.items.map(scanRow);
     fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>${escape(row.weight)}</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-action="${escape(row.id)}" data-full-history-material="${escape(row.materialId)}" data-full-history-mode="${row.decisionStatus === "review_needed" ? "review" : "view"}">${row.decisionStatus === "review_needed" ? "Review" : "View"}</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
@@ -4479,7 +4573,7 @@ function initAnalyticsOverview() {
       let lastError;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const response = await fetch(url, { headers: await plAuthHeaders() });
+          const response = await plBackendFetch(url);
           payload = await response.json();
           if (response.ok) break;
           if (response.status < 500 && response.status !== 429) {
@@ -4555,7 +4649,7 @@ async function initSettingsPage() {
     return;
   }
   try {
-    const response = await fetch(`${apiBase}/api/health`, { headers: await plAuthHeaders() });
+    const response = await fetch(`${apiBase}/api/health`, { headers: plPublicHeaders() });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) throw new Error("Health check failed");
     if (backendStatus) backendStatus.textContent = "Connected";

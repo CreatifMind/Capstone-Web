@@ -12,13 +12,14 @@ import random
 import shutil
 import subprocess
 import hashlib
+import hmac
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from mimetypes import guess_type
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 from uuid import UUID, uuid4, uuid5
 from typing import Any, Callable, TypeVar
 from zoneinfo import ZoneInfo
@@ -28,6 +29,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from supabase import create_client
@@ -38,7 +40,42 @@ APP_ROOT = BACKEND_ROOT.parent
 
 load_dotenv(BACKEND_ROOT / ".env")
 
-_model_path = Path(os.getenv("MODEL_PATH", "models/best.pt")).expanduser()
+
+DRIVE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def normalize_drive_folder_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    folder_id = value.strip()
+    if not folder_id:
+        return None
+
+    parsed = urlparse(folder_id)
+    if parsed.scheme or parsed.netloc:
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("Google Drive folder id must be a raw id or HTTPS URL")
+        candidates: list[str] = []
+        parts = [part for part in parsed.path.split("/") if part]
+        for index, part in enumerate(parts[:-1]):
+            if part == "folders":
+                candidates.append(parts[index + 1])
+        for key in ("id", "folderId"):
+            candidates.extend(parse_qs(parsed.query).get(key, []))
+        unique = list(dict.fromkeys(item.strip() for item in candidates if item.strip()))
+        if len(unique) != 1:
+            raise ValueError("Google Drive folder URL must contain exactly one folder id")
+        folder_id = unique[0]
+
+    if not DRIVE_ID_PATTERN.fullmatch(folder_id):
+        raise ValueError("Google Drive folder id contains invalid characters")
+    return folder_id
+
+
+def configured_drive_folder_id() -> str | None:
+    return normalize_drive_folder_id(os.getenv("GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID") or os.getenv("GOOGLE_DRIVE_FOLDER_ID"))
+
+_model_path = Path(os.getenv("MODEL_PATH", str(BACKEND_ROOT / "models" / "best.pt"))).expanduser()
 if _model_path.is_absolute():
     MODEL_PATH = _model_path
 else:
@@ -46,15 +83,34 @@ else:
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID = os.getenv("GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID")
+GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID = configured_drive_folder_id()
 GOOGLE_OAUTH_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8000/api/google/callback")
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://purityloop-ai.vercel.app",
-]
-_configured_origins = [item.strip() for item in os.getenv("ALLOWED_ORIGINS", "").split(",") if item.strip()]
-if _configured_origins:
-    ALLOWED_ORIGINS = _configured_origins
+
+
+def cors_origins() -> list[str]:
+    environment = os.getenv("ENVIRONMENT", "development").strip().lower()
+    if environment == "production":
+        origin = os.getenv("FRONTEND_ORIGIN", "https://purityloop-ai.vercel.app").strip().rstrip("/")
+        if (
+            not origin
+            or origin == "*"
+            or origin.startswith("http://localhost")
+            or origin.startswith("http://127.0.0.1")
+            or not origin.startswith("https://")
+        ):
+            raise RuntimeError("Production FRONTEND_ORIGIN must be a single HTTPS origin.")
+        return [origin]
+
+    origins = [
+        "http://localhost:3000",
+        "https://purityloop-ai.vercel.app",
+    ]
+    for env_name in ("FRONTEND_ORIGIN", "CORS_ORIGINS", "ALLOWED_ORIGINS"):
+        origins.extend(item.strip().rstrip("/") for item in os.getenv(env_name, "").split(",") if item.strip())
+    return list(dict.fromkeys(origins))
+
+
+ALLOWED_ORIGINS = cors_origins()
 
 app = FastAPI(title="PurityLoop AI Backend")
 app.add_middleware(
@@ -78,9 +134,20 @@ SCAN_RESULTS_TABLE = "scan_results"
 DETECTED_MATERIALS_TABLE = "detected_materials"
 REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
+UPLOAD_SESSIONS_TABLE = "upload_sessions"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
 PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
 VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
+SERVICE_MODE = os.getenv("SERVICE_MODE", "api").strip().lower() or "api"
+PROCESSING_BACKEND = os.getenv("PROCESSING_BACKEND") or ("cloud-tasks" if os.getenv("ENVIRONMENT", "").lower() == "production" else "local-thread")
+CLOUD_TASKS_PROJECT_ID = os.getenv("CLOUD_TASKS_PROJECT_ID")
+CLOUD_TASKS_LOCATION = os.getenv("CLOUD_TASKS_LOCATION")
+CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE")
+CLOUD_TASKS_WORKER_URL = os.getenv("CLOUD_TASKS_WORKER_URL")
+CLOUD_TASKS_OIDC_AUDIENCE = os.getenv("CLOUD_TASKS_OIDC_AUDIENCE")
+CLOUD_TASKS_CALLER_SERVICE_ACCOUNT = os.getenv("CLOUD_TASKS_CALLER_SERVICE_ACCOUNT")
+CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS = int(os.getenv("CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS", "900") or 900)
+JOB_LEASE_SECONDS = int(os.getenv("JOB_LEASE_SECONDS", "1200") or 1200)
 DEFAULT_VIDEO_FPS = float(os.getenv("DEFAULT_VIDEO_FPS", "30") or 30)
 UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024
 MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", "0") or 0)
@@ -176,8 +243,6 @@ class SupabaseExecutor:
                 if attempt + 1 < self.attempts:
                     self.sleeper(min(4.0, 0.25 * (2 ** attempt)) + (self.random_value() * 0.2))
         raise SupabaseTemporarilyUnavailable("Supabase connection temporarily unavailable") from last_error
-# ponytail: local demo is one backend process; use shared storage for multi-instance deployment.
-UPLOAD_SESSIONS: dict[str, str] = {}
 CATEGORY_CLASS_MAP = {
     "general_trash": "contaminant",
     "food_organics": "contaminant",
@@ -591,10 +656,91 @@ class Principal:
     kind: str
     id: str
     scopes: frozenset[str]
+    email: str | None = None
+    role: str = "authenticated"
+    claims: dict[str, Any] = field(default_factory=dict)
+    profile_id: str | None = None
 
 
-def require_principal() -> Principal:
-    return Principal("public", "public", frozenset({"scan:read", "scan:write", "job:read", "review:write"}))
+AUTHENTICATED_SCOPES = frozenset({"scan:read", "scan:write", "job:read", "review:write"})
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _auth_401(detail: str = "Authentication required.") -> HTTPException:
+    return HTTPException(status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+def _configured_secret_tokens() -> list[str]:
+    return [value for value in (SUPABASE_SERVICE_ROLE_KEY, os.getenv("SUPABASE_ANON_KEY")) if value]
+
+
+def _looks_like_configured_secret(token: str) -> bool:
+    return any(hmac.compare_digest(token, secret) for secret in _configured_secret_tokens())
+
+
+def is_production() -> bool:
+    return os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+
+
+def _get_attr(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _extract_user(auth_response: Any) -> Any:
+    return _get_attr(auth_response, "user") or _get_attr(_get_attr(auth_response, "data"), "user")
+
+
+def _lookup_user_profile_id(client: Any, auth_user_id: str) -> str | None:
+    try:
+        response = client.table("user_profiles").select("id").eq("auth_user_id", auth_user_id).maybe_single().execute()
+    except Exception:
+        return None
+    profile_id = _get_attr(_get_attr(response, "data"), "id")
+    return str(profile_id) if profile_id else None
+
+
+def scan_user_id(principal: Principal | None, database: SupabaseExecutor | None = None) -> str | None:
+    if not principal or principal.kind != "user":
+        return None
+    if principal.profile_id:
+        return principal.profile_id
+    if not database or not database.client:
+        return None
+    return _lookup_user_profile_id(database.client, principal.id)
+
+
+def verify_supabase_token(token: str) -> Principal:
+    token = str(token or "").strip()
+    if not token or _looks_like_configured_secret(token):
+        raise _auth_401("Invalid authentication token.")
+
+    client = _new_supabase_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Authentication is not configured.")
+
+    try:
+        auth_response = client.auth.get_user(token)
+    except Exception:
+        raise _auth_401("Invalid authentication token.") from None
+
+    user = _extract_user(auth_response)
+    user_id = str(_get_attr(user, "id", "") or "")
+    email = _get_attr(user, "email")
+    is_anonymous = bool(_get_attr(user, "is_anonymous", False))
+    if not user_id or is_anonymous:
+        raise _auth_401("Invalid authentication token.")
+
+    claims = {"sub": user_id, "email": email, "role": "authenticated"}
+    profile_id = _lookup_user_profile_id(client, user_id)
+    return Principal("user", user_id, AUTHENTICATED_SCOPES, email=email, role="authenticated", claims=claims, profile_id=profile_id)
+
+
+def require_principal(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> Principal:
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise _auth_401()
+    return verify_supabase_token(credentials.credentials)
 
 
 def _api_key_digest(value: str) -> str:
@@ -610,6 +756,7 @@ def require_scope(scope: str):
 
 
 def scoped_query(query, principal: Principal):
+    # Capstone data is shared; current schema has no per-user ownership filter.
     return query
 
 
@@ -734,6 +881,10 @@ def safe_error_message(exc: Exception) -> str:
     message = re.sub(r"[\w./ -]*google-oauth-token\.json", "[google-oauth-token.json]", message)
     message = re.sub(r"[\w./ -]*google-oauth-state\.json", "[google-oauth-state.json]", message)
     return message[:300]
+
+
+def safe_worker_error_message(exc: Exception) -> str:
+    return re.sub(r"/tmp/purityloop/[A-Za-z0-9._/-]+", "[worker-temp-path]", safe_error_message(exc))
 
 
 def log_scan_stage_failure(stage: str, exc: Exception) -> None:
@@ -1248,7 +1399,7 @@ def upload_original_to_drive(file_bytes: bytes, original_filename: str | None, c
 
     created = (
         service.files()
-        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink")
+        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink", supportsAllDrives=True)
         .execute()
     )
     return {
@@ -1329,14 +1480,32 @@ def save_oauth_token(credentials) -> None:
 
 
 def oauth_drive_credentials():
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    from google.oauth2.credentials import Credentials
+
+    env_client_id = os.getenv("GOOGLE_CLIENT_ID")
+    env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    env_refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+    if env_client_id and env_client_secret and env_refresh_token:
+        # Refresh tokens already carry their granted scopes. Re-requesting an
+        # expanded scope set here can make Google's refresh endpoint reject it.
+        credentials = Credentials(
+            token=None,
+            refresh_token=env_refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=env_client_id,
+            client_secret=env_client_secret,
+        )
+        credentials.refresh(GoogleAuthRequest())
+        if not credentials.valid:
+            raise RuntimeError("Google OAuth environment credentials are not valid")
+        return credentials
+
     token_path = google_oauth_token_path()
     if not token_path.exists():
         raise RuntimeError("Google OAuth token file is not available")
 
-    from google.auth.transport.requests import Request as GoogleAuthRequest
-    from google.oauth2.credentials import Credentials
-
-    credentials = Credentials.from_authorized_user_file(str(token_path), OAUTH_DRIVE_SCOPES)
+    credentials = Credentials.from_authorized_user_file(str(token_path))
     if credentials.expired and credentials.refresh_token:
         credentials.refresh(GoogleAuthRequest())
         save_oauth_token(credentials)
@@ -1370,6 +1539,8 @@ def upload_original_to_drive_oauth(
             spaces="drive",
             fields="files(id,name,webViewLink,webContentLink)",
             pageSize=1,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
         ).execute().get("files", [])
         if existing:
             created = existing[0]
@@ -1389,7 +1560,7 @@ def upload_original_to_drive_oauth(
 
     created = (
         service.files()
-        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink")
+        .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink", supportsAllDrives=True)
         .execute()
     )
     return {
@@ -1651,8 +1822,9 @@ def persist_scan(
             "overall_status": "review_required",
             "human_review_required": True,
         }
-        if principal and principal.kind == "user":
-            reservation["user_id"] = principal.id
+        principal_profile_id = scan_user_id(principal, database)
+        if principal_profile_id:
+            reservation["user_id"] = principal_profile_id
         try:
             inserted = database.execute(
                 lambda client: client.table(SCAN_RESULTS_TABLE).insert(reservation).execute().data or []
@@ -1737,8 +1909,9 @@ def persist_scan(
             "recommended_action": "Verified after operator review.",
             "reviewed_at": datetime.now(timezone.utc).isoformat(),
         })
-    if principal and principal.kind == "user":
-        scan_row["user_id"] = principal.id
+    principal_profile_id = scan_user_id(principal, database)
+    if principal_profile_id:
+        scan_row["user_id"] = principal_profile_id
 
     def recover_scan(client):
         if scan_result_id:
@@ -2143,7 +2316,7 @@ def _create_drive_resumable_upload(filename: str, size_bytes: int, mime: str) ->
 
     try:
         response = session.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true",
             headers={
                 "Content-Type": "application/json; charset=UTF-8",
                 "X-Upload-Content-Type": mime,
@@ -2177,6 +2350,181 @@ class IngestInput(BaseModel):
     source: str
     ref: str
     options: dict = {}
+
+
+class WorkerJobInput(BaseModel):
+    job_id: UUID
+
+
+def _content_range_end(content_range: str) -> int | None:
+    match = re.match(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$", str(content_range or "").strip(), re.I)
+    if not match:
+        return None
+    return int(match.group(2)) + 1
+
+
+def _upload_session_owner_fields(principal: Principal, database: SupabaseExecutor) -> dict:
+    fields = {"owner_auth_user_id": principal.id}
+    profile_id = scan_user_id(principal, database)
+    if profile_id:
+        fields["owner_user_id"] = profile_id
+    return fields
+
+
+def _upload_session_response(row: dict) -> dict:
+    return {
+        "upload_id": row["id"],
+        "filename": row["original_filename"],
+        "chunk_size": UPLOAD_CHUNK_SIZE_BYTES,
+        "status": row.get("status", "upload_pending"),
+        "received_size": row.get("received_size", 0),
+        "drive_file": {"id": row.get("drive_file_id")} if row.get("drive_file_id") else None,
+    }
+
+
+def _insert_upload_session(database: SupabaseExecutor, principal: Principal, *, upload_id: str, filename: str, mime: str, size_bytes: int, upload_url: str) -> dict:
+    now = datetime.now(timezone.utc)
+    row = {
+        "id": upload_id,
+        **_upload_session_owner_fields(principal, database),
+        "original_filename": filename,
+        "content_type": mime,
+        "total_size": size_bytes,
+        "received_size": 0,
+        "drive_resumable_url": upload_url,
+        "status": "upload_pending",
+        "expires_at": (now + timedelta(days=1)).isoformat(),
+    }
+    inserted = database.execute(lambda client: client.table(UPLOAD_SESSIONS_TABLE).insert(row).execute().data or [])
+    if not inserted:
+        raise HTTPException(status_code=500, detail="Unable to persist upload session.")
+    return inserted[0]
+
+
+def _load_upload_session(database: SupabaseExecutor, upload_id: str, principal: Principal) -> dict | None:
+    def query(client):
+        return (
+            client.table(UPLOAD_SESSIONS_TABLE)
+            .select("*")
+            .eq("id", upload_id)
+            .eq("owner_auth_user_id", principal.id)
+            .maybe_single()
+            .execute()
+        )
+    response = database.execute(query)
+    return response.data if response else None
+
+
+def _update_upload_session(database: SupabaseExecutor, upload_id: str, fields: dict) -> dict | None:
+    payload = {**fields, "updated_at": datetime.now(timezone.utc).isoformat()}
+    response = database.execute(
+        lambda client: client.table(UPLOAD_SESSIONS_TABLE).update(payload).eq("id", upload_id).execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def _verify_completed_upload_for_drive_file(database: SupabaseExecutor, file_id: str, principal: Principal) -> None:
+    response = database.execute(
+        lambda client: client.table(UPLOAD_SESSIONS_TABLE)
+        .select("id,status,drive_file_id")
+        .eq("drive_file_id", file_id)
+        .eq("owner_auth_user_id", principal.id)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    if rows and rows[0].get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Upload has not completed yet.")
+
+
+def _cloud_tasks_required_env() -> dict:
+    values = {
+        "project": CLOUD_TASKS_PROJECT_ID,
+        "location": CLOUD_TASKS_LOCATION,
+        "queue": CLOUD_TASKS_QUEUE,
+        "worker_url": CLOUD_TASKS_WORKER_URL,
+        "oidc_audience": CLOUD_TASKS_OIDC_AUDIENCE,
+        "caller_service_account": CLOUD_TASKS_CALLER_SERVICE_ACCOUNT,
+    }
+    missing = [key for key, value in values.items() if not value]
+    if missing:
+        raise RuntimeError(f"Cloud Tasks environment is incomplete: {', '.join(missing)}")
+    values["oidc_audience"] = _normalize_cloud_tasks_oidc_audience(str(values["oidc_audience"]))
+    return values
+
+
+def _normalize_cloud_tasks_oidc_audience(audience: str) -> str:
+    parsed = urlparse(str(audience or "").strip())
+    if (
+        not parsed.scheme
+        or parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("CLOUD_TASKS_OIDC_AUDIENCE must be the HTTPS worker service origin.")
+    hostname = parsed.hostname or ""
+    if hostname in {"localhost", "127.0.0.1"} or hostname.endswith(".localhost"):
+        raise RuntimeError("CLOUD_TASKS_OIDC_AUDIENCE must not be localhost.")
+    if is_production() and not hostname.endswith(".run.app"):
+        raise RuntimeError("Production CLOUD_TASKS_OIDC_AUDIENCE must use a run.app hostname.")
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _cloud_task_name(client: Any, parent: str, job_id: str) -> str:
+    safe_id = re.sub(r"[^A-Za-z0-9_-]+", "-", job_id).strip("-")
+    return client.task_path(CLOUD_TASKS_PROJECT_ID, CLOUD_TASKS_LOCATION, CLOUD_TASKS_QUEUE, f"process-{safe_id}")
+
+
+def enqueue_processing_task(job_id: str) -> dict:
+    values = _cloud_tasks_required_env()
+    try:
+        from google.api_core.exceptions import AlreadyExists
+        from google.cloud import tasks_v2
+        from google.protobuf.duration_pb2 import Duration
+    except Exception as exc:
+        raise RuntimeError("google-cloud-tasks is not installed.") from exc
+
+    client = tasks_v2.CloudTasksClient()
+    parent = client.queue_path(values["project"], values["location"], values["queue"])
+    payload = json.dumps({"job_id": job_id}, separators=(",", ":")).encode("utf-8")
+    dispatch_deadline = Duration(seconds=CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS)
+    task = {
+        "name": _cloud_task_name(client, parent, job_id),
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": values["worker_url"],
+            "headers": {"Content-Type": "application/json"},
+            "body": payload,
+            "oidc_token": {
+                "service_account_email": values["caller_service_account"],
+                "audience": values["oidc_audience"],
+            },
+        },
+        "dispatch_deadline": dispatch_deadline,
+    }
+    try:
+        created = client.create_task(request={"parent": parent, "task": task})
+        return {"task_name": created.name, "duplicate": False}
+    except AlreadyExists:
+        return {"task_name": task["name"], "duplicate": True}
+
+
+def _claim_processing_job(database: SupabaseExecutor, job_id: str) -> dict:
+    worker_id = f"{os.getenv('K_SERVICE', SERVICE_MODE)}:{os.getenv('K_REVISION', 'local')}:{os.getpid()}"
+    response = database.execute(
+        lambda client: client.rpc(
+            "claim_processing_job",
+            {"p_job_id": job_id, "p_lease_seconds": JOB_LEASE_SECONDS, "p_worker_id": worker_id},
+        ).execute()
+    )
+    data = response.data if response else None
+    if isinstance(data, list):
+        return data[0] if data else {}
+    return data or {}
 
 
 @app.get("/api/health")
@@ -3097,6 +3445,23 @@ def _update_job(job_id: str, database: SupabaseExecutor, **fields) -> None:
         raise
 
 
+def _complete_processing_job(job_id: str, database: SupabaseExecutor, scan_ids: list[str]) -> None:
+    completion = {
+        "status": "completed",
+        "scan_ids": scan_ids,
+        "processed_count": len(scan_ids),
+        "total_count": len(scan_ids),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        _update_job(job_id, database, **completion, lease_expires_at=None, worker_id=None)
+    except Exception as exc:
+        if getattr(exc, "code", "") not in {"PGRST204", "PGRST205", "42703"}:
+            raise
+        print(f"[worker] optional completion cleanup skipped: {type(exc).__name__}: {safe_worker_error_message(exc)}")
+        _update_job(job_id, database, **completion)
+
+
 def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
     principal = Principal(
         str(job.get("created_by_type") or "api_key"),
@@ -3186,7 +3551,14 @@ def _worker_loop() -> None:
 @app.on_event("startup")
 def start_worker() -> None:
     print(f"[startup] diagnostics {json.dumps(safe_startup_diagnostics(), sort_keys=True)}")
-    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and os.getenv("DISABLE_WORKER", "false").lower() != "true":
+    if (
+        SERVICE_MODE == "api"
+        and PROCESSING_BACKEND == "local-thread"
+        and not is_production()
+        and SUPABASE_URL
+        and SUPABASE_SERVICE_ROLE_KEY
+        and os.getenv("DISABLE_WORKER", "false").lower() != "true"
+    ):
         try:
             startup_database = SupabaseExecutor()
             startup_database.execute(
@@ -3217,9 +3589,10 @@ def start_upload(payload: UploadStartInput, principal: Principal = Depends(requi
         _upload_start_log("drive_resumable_init_started", filename=name, mime_type=mime, size_bytes=size_bytes, storage_operation="google_drive_resumable_upload")
         upload_url = _create_drive_resumable_upload(name, size_bytes, mime)
         upload_id = str(uuid4())
-        UPLOAD_SESSIONS[upload_id] = upload_url
+        database = SupabaseExecutor()
+        session = _insert_upload_session(database, principal, upload_id=upload_id, filename=name, mime=mime, size_bytes=size_bytes, upload_url=upload_url)
         _upload_start_log("drive_resumable_init_completed", upload_id=upload_id, filename=name, chunk_size=UPLOAD_CHUNK_SIZE_BYTES, storage_operation="google_drive_resumable_upload")
-        return {"upload_id": upload_id, "filename": name, "chunk_size": UPLOAD_CHUNK_SIZE_BYTES}
+        return _upload_session_response(session)
     except UploadStartFailure as exc:
         _upload_start_log("failed", upload_id=upload_id, code=exc.code, stage=exc.stage, status_code=exc.status_code, error_type=type(exc.__cause__ or exc).__name__, error=safe_error_message(exc))
         traceback.print_exc()
@@ -3237,29 +3610,52 @@ def start_upload(payload: UploadStartInput, principal: Principal = Depends(requi
 
 @app.put("/api/uploads/{upload_id}")
 async def upload_chunk(upload_id: str, request: Request, principal: Principal = Depends(require_scope("scan:write"))):
-    upload_url = UPLOAD_SESSIONS.get(upload_id)
+    database = SupabaseExecutor()
+    session = _load_upload_session(database, upload_id, principal)
     content_range = request.headers.get("content-range")
-    if not upload_url:
+    if not session:
         raise HTTPException(status_code=404, detail="MP4 upload session was not found.")
+    if session.get("status") == "failed":
+        raise HTTPException(status_code=409, detail="MP4 upload session previously failed.")
+    if session.get("status") == "completed":
+        return {"complete": True, "drive_file": {"id": session.get("drive_file_id")}}
+    expires_at = session.get("expires_at")
+    if expires_at and datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+        _update_upload_session(database, upload_id, {"status": "expired", "error": "Upload session expired."})
+        raise HTTPException(status_code=410, detail="MP4 upload session expired.")
     if not content_range:
         raise HTTPException(status_code=400, detail="MP4 chunk is missing Content-Range.")
     try:
         from google.auth.transport.requests import AuthorizedSession
         chunk = await request.body()
+        received_size = _content_range_end(content_range)
         response = AuthorizedSession(oauth_drive_credentials()).put(
-            upload_url,
+            session["drive_resumable_url"],
             headers={"Content-Range": content_range, "Content-Length": str(len(chunk))},
             data=chunk,
             timeout=120,
         )
         if response.status_code == 308:
+            if received_size is not None:
+                _update_upload_session(database, upload_id, {"received_size": max(int(session.get("received_size") or 0), received_size), "status": "upload_pending"})
             return {"complete": False}
         response.raise_for_status()
-        UPLOAD_SESSIONS.pop(upload_id, None)
-        return {"complete": True, "drive_file": response.json()}
+        drive_file = response.json()
+        _update_upload_session(
+            database,
+            upload_id,
+            {
+                "received_size": int(session.get("total_size") or received_size or 0),
+                "drive_file_id": drive_file.get("id"),
+                "status": "completed",
+                "error": None,
+            },
+        )
+        return {"complete": True, "drive_file": drive_file}
     except HTTPException:
         raise
     except Exception as exc:
+        _update_upload_session(database, upload_id, {"status": "failed", "error": safe_error_message(exc)})
         raise HTTPException(status_code=502, detail="Unable to upload MP4 chunk to Google Drive.") from exc
 
 
@@ -3269,17 +3665,40 @@ def ingest(payload: IngestInput, principal: Principal = Depends(require_scope("s
         raise HTTPException(status_code=400, detail="Use source=drive_file or source=drive_folder with a Drive id.")
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    source_ref = payload.ref.strip()
+    if payload.source == "drive_file":
+        _verify_completed_upload_for_drive_file(database, source_ref, principal)
     row = {
         "source": payload.source,
-        "source_ref": payload.ref.strip(),
+        "source_ref": source_ref,
         "options": payload.options or {},
         "created_by": principal.id,
         "created_by_type": principal.kind,
     }
-    inserted = supabase.table(JOBS_TABLE).insert(row).execute().data or []
+    inserted = database.execute(lambda client: client.table(JOBS_TABLE).insert(row).execute().data or [])
     if not inserted:
         raise HTTPException(status_code=500, detail="Unable to create processing job.")
-    return {"job_id": inserted[0]["id"], "status": inserted[0].get("status", "queued")}
+    job_id = str(inserted[0]["id"])
+    if PROCESSING_BACKEND != "cloud-tasks":
+        if is_production():
+            raise HTTPException(status_code=500, detail="Production processing backend must be cloud-tasks.")
+        return {"job_id": job_id, "status": inserted[0].get("status", "queued")}
+    try:
+        task = enqueue_processing_task(job_id)
+        database.execute(
+            lambda client: client.table(JOBS_TABLE).update(
+                {"status": "queued", "dispatched_at": datetime.now(timezone.utc).isoformat(), "dispatch_error": None}
+            ).eq("id", job_id).execute()
+        )
+    except Exception as exc:
+        database.execute(
+            lambda client: client.table(JOBS_TABLE).update(
+                {"status": "queued", "dispatch_error": safe_error_message(exc), "updated_at": datetime.now(timezone.utc).isoformat()}
+            ).eq("id", job_id).execute()
+        )
+        raise HTTPException(status_code=503, detail="Unable to dispatch processing task.") from exc
+    return {"job_id": job_id, "status": "queued", "task_dispatched": True, "task_duplicate": task.get("duplicate", False)}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -3304,6 +3723,48 @@ def get_job(job_id: str, principal: Principal = Depends(require_scope("job:read"
     if not row:
         raise HTTPException(status_code=404, detail="Processing job was not found.")
     return row
+
+
+@app.post("/internal/jobs/process")
+def process_internal_job(payload: WorkerJobInput):
+    if SERVICE_MODE != "worker":
+        raise HTTPException(status_code=404, detail="Not found.")
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Worker is not configured.")
+    job_id = str(payload.job_id)
+    database = SupabaseExecutor()
+    try:
+        claimed = _claim_processing_job(database, job_id)
+        status = claimed.get("status")
+        if status in {"complete", "completed"}:
+            return {"job_id": job_id, "status": status, "already_completed": True}
+        if not claimed.get("claimed"):
+            return JSONResponse(status_code=409, content={"detail": "Job is not available for processing.", "retryable": True})
+        job_response = database.execute(lambda client: client.table(JOBS_TABLE).select("*").eq("id", job_id).maybe_single().execute())
+        job = job_response.data if job_response else None
+        if not job:
+            raise HTTPException(status_code=404, detail="Job was not found.")
+        scan_ids = _process_job(job, database)
+        _complete_processing_job(job_id, database, scan_ids)
+        return {"job_id": job_id, "status": "completed", "scan_ids": scan_ids}
+    except HTTPException:
+        raise
+    except SupabaseTemporarilyUnavailable as exc:
+        try:
+            _update_job(job_id, database, status="queued", error="Transient database failure.", lease_expires_at=None)
+        except Exception:
+            pass
+        return JSONResponse(status_code=503, content={"detail": "Processing temporarily unavailable.", "retryable": True})
+    except Exception as exc:
+        try:
+            current = database.execute(lambda client: client.table(JOBS_TABLE).select("status").eq("id", job_id).maybe_single().execute()).data
+            if current and current.get("status") in {"complete", "completed"}:
+                print(f"[worker] post-completion error acknowledged: {type(exc).__name__}: {safe_worker_error_message(exc)}")
+                return {"job_id": job_id, "status": current.get("status"), "already_completed": True, "post_completion_error": True}
+            _update_job(job_id, database, status="failed", error=safe_worker_error_message(exc), lease_expires_at=None, worker_id=None)
+        except Exception:
+            pass
+        return JSONResponse(status_code=500, content={"detail": "Processing failed.", "retryable": True})
 
 
 @app.get("/api/analytics")
@@ -3955,7 +4416,10 @@ def get_scan_result(scan_result_id: str, principal: Principal = Depends(require_
 
 
 @app.get("/api/google/auth")
-def google_auth(principal: Principal = Depends(require_scope("scan:write"))):
+def google_auth(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)):
+    if is_production():
+        raise HTTPException(status_code=404, detail="Not found.")
+    require_scope("scan:write")(require_principal(credentials))
     try:
         flow = oauth_flow()
         authorization_url, state = flow.authorization_url(
@@ -3972,6 +4436,8 @@ def google_auth(principal: Principal = Depends(require_scope("scan:write"))):
 
 @app.get("/api/google/callback")
 def google_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    if is_production():
+        raise HTTPException(status_code=404, detail="Not found.")
     if error:
         raise HTTPException(status_code=400, detail="Google OAuth authorization failed.")
     if not code:
@@ -3995,3 +4461,10 @@ def google_callback(code: str | None = None, state: str | None = None, error: st
 async def predict(file: UploadFile = File(...), principal: Principal = Depends(require_scope("scan:write"))):
     file_bytes = await file.read()
     return run_scan(file_bytes, file.filename, "image", principal=principal, content_type=file.content_type)
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "purityloop-backend",
+    }

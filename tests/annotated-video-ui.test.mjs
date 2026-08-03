@@ -55,6 +55,14 @@ test("MP4 upload flow surfaces structured backend errors", () => {
   assert.match(script, /plApiErrorMessage\(job, "Unable to read MP4 job status\."\)/);
 });
 
+test("MP4 polling can resume from stored job id after reload", () => {
+  assert.match(script, /const PL_VIDEO_JOBS_KEY = "purityloop_video_jobs"/);
+  assert.match(script, /function rememberVideoJob/);
+  assert.match(script, /function resumeVideoJobs/);
+  assert.match(script, /rememberVideoJob\(ingestPayload\.job_id, item\.file\.name\)/);
+  assert.match(script, /void resumeVideoJobs\(\)/);
+});
+
 test("image upload uses browser ONNX instead of backend PyTorch fallback", () => {
   assert.match(script, /Browser ONNX is required for image detection/);
   assert.doesNotMatch(script, /Backend PyTorch — best\.pt/);
