@@ -183,6 +183,59 @@ def test_tracked_video_preview_uses_full_representative_frame_not_crop():
     assert material["track_debug"]["representative_bbox_format"] == "normalized_original_frame_xyxy"
 
 
+def test_tracked_object_persistence_annotates_representative_frame_with_real_bbox(monkeypatch):
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    frame_bytes = main._encode_frame_jpeg(frame)
+    item = {
+        "stable_object_id": "scan-1-object-0001",
+        "object_uid": "scan-1-object-0001",
+        "track_id": "4",
+        "category": "plastic",
+        "material_name": "plastic",
+        "confidence": 0.91,
+        "track_max_confidence": 0.91,
+        "track_avg_confidence": 0.88,
+        "track_hazard_status": "clear",
+        "recyclable_status": "recyclable",
+        "contaminant_status": "clean",
+        "review_required": False,
+        "decision_status": "accepted",
+        "display_status": "Confirmed Recyclable",
+        "disposal_route": "Recyclable Stream",
+        "bbox_x": 25,
+        "bbox_y": 25,
+        "bbox_width": 25,
+        "bbox_height": 25,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
+        "segmentation_mask": [[0.25, 0.25], [0.5, 0.25], [0.5, 0.5], [0.25, 0.5]],
+        "_best_crop_bytes": frame_bytes,
+    }
+    captured = {}
+
+    def fake_persist(file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
+        captured["file_bytes"] = file_bytes
+        captured["material"] = materials[0]
+        return {"scan_result_id": "persisted-track"}
+
+    monkeypatch.setattr(main, "persist_scan", fake_persist)
+
+    scan_ids = main._persist_tracked_video_objects(
+        tracked_objects=[item],
+        source_name="video.mp4",
+        file_id="drive-1",
+        job={"id": "44444444-4444-4444-8444-444444444444"},
+        principal=None,
+        database=NoopDatabase(),
+        existing_drive_metadata={},
+    )
+
+    assert scan_ids == ["persisted-track"]
+    assert captured["file_bytes"] != frame_bytes
+    assert captured["material"]["best_box"]["xyxy"] == [30, 20, 60, 40]
+    assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "representative_frame_best_box"
+
+
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
 def test_successful_h264_yuv420p_encoding_and_probe(temp_video_pair):
     source, encoded = temp_video_pair

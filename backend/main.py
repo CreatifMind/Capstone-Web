@@ -1680,6 +1680,64 @@ def to_detected_materials(result) -> list[dict]:
     return materials
 
 
+def _material_preview_detection(material: dict, image_width: int, image_height: int) -> dict:
+    best_box = material.get("best_box")
+    xyxy = best_box.get("xyxy") if isinstance(best_box, dict) else None
+    if isinstance(xyxy, list) and len(xyxy) >= 4:
+        x1, y1, x2, y2 = [_coerce_float(value) for value in xyxy[:4]]
+    else:
+        x1 = (_coerce_float(material.get("bbox_x")) / 100) * image_width
+        y1 = (_coerce_float(material.get("bbox_y")) / 100) * image_height
+        x2 = x1 + ((_coerce_float(material.get("bbox_width")) / 100) * image_width)
+        y2 = y1 + ((_coerce_float(material.get("bbox_height")) / 100) * image_height)
+    return {
+        "track_id": material.get("track_id"),
+        "category": material.get("category"),
+        "material_name": material.get("material_name") or material.get("category"),
+        "confidence": material.get("confidence"),
+        "best_box": {"xyxy": [x1, y1, x2, y2]},
+        "bbox": [
+            x1 / image_width if image_width else 0,
+            y1 / image_height if image_height else 0,
+            x2 / image_width if image_width else 0,
+            y2 / image_height if image_height else 0,
+        ],
+        "mask": material.get("segmentation_mask") or material.get("mask"),
+    }
+
+
+def _encode_annotated_image_preview(file_bytes: bytes, filename: str | None, materials: list[dict]) -> bytes:
+    if not materials:
+        return file_bytes
+    try:
+        import cv2
+        import numpy as np
+
+        frame = cv2.imdecode(np.frombuffer(file_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            raise ValueError("Unable to decode image preview for annotation")
+        image_height, image_width = frame.shape[:2]
+        detections = [_material_preview_detection(material, image_width, image_height) for material in materials]
+        annotated = _annotate_video_frame(frame, detections, footer_count=len(detections))
+        suffix = (Path(filename or "upload.jpg").suffix or ".jpg").lower()
+        extension = ".jpg" if suffix == ".jpeg" else suffix
+        if extension not in {".jpg", ".png", ".webp"}:
+            extension = ".jpg"
+        ok, encoded = cv2.imencode(extension, annotated)
+        if not ok:
+            raise ValueError(f"Unable to encode annotated image preview as {extension}")
+        return encoded.tobytes()
+    except Exception as exc:
+        _video_processing_log(
+            "image_preview_annotation_failed",
+            filename=filename,
+            detection_count=len(materials),
+            error_type=type(exc).__name__,
+            error=safe_error_message(exc),
+        )
+        return file_bytes
+
+
 def summarize(materials: list[dict]) -> dict:
     if not materials:
         return {
@@ -2066,8 +2124,9 @@ def run_scan(
             tmp_path = tmp.name
         result = get_model()(tmp_path, verbose=False)[0]
         materials = to_detected_materials(result)
+        preview_bytes = _encode_annotated_image_preview(file_bytes, filename, materials)
         return persist_scan(
-            file_bytes,
+            preview_bytes,
             filename,
             source_type,
             materials,
@@ -3059,10 +3118,6 @@ def _persist_tracked_video_objects(
                 crop_width, crop_height = crop_image.size
         except Exception:
             crop_width, crop_height = 100, 100
-        public_material["bbox_x"] = 2.0
-        public_material["bbox_y"] = 2.0
-        public_material["bbox_width"] = 96.0
-        public_material["bbox_height"] = 96.0
         public_material["material_name"] = (
             public_material.get("material_name")
             or public_material.get("category")
@@ -3074,53 +3129,18 @@ def _persist_tracked_video_objects(
             or public_material.get("track_avg_confidence")
             or 0
         )
-        preview_bytes = crop_bytes
-        try:
-            import cv2
-            import numpy as np
-            crop_frame = cv2.imdecode(np.frombuffer(crop_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-            if crop_frame is None:
-                raise ValueError("Unable to decode tracked-object preview crop")
-            crop_height, crop_width = crop_frame.shape[:2]
-            inset_x = max(0, round(crop_width * 0.02))
-            inset_y = max(0, round(crop_height * 0.02))
-            x2 = min(crop_width - 1, round(crop_width * 0.98))
-            y2 = min(crop_height - 1, round(crop_height * 0.98))
-            if x2 <= inset_x:
-                x2 = min(crop_width - 1, inset_x + 1)
-            if y2 <= inset_y:
-                y2 = min(crop_height - 1, inset_y + 1)
-            preview_detection = {
-                "track_id": public_material.get("track_id"),
-                "category": public_material.get("category"),
-                "material_name": public_material.get("material_name"),
-                "confidence": public_material.get("confidence"),
-                "best_box": {"xyxy": [inset_x, inset_y, x2, y2]},
-                "bbox": [0.02, 0.02, 0.98, 0.98],
-            }
-            annotated_crop = _annotate_video_frame(crop_frame, [preview_detection], footer_count=1)
-            ok, encoded_crop = cv2.imencode(".jpg", annotated_crop)
-            if not ok:
-                raise ValueError("Unable to encode tracked-object annotated preview")
-            preview_bytes = encoded_crop.tobytes()
-        except Exception as exc:
-            _video_processing_log(
-                "tracked_preview_annotation_failed",
-                scan_id=str(job["id"]),
-                logical_object_id=stable_object_id,
-                error_type=type(exc).__name__,
-                error=safe_error_message(exc),
-            )
+        preview_bytes = _encode_annotated_image_preview(crop_bytes, f"{Path(source_name).stem}_{stable_object_id}.jpg", [public_material])
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
         public_material["track_debug"]["preview_bbox"] = {
-            "format": "crop_relative_display_inset",
+            "format": "representative_frame_best_box",
             "crop_width": crop_width,
             "crop_height": crop_height,
-            "x1": round(crop_width * 0.02, 2),
-            "y1": round(crop_height * 0.02, 2),
-            "x2": round(crop_width * 0.98, 2),
-            "y2": round(crop_height * 0.98, 2),
+            "best_box": public_material.get("best_box"),
+            "bbox_x": public_material.get("bbox_x"),
+            "bbox_y": public_material.get("bbox_y"),
+            "bbox_width": public_material.get("bbox_width"),
+            "bbox_height": public_material.get("bbox_height"),
         }
         public_material["result_type"] = "video_track_object"
         object_summary = summarize([public_material])
@@ -3985,8 +4005,9 @@ async def save_browser_detected_scan(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Detection JSON is invalid.") from exc
     materials = validate_browser_detected_detections(raw_detections, actual_width, actual_height)
+    preview_bytes = _encode_annotated_image_preview(file_bytes, file.filename, materials)
     return persist_scan(
-        file_bytes,
+        preview_bytes,
         file.filename,
         "image",
         materials,
@@ -4057,8 +4078,9 @@ async def save_browser_verified_scan(
         "model=best.onnx\n"
         "source=upload-page"
     )
+    preview_bytes = _encode_annotated_image_preview(file_bytes, file.filename, materials)
     return persist_scan(
-        file_bytes,
+        preview_bytes,
         file.filename,
         "image",
         materials,

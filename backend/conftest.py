@@ -73,6 +73,19 @@ def pytest_configure():
         cors = ModuleType("fastapi.middleware.cors")
         cors.CORSMiddleware = object
         responses = ModuleType("fastapi.responses")
+        security = ModuleType("fastapi.security")
+
+        class HTTPAuthorizationCredentials:
+            def __init__(self, scheme: str = "Bearer", credentials: str = ""):
+                self.scheme = scheme
+                self.credentials = credentials
+
+        class HTTPBearer:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def __call__(self, *_args, **_kwargs):
+                return None
 
         class Response:
             def __init__(self, content=b"", media_type=None, headers=None, status_code=200):
@@ -95,9 +108,12 @@ def pytest_configure():
         responses.JSONResponse = JSONResponse
         responses.RedirectResponse = Response
         responses.Response = Response
+        security.HTTPAuthorizationCredentials = HTTPAuthorizationCredentials
+        security.HTTPBearer = HTTPBearer
         sys.modules["fastapi.middleware"] = middleware
         sys.modules["fastapi.middleware.cors"] = cors
         sys.modules["fastapi.responses"] = responses
+        sys.modules["fastapi.security"] = security
     if "PIL" not in sys.modules and not _module_available("PIL"):
         pil = ModuleType("PIL")
         image = ModuleType("PIL.Image")

@@ -1,8 +1,12 @@
 import unittest
+import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID
 
+import cv2
+import numpy as np
 from fastapi import HTTPException
 
 from backend import main
@@ -106,6 +110,25 @@ def detected(**changes):
     return value
 
 
+def image_bytes(width=160, height=120):
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    frame[:, :] = (32, 96, 128)
+    ok, encoded = cv2.imencode(".jpg", frame)
+    assert ok
+    return encoded.tobytes()
+
+
+class FakeUpload:
+    filename = "upload.jpg"
+    content_type = "image/jpeg"
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    async def read(self):
+        return self.payload
+
+
 class BrowserVerifiedScanTests(unittest.TestCase):
     def test_validation_clamps_boxes_and_maps_food_at_persistence_boundary(self):
         materials = main.validate_browser_detections([
@@ -161,6 +184,82 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertEqual(materials[0]["display_status"], "Review Needed")
         self.assertEqual(materials[0]["disposal_route"], "Manual Audit Queue")
         self.assertEqual(main.summarize(materials)["overall_status"], "review_required")
+
+    def test_annotated_image_preview_bytes_embed_detection_overlay(self):
+        raw = image_bytes()
+        materials = main.validate_browser_detected_detections([detected(x1=20, y1=20, x2=100, y2=90)], 160, 120)
+
+        annotated = main._encode_annotated_image_preview(raw, "upload.jpg", materials)
+
+        self.assertNotEqual(annotated, raw)
+        self.assertGreater(len(annotated), 0)
+        decoded = cv2.imdecode(np.frombuffer(annotated, dtype=np.uint8), cv2.IMREAD_COLOR)
+        raw_decoded = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+        self.assertIsNotNone(decoded)
+        self.assertGreater(int(cv2.absdiff(decoded, raw_decoded).sum()), 0)
+
+    def test_browser_detected_endpoint_persists_annotated_bytes(self):
+        raw = image_bytes()
+        captured = {}
+
+        def fake_persist(file_bytes, filename, source_type, materials, summary, **kwargs):
+            captured.update({
+                "file_bytes": file_bytes,
+                "filename": filename,
+                "source_type": source_type,
+                "materials": materials,
+                "summary": summary,
+                "kwargs": kwargs,
+            })
+            return {"scan_result_id": str(kwargs["scan_result_id"])}
+
+        with patch.object(main, "persist_scan", side_effect=fake_persist):
+            result = asyncio.run(main.save_browser_detected_scan(
+                file=FakeUpload(raw),
+                submission_id=UUID("22222222-2222-4222-8222-222222222222"),
+                original_width=160,
+                original_height=120,
+                model_name=main.BROWSER_MODEL_NAME,
+                model_version=main.BROWSER_MODEL_VERSION,
+                inference_engine=main.BROWSER_INFERENCE_ENGINE,
+                confidence_threshold=main.BROWSER_CONFIDENCE_THRESHOLD,
+                nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
+                detections=json.dumps([detected(x1=20, y1=20, x2=100, y2=90)]),
+                principal=fake_principal(),
+            ))
+
+        self.assertEqual(result["scan_result_id"], "22222222-2222-4222-8222-222222222222")
+        self.assertEqual(captured["source_type"], "image")
+        self.assertNotEqual(captured["file_bytes"], raw)
+
+    def test_browser_verified_endpoint_persists_annotated_bytes(self):
+        raw = image_bytes()
+        captured = {}
+
+        def fake_persist(file_bytes, filename, source_type, materials, summary, **kwargs):
+            captured["file_bytes"] = file_bytes
+            captured["verified"] = kwargs.get("verified")
+            return {"scan_result_id": str(kwargs["scan_result_id"])}
+
+        with patch.object(main, "persist_scan", side_effect=fake_persist):
+            result = asyncio.run(main.save_browser_verified_scan(
+                file=FakeUpload(raw),
+                submission_id=UUID("33333333-3333-4333-8333-333333333333"),
+                original_width=160,
+                original_height=120,
+                model_name=main.BROWSER_MODEL_NAME,
+                model_version=main.BROWSER_MODEL_VERSION,
+                inference_engine=main.BROWSER_INFERENCE_ENGINE,
+                confidence_threshold=main.BROWSER_CONFIDENCE_THRESHOLD,
+                nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
+                verified_detections=json.dumps([detection(x1=20, y1=20, x2=100, y2=90)]),
+                verification_outcome="verified",
+                principal=fake_principal(),
+            ))
+
+        self.assertEqual(result["scan_result_id"], "33333333-3333-4333-8333-333333333333")
+        self.assertTrue(captured["verified"])
+        self.assertNotEqual(captured["file_bytes"], raw)
 
     def test_repeated_submission_reuses_scan_material_and_review_rows(self):
         client = FakeClient()
