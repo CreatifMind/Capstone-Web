@@ -80,9 +80,14 @@ test("development team and plant manager have protected role homes", () => {
 
 test("middleware routes development, admin, operator, and plant manager roles", () => {
   assert.match(middleware, /const DEVELOPMENT = "\/development"/);
+  assert.doesNotMatch(middleware, /const PUBLIC = new Set\(\["\/", "\/login"\]\)/);
+  assert.match(middleware, /const isHomePage = pathname === "\/"/);
+  assert.match(middleware, /const isLoginPage = pathname === "\/login"/);
+  assert.match(middleware, /if \(isHomePage\) return response/);
   assert.match(middleware, /profile\.role === "plant_manager"/);
   assert.match(middleware, /profile\.role === "development_team"/);
   assert.match(middleware, /isDevelopmentPage \|\| isModelReviewApi\) return response/);
   assert.match(middleware, /isAdminPage \|\| isDevelopmentPage \|\| isOverviewPage\) return redirect\(request, "\/upload"/);
+  assert.match(middleware, /if \(isLoginPage\) return redirect\(request, "\/upload", response\)/);
   assert.match(loginRoute, /roleHomePath\(profile\.role\)/);
 });

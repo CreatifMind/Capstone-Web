@@ -108,6 +108,19 @@ test("missing session stops before protected backend call", async () => {
   assert.equal(context.window.location.assigned, "/login?reason=session_expired");
 });
 
+test("missing session does not redirect the public landing page", async () => {
+  const { context, fetchCalls } = createContext({ sessionToken: null, refreshedSessionToken: null });
+  context.window.location.pathname = "/";
+
+  await assert.rejects(
+    context.authHelpers.plBackendFetch("https://backend.example.test/api/scans"),
+    /session has expired|Authentication is not configured/
+  );
+
+  assert.equal(fetchCalls.filter(call => String(call.input).startsWith("https://backend.example.test")).length, 0);
+  assert.equal(context.window.location.assigned, undefined);
+});
+
 test("401 refreshes once and does not retry forever", async () => {
   const { context, fetchCalls } = createContext();
   context.fetch = async (input, init = {}) => {

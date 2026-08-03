@@ -21,6 +21,7 @@ assert.match(source, /payload\?\.summary\?\.confirmed/);
 assert.doesNotMatch(source, /total:\s*[^\n]*:\s*scans\.length/);
 assert.match(source, /plScanHistoryMeta\.total/);
 assert.match(source, /void plRunAppInit\("Supabase scan refresh"/);
+assert.match(source, /!\["\/", "\/login"\]\.includes\(window\.location\?\.pathname \|\| ""\)/);
 assert.match(analyticsPage, /data-drill-target="detail-composition"/);
 assert.match(analyticsPage, /data-drill-target="detail-resale"/);
 assert.match(analyticsPage, /data-drill-target="detail-yield"/);

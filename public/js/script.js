@@ -107,6 +107,7 @@ function plPlainHeaders(headers = {}) {
 
 function plRedirectToLogin() {
   const path = window.location?.pathname || "";
+  if (path === "/") return;
   if (path.includes("/login") || path.includes("/auth/login")) return;
   window.location.assign("/login?reason=session_expired");
 }
@@ -5101,7 +5102,7 @@ async function initPurityLoopApp() {
     await plRunAppInit("password toggle init", initPasswordToggle);
     await plRunAppInit("progress bar init", animateProgressBars);
     // Analytics owns its request so selected-date data cannot mix with shared history data.
-    if (document.body.dataset.page !== "analytics") {
+    if (!["/", "/login"].includes(window.location?.pathname || "") && document.body.dataset.page !== "analytics") {
       void plRunAppInit("Supabase scan refresh", () => plRefreshScanResultsFromSupabase({ isCurrent: () => plCurrentRouteKey() === routeKey }));
     }
     if (plCurrentRouteKey() !== routeKey) return;

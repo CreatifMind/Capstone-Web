@@ -2,7 +2,6 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { ROLES, roleHomePath } from "@/lib/roles";
 
-const PUBLIC = new Set(["/", "/login"]);
 const OPERATIONAL = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/model-test"];
 const DEVELOPMENT = "/development";
 const OVERVIEW = "/overview";
@@ -18,6 +17,8 @@ export async function middleware(request: NextRequest) {
   const isDevelopmentPage = pathname === DEVELOPMENT || pathname.startsWith(`${DEVELOPMENT}/`);
   const isOverviewPage = pathname === OVERVIEW || pathname.startsWith(`${OVERVIEW}/`);
   const isOperational = OPERATIONAL.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const isHomePage = pathname === "/";
+  const isLoginPage = pathname === "/login";
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -61,8 +62,9 @@ export async function middleware(request: NextRequest) {
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7
   });
+  if (isHomePage) return response;
   if (profile.role === "plant_manager") {
-    if (PUBLIC.has(pathname)) return redirect(request, roleHomePath(profile.role), response);
+    if (isLoginPage) return redirect(request, roleHomePath(profile.role), response);
     return response;
   }
   if (profile.role === "admin") {
@@ -75,7 +77,7 @@ export async function middleware(request: NextRequest) {
   }
   if (isAdminApi || isModelReviewApi) return response;
   if (isAdminPage || isDevelopmentPage || isOverviewPage) return redirect(request, "/upload", response);
-  if (PUBLIC.has(pathname)) return redirect(request, "/upload", response);
+  if (isLoginPage) return redirect(request, "/upload", response);
   return response;
 }
 
