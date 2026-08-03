@@ -377,6 +377,21 @@ def test_tracked_object_persistence_persists_annotated_video_extract(monkeypatch
         existing_drive_metadata={},
         annotated_video_metadata={"annotated_video_status": "ready"},
         annotated_video_path="/tmp/annotated.mp4",
+        annotated_observations_by_track={
+            "4": [{
+                "track_id": "4",
+                "annotated_frame_index": 0,
+                "source_frame_index": 0,
+                "timestamp": 0.0,
+                "box_xyxy": [30, 20, 60, 40],
+                "bbox_format": "pixel_xyxy:best_box.xyxy",
+                "category": "plastic",
+                "material_name": "plastic",
+                "confidence": 0.91,
+                "frame_width": 120,
+                "frame_height": 80,
+            }]
+        },
     )
 
     assert scan_ids == ["persisted-track"]
@@ -516,7 +531,7 @@ def test_tracked_object_preview_uses_timestamp_fallback_when_frame_index_fails(m
     assert metadata["extraction_method"] == "timestamp"
 
 
-def test_tracked_object_preview_uses_full_frame_when_crop_fails(tmp_path):
+def test_tracked_object_preview_does_not_use_full_frame_when_crop_fails(tmp_path):
     video_path = tmp_path / "annotated.mp4"
     writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (120, 80))
     assert writer.isOpened()
@@ -535,13 +550,59 @@ def test_tracked_object_preview_uses_full_frame_when_crop_fails(tmp_path):
         "bbox_height": 96,
     }
 
+    observation = {
+        "track_id": "4",
+        "annotated_frame_index": 0,
+        "source_frame_index": 0,
+        "timestamp": 0.0,
+        "box_xyxy": [2, 2, 118, 78],
+        "bbox_format": "percentage_xywh:material_bbox",
+        "category": "plastic",
+        "material_name": "plastic",
+        "confidence": 0.91,
+        "frame_width": 120,
+        "frame_height": 80,
+    }
+
+    result = main._extract_annotated_video_object_preview(video_path, material, observation)
+
+    assert result is None
+
+
+def test_annotated_preview_observation_selection_uses_same_track_highest_confidence():
+    material = {"track_id": "4", "source_track_ids": ["4"]}
+    observations = {
+        "4": [
+            {"track_id": "4", "annotated_frame_index": 1, "source_frame_index": 1, "confidence": 0.7, "box_xyxy": [10, 10, 30, 30], "frame_width": 100, "frame_height": 100},
+            {"track_id": "4", "annotated_frame_index": 2, "source_frame_index": 2, "confidence": 0.9, "box_xyxy": [20, 20, 45, 45], "frame_width": 100, "frame_height": 100},
+        ],
+        "9": [
+            {"track_id": "9", "annotated_frame_index": 3, "source_frame_index": 3, "confidence": 0.99, "box_xyxy": [50, 50, 90, 90], "frame_width": 100, "frame_height": 100},
+        ],
+    }
+
+    selected = main._select_annotated_preview_observation(material, observations)
+
+    assert selected["track_id"] == "4"
+    assert selected["annotated_frame_index"] == 2
+
+
+def test_annotated_preview_extraction_never_defaults_missing_frame_to_zero(tmp_path):
+    video_path = tmp_path / "annotated.mp4"
+    writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (120, 80))
+    assert writer.isOpened()
+    writer.write(np.zeros((80, 120, 3), dtype=np.uint8))
+    writer.release()
+    material = {
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "best_box": {"xyxy": [30, 20, 60, 40], "timestamp": 0.1},
+    }
+
     result = main._extract_annotated_video_object_preview(video_path, material)
 
-    assert result is not None
-    _preview_bytes, metadata = result
-    assert metadata["extraction_method"] == "full_frame_fallback"
-    assert metadata["crop_width"] == 120
-    assert metadata["crop_height"] == 80
+    assert result is None
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")

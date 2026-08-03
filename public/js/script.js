@@ -3320,13 +3320,10 @@ function initResultPage() {
     if (!activeScan) return [];
     const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
     if (isTrackedVideo) {
-      const hasOriginalFramePreview = plSafeArray(activeScan.detected_materials).some(material => material?.track_debug?.representative_frame_dimensions);
-      if (!hasOriginalFramePreview) {
-        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-          console.info("[review-preview] Skipping overlay for legacy crop-based tracked-video preview.", { scanId: activeScan.id });
-        }
-        return [];
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        console.info("[review-preview] Skipping canvas overlay for annotated tracked-video preview.", { scanId: activeScan.id });
       }
+      return [];
     }
     return plMaterialsToBoxes(activeScan.detected_materials);
   }

@@ -42,3 +42,8 @@ test("Review and Analytics resolve tracked-video rows to the annotated preview U
 
   assert.equal(ledger.preview, "https://storage.example.test/annotated-track.jpg");
 });
+
+test("Review skips frontend canvas boxes for annotated tracked-video previews", () => {
+  assert.match(source, /Skipping canvas overlay for annotated tracked-video preview/);
+  assert.match(source, /if \(isTrackedVideo\) \{[\s\S]*?return \[\];[\s\S]*?\}/);
+});

@@ -1920,7 +1920,148 @@ def _encode_tracked_object_preview(frame_bytes: bytes, filename: str | None, mat
     return _tracked_object_crop_preview(frame, material)
 
 
-def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict) -> tuple[bytes, dict] | None:
+def _track_id_values(material: dict) -> set[str]:
+    values: set[str] = set()
+    for value in material.get("source_track_ids") or []:
+        if value is not None and str(value) != "":
+            values.add(str(value))
+    for value in str(material.get("track_id") or "").split(","):
+        cleaned = value.strip()
+        if cleaned:
+            values.add(cleaned)
+    return values
+
+
+def _annotated_detection_observation(detection: dict, frame_index: int, timestamp: float, width: int, height: int) -> dict | None:
+    track_id = detection.get("track_id")
+    if track_id is None or str(track_id) == "":
+        return None
+    box_xyxy, bbox_format = _detection_box_to_pixels(detection, width, height)
+    x1, y1, x2, y2 = _clip_box(box_xyxy, width, height)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    category = material_category(detection.get("category") or detection.get("material_name"))
+    confidence = max(0.0, min(1.0, _coerce_float(detection.get("confidence"))))
+    return {
+        "track_id": str(track_id),
+        "annotated_frame_index": int(frame_index),
+        "source_frame_index": int(frame_index),
+        "timestamp": round(timestamp, 3),
+        "box_xyxy": [x1, y1, x2, y2],
+        "bbox_format": bbox_format,
+        "bbox": [
+            x1 / width if width else 0,
+            y1 / height if height else 0,
+            x2 / width if width else 0,
+            y2 / height if height else 0,
+        ],
+        "category": category,
+        "material_name": detection.get("material_name") or category,
+        "confidence": round(confidence, 4),
+        "mask": detection.get("mask"),
+        "track_hazard_status": "hazard" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else "clear",
+        "frame_width": int(width),
+        "frame_height": int(height),
+    }
+
+
+def _record_annotated_frame_observations(observations_by_track: dict[str, list[dict]], detections: list[dict], frame_index: int, timestamp: float, width: int, height: int) -> None:
+    for detection in detections:
+        try:
+            observation = _annotated_detection_observation(detection, frame_index, timestamp, width, height)
+        except Exception as exc:
+            _video_processing_log(
+                "annotated_frame_observation_invalid",
+                frame_index=frame_index,
+                track_id=detection.get("track_id"),
+                width=width,
+                height=height,
+                error_type=type(exc).__name__,
+                error=safe_error_message(exc),
+            )
+            continue
+        if not observation:
+            continue
+        observations_by_track.setdefault(observation["track_id"], []).append(observation)
+
+
+def _select_annotated_preview_observation(material: dict, observations_by_track: dict[str, list[dict]] | None) -> dict | None:
+    track_ids = _track_id_values(material)
+    if not track_ids or not observations_by_track:
+        return None
+    candidates = []
+    for track_id in track_ids:
+        for observation in observations_by_track.get(str(track_id), []):
+            if str(observation.get("track_id") or "") not in track_ids:
+                continue
+            width = int(_coerce_float(observation.get("frame_width"), 0))
+            height = int(_coerce_float(observation.get("frame_height"), 0))
+            box = observation.get("box_xyxy")
+            if not isinstance(box, list) or not _valid_xyxy(box, width, height):
+                continue
+            candidates.append(observation)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (_coerce_float(item.get("confidence")), int(_coerce_float(item.get("source_frame_index"), -1))))
+
+
+def _material_observation_fallback(material: dict) -> dict | None:
+    track_ids = _track_id_values(material)
+    best_box = material.get("best_box") if isinstance(material.get("best_box"), dict) else {}
+    if not track_ids or best_box.get("frame") is None:
+        return None
+    box = best_box.get("xyxy")
+    if not isinstance(box, list):
+        return None
+    width = int(_coerce_float((material.get("track_debug") or {}).get("representative_frame_dimensions", {}).get("width"), 0)) if isinstance(material.get("track_debug"), dict) else 0
+    height = int(_coerce_float((material.get("track_debug") or {}).get("representative_frame_dimensions", {}).get("height"), 0)) if isinstance(material.get("track_debug"), dict) else 0
+    if width <= 0 or height <= 0:
+        width = max(1, math.ceil(max(_coerce_float(value) for value in box[:4])))
+        height = width
+    if not _valid_xyxy(box, width, height):
+        return None
+    track_id = sorted(track_ids)[0]
+    return {
+        "track_id": track_id,
+        "annotated_frame_index": int(_coerce_float(best_box.get("frame"))),
+        "source_frame_index": int(_coerce_float(best_box.get("frame"))),
+        "timestamp": _coerce_float(best_box.get("timestamp"), -1),
+        "box_xyxy": [_coerce_float(value) for value in box[:4]],
+        "bbox_format": "pixel_xyxy:best_box.xyxy",
+        "category": material.get("category"),
+        "material_name": material.get("material_name") or material.get("category"),
+        "confidence": material.get("confidence") or material.get("track_max_confidence") or material.get("track_avg_confidence") or 0,
+        "mask": material.get("segmentation_mask") or material.get("mask"),
+        "track_hazard_status": material.get("track_hazard_status"),
+        "frame_width": width,
+        "frame_height": height,
+    }
+
+
+def _material_from_annotated_observation(material: dict, observation: dict) -> dict:
+    width = int(_coerce_float(observation.get("frame_width"), 0))
+    height = int(_coerce_float(observation.get("frame_height"), 0))
+    x1, y1, x2, y2 = [_coerce_float(value) for value in observation["box_xyxy"][:4]]
+    merged = dict(material)
+    merged["track_id"] = observation.get("track_id") or material.get("track_id")
+    merged["category"] = observation.get("category") or material.get("category")
+    merged["material_name"] = observation.get("material_name") or material.get("material_name") or merged.get("category")
+    merged["confidence"] = observation.get("confidence") if observation.get("confidence") is not None else material.get("confidence")
+    merged["best_box"] = {
+        "xyxy": [x1, y1, x2, y2],
+        "frame": observation.get("annotated_frame_index"),
+        "source_frame": observation.get("source_frame_index"),
+        "timestamp": observation.get("timestamp"),
+        "track_id": observation.get("track_id"),
+    }
+    if width and height:
+        merged["best_bbox_norm"] = [x1 / width, y1 / height, x2 / width, y2 / height]
+    if observation.get("mask") is not None:
+        merged["segmentation_mask"] = observation.get("mask")
+    return merged
+
+
+def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict, observation: dict | None = None) -> tuple[bytes, dict] | None:
     if not video_path:
         return None
     import cv2
@@ -1928,9 +2069,19 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
     source = Path(video_path)
     if not source.exists():
         return None
-    best_box = material.get("best_box") if isinstance(material.get("best_box"), dict) else {}
-    frame_index = int(_coerce_float(best_box.get("frame"), 0))
-    timestamp = _coerce_float(best_box.get("timestamp"), -1)
+    observation = observation or _material_observation_fallback(material)
+    if not observation:
+        return None
+    track_ids = _track_id_values(material)
+    observation_track_id = str(observation.get("track_id") or "")
+    if not observation_track_id or (track_ids and observation_track_id not in track_ids):
+        return None
+    if observation.get("annotated_frame_index") is None:
+        return None
+    if observation.get("bbox_format") == "percentage_xywh:material_bbox":
+        return None
+    frame_index = int(_coerce_float(observation.get("annotated_frame_index")))
+    timestamp = _coerce_float(observation.get("timestamp"), -1)
     capture = cv2.VideoCapture(str(source))
     try:
         if not capture.isOpened():
@@ -1955,28 +2106,17 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
                 extraction_method = "timestamp"
         if frame is None:
             return None
-        crop_x1 = crop_y1 = 0
-        crop_x2 = frame.shape[1]
-        crop_y2 = frame.shape[0]
-        box_xyxy = None
-        bbox_format = None
-        crop = None
+        extraction_material = _material_from_annotated_observation(material, observation)
+        bbox_format = observation.get("bbox_format")
         try:
-            _box, bbox_format = _detection_box_to_pixels(material, frame.shape[1], frame.shape[0])
-            if bbox_format == "percentage_xywh:material_bbox" and (
-                material.get("stable_object_id")
-                or material.get("object_uid")
-                or material.get("result_type") == "video_track_object"
-            ):
-                raise ValueError("Tracked-object annotated-video preview requires representative-frame bbox metadata, not material percentage bbox fallback")
-            crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, material)
+            crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, extraction_material)
             crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
             if crop.size == 0:
-                crop = None
+                raise ValueError("Tracked-object annotated-video preview crop is empty")
         except Exception as exc:
             _video_processing_log(
                 "tracked_preview_crop_failed",
-                track_id=material.get("track_id"),
+                track_id=observation_track_id,
                 stable_object_id=material.get("stable_object_id") or material.get("object_uid"),
                 video_path=str(source),
                 frame_index=frame_index,
@@ -1985,18 +2125,13 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
                 frame_count=frame_count,
                 source_width=source_width,
                 source_height=source_height,
-                bbox=best_box.get("xyxy") or material.get("best_bbox_norm"),
+                bbox=observation.get("box_xyxy"),
                 stage="crop",
                 worker_build_revision=_worker_build_revision(),
                 error_type=type(exc).__name__,
                 error=safe_error_message(exc),
             )
-        if crop is None:
-            crop = frame
-            crop_x1 = crop_y1 = 0
-            crop_x2 = frame.shape[1]
-            crop_y2 = frame.shape[0]
-            extraction_method = "full_frame_fallback"
+            return None
         ok, encoded = cv2.imencode(".jpg", crop)
         if not ok:
             raise ValueError("Unable to encode annotated-video object preview")
@@ -2018,8 +2153,10 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
             "crop_height": crop_height,
             "bbox_format": bbox_format,
             "box_xyxy": box_xyxy,
+            "track_id": observation_track_id,
             "frame": frame_index,
-            "timestamp": timestamp if timestamp >= 0 else best_box.get("timestamp"),
+            "source_frame": observation.get("source_frame_index"),
+            "timestamp": timestamp,
         }
     finally:
         capture.release()
@@ -3438,6 +3575,7 @@ def _persist_tracked_video_objects(
     existing_drive_metadata: dict,
     annotated_video_metadata: dict | None = None,
     annotated_video_path: str | Path | None = None,
+    annotated_observations_by_track: dict[str, list[dict]] | None = None,
 ) -> list[str]:
     scan_ids: list[str] = []
     namespace = UUID(str(job["id"]))
@@ -3466,9 +3604,22 @@ def _persist_tracked_video_objects(
             "bbox_height": public_material.get("bbox_height"),
         }
         filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
-        if annotated_video_metadata and annotated_video_metadata.get("annotated_video_status") == "ready":
+        selected_observation = _select_annotated_preview_observation(public_material, annotated_observations_by_track)
+        if not selected_observation:
+            _video_processing_log(
+                "tracked_preview_observation_unavailable",
+                job_id=str(job["id"]),
+                scan_id=str(job["id"]),
+                object_scan_id=str(scan_uuid),
+                logical_object_id=stable_object_id,
+                track_id=public_material.get("track_id"),
+                source_track_ids=public_material.get("source_track_ids"),
+                annotated_track_ids=sorted((annotated_observations_by_track or {}).keys()),
+                worker_build_revision=_worker_build_revision(),
+            )
+        if selected_observation and annotated_video_metadata and annotated_video_metadata.get("annotated_video_status") == "ready":
             try:
-                extracted = _extract_annotated_video_object_preview(annotated_video_path, public_material)
+                extracted = _extract_annotated_video_object_preview(annotated_video_path, public_material, selected_observation)
                 if extracted:
                     preview_bytes, preview_metadata = extracted
             except Exception as exc:
@@ -3485,6 +3636,7 @@ def _persist_tracked_video_objects(
                     bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
                     bbox_input=preview_metadata,
                     stage="annotated_video_extraction",
+                    selected_observation=selected_observation,
                     worker_build_revision=_worker_build_revision(),
                     error_type=type(exc).__name__,
                     error=safe_error_message(exc),
@@ -3504,12 +3656,14 @@ def _persist_tracked_video_objects(
                 frame=best_box.get("frame"),
                 timestamp=best_box.get("timestamp"),
                 bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
+                selected_observation=selected_observation,
                 preview_source=preview_metadata.get("format"),
                 worker_build_revision=_worker_build_revision(),
             )
             continue
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
+        public_material["track_debug"]["annotated_frame_observation"] = selected_observation
         public_material["track_debug"]["preview_bbox"] = preview_metadata
         public_material["track_debug"]["preview_annotation_status"] = preview_metadata.get("format", "unavailable")
         public_material["result_type"] = "video_track_object"
@@ -3590,6 +3744,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
     scan_ids: list[str] = [str(scan_id) for scan_id in job.get("scan_ids") or []]
     options = job.get("options") or {}
     aggregator = VideoTrackAggregator(str(job["id"]), counting_line=_parse_counting_line(options))
+    annotated_observations_by_track: dict[str, list[dict]] = {}
     last_checkpoint_at = time.monotonic()
     annotated_frames_written = 0
     frame_total = 0
@@ -3697,6 +3852,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                     output_frame = _normalize_video_frame(output_frame, width, height)
                     annotated_writer.write(output_frame)
                     annotated_frames_written += 1
+                    _record_annotated_frame_observations(annotated_observations_by_track, detections, frame_index, timestamp, width, height)
                 except Exception as exc:
                     annotated_video_metadata.update({
                         "annotated_video_status": "failed",
@@ -3772,6 +3928,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             existing_drive_metadata=existing,
             annotated_video_metadata=annotated_video_metadata,
             annotated_video_path=encoded_tmp_path if encoded_tmp_path.exists() else annotated_tmp_path,
+            annotated_observations_by_track=annotated_observations_by_track,
         )
         summary = _video_tracking_summary(logical_objects)
         summary.update({
