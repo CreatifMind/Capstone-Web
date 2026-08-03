@@ -64,7 +64,7 @@ def backfill(scan_ids: list[str], batch_ids: list[str], *, dry_run: bool = True)
             results.append({"scan_id": scan_id, "status": "unavailable"})
             continue
         if dry_run:
-            results.append({"scan_id": scan_id, "status": "dry-run", "source": "annotated_video_frame_fallback"})
+            results.append({"scan_id": scan_id, "status": "dry-run", "source": "annotated_video_frame"})
             continue
         with tempfile.TemporaryDirectory(prefix=f"purityloop-backfill-{scan_id}-") as tmp:
             video_path = Path(tmp) / "annotated.mp4"

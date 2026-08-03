@@ -307,10 +307,11 @@ def test_tracked_object_crop_preview_without_mask_still_renders_annotation():
     assert metadata["format"] == "representative_frame_annotation"
 
 
-def test_tracked_object_persistence_persists_annotated_crop_with_real_bbox(monkeypatch):
+def test_tracked_object_persistence_persists_annotated_video_extract(monkeypatch):
     frame = np.zeros((80, 120, 3), dtype=np.uint8)
     frame[:, :] = (20, 80, 120)
     frame_bytes = main._encode_frame_jpeg(frame)
+    extracted_bytes = b"annotated-video-extract"
     item = {
         "stable_object_id": "scan-1-object-0001",
         "object_uid": "scan-1-object-0001",
@@ -343,6 +344,28 @@ def test_tracked_object_persistence_persists_annotated_crop_with_real_bbox(monke
         return {"scan_result_id": "persisted-track"}
 
     monkeypatch.setattr(main, "persist_scan", fake_persist)
+    monkeypatch.setattr(main, "_encode_tracked_object_preview", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("raw representative frame renderer must not run")))
+    monkeypatch.setattr(
+        main,
+        "_extract_annotated_video_object_preview",
+        lambda *_args, **_kwargs: (
+            extracted_bytes,
+            {
+                "format": "annotated_video_frame",
+                "preview_source": "annotated_video_frame",
+                "extraction_method": "frame_index",
+                "frame": 0,
+                "timestamp": 0.0,
+                "source_width": 120,
+                "source_height": 80,
+                "crop_x": 0,
+                "crop_y": 0,
+                "crop_width": 120,
+                "crop_height": 80,
+                "box_xyxy": [30, 20, 60, 40],
+            },
+        ),
+    )
 
     scan_ids = main._persist_tracked_video_objects(
         tracked_objects=[item],
@@ -352,17 +375,19 @@ def test_tracked_object_persistence_persists_annotated_crop_with_real_bbox(monke
         principal=None,
         database=NoopDatabase(),
         existing_drive_metadata={},
+        annotated_video_metadata={"annotated_video_status": "ready"},
+        annotated_video_path="/tmp/annotated.mp4",
     )
 
     assert scan_ids == ["persisted-track"]
-    assert captured["file_bytes"] != frame_bytes
+    assert captured["file_bytes"] == extracted_bytes
     assert captured["material"]["best_box"]["xyxy"] == [30, 20, 60, 40]
-    assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "representative_frame_annotation"
-    assert captured["material"]["track_debug"]["preview_annotation_status"] == "representative_frame_annotation"
-    assert captured["material"]["track_debug"]["preview_bbox"]["translated_box_xyxy"] == [30, 20, 60, 40]
+    assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "annotated_video_frame"
+    assert captured["material"]["track_debug"]["preview_annotation_status"] == "annotated_video_frame"
+    assert captured["material"]["track_debug"]["preview_bbox"]["extraction_method"] == "frame_index"
 
 
-def test_tracked_object_persistence_falls_back_without_failing_job(monkeypatch):
+def test_tracked_object_persistence_does_not_persist_raw_bytes_when_extraction_fails(monkeypatch):
     frame = np.zeros((80, 120, 3), dtype=np.uint8)
     frame[:, :] = (20, 80, 120)
     frame_bytes = main._encode_frame_jpeg(frame)
@@ -389,17 +414,10 @@ def test_tracked_object_persistence_falls_back_without_failing_job(monkeypatch):
         "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
         "_best_crop_bytes": frame_bytes,
     }
-    captured = {}
-
-    def fail_preview(*_args, **_kwargs):
-        raise RuntimeError("preview failed")
 
     def fake_persist(file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
-        captured["file_bytes"] = file_bytes
-        captured["material"] = materials[0]
-        return {"scan_result_id": "persisted-track"}
+        raise AssertionError("raw preview bytes must not be persisted when annotated extraction fails")
 
-    monkeypatch.setattr(main, "_encode_tracked_object_preview", fail_preview)
     monkeypatch.setattr(main, "_extract_annotated_video_object_preview", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(main, "persist_scan", fake_persist)
 
@@ -411,11 +429,11 @@ def test_tracked_object_persistence_falls_back_without_failing_job(monkeypatch):
         principal=None,
         database=NoopDatabase(),
         existing_drive_metadata={},
+        annotated_video_metadata={"annotated_video_status": "ready"},
+        annotated_video_path="/tmp/missing-annotated.mp4",
     )
 
-    assert scan_ids == ["persisted-track"]
-    assert captured["file_bytes"] == frame_bytes
-    assert captured["material"]["track_debug"]["preview_annotation_status"] == "unavailable"
+    assert scan_ids == []
 
 
 def test_tracked_object_preview_uses_annotated_video_frame_fallback(tmp_path):
@@ -439,9 +457,91 @@ def test_tracked_object_preview_uses_annotated_video_frame_fallback(tmp_path):
     assert fallback is not None
     preview_bytes, metadata = fallback
     decoded = cv2.imdecode(np.frombuffer(preview_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-    assert metadata["format"] == "annotated_video_frame_fallback"
+    assert metadata["format"] == "annotated_video_frame"
+    assert metadata["preview_source"] == "annotated_video_frame"
+    assert metadata["extraction_method"] == "frame_index"
     assert decoded.shape[0] <= 80
     assert decoded.shape[1] <= 120
+
+
+def test_tracked_object_preview_uses_timestamp_fallback_when_frame_index_fails(monkeypatch, tmp_path):
+    video_path = tmp_path / "annotated.mp4"
+    video_path.write_bytes(b"placeholder")
+    frames = [
+        np.full((80, 120, 3), 20, dtype=np.uint8),
+        np.full((80, 120, 3), 80, dtype=np.uint8),
+    ]
+
+    class FakeCapture:
+        def __init__(self, _path):
+            self.mode = "frame"
+
+        def isOpened(self):
+            return True
+
+        def get(self, prop):
+            if prop == cv2.CAP_PROP_FPS:
+                return 10
+            if prop == cv2.CAP_PROP_FRAME_COUNT:
+                return 2
+            if prop == cv2.CAP_PROP_FRAME_WIDTH:
+                return 120
+            if prop == cv2.CAP_PROP_FRAME_HEIGHT:
+                return 80
+            return 0
+
+        def set(self, prop, _value):
+            self.mode = "timestamp" if prop == cv2.CAP_PROP_POS_MSEC else "frame"
+
+        def read(self):
+            if self.mode == "frame":
+                return False, None
+            return True, frames[1].copy()
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(cv2, "VideoCapture", FakeCapture)
+    material = {
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 9, "timestamp": 0.1},
+    }
+
+    result = main._extract_annotated_video_object_preview(video_path, material)
+
+    assert result is not None
+    _preview_bytes, metadata = result
+    assert metadata["extraction_method"] == "timestamp"
+
+
+def test_tracked_object_preview_uses_full_frame_when_crop_fails(tmp_path):
+    video_path = tmp_path / "annotated.mp4"
+    writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (120, 80))
+    assert writer.isOpened()
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    cv2.putText(frame, "Plastic | 0.91 | ID 4", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+    writer.write(frame)
+    writer.release()
+    material = {
+        "stable_object_id": "scan-1-object-0001",
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "bbox_x": 2,
+        "bbox_y": 2,
+        "bbox_width": 96,
+        "bbox_height": 96,
+    }
+
+    result = main._extract_annotated_video_object_preview(video_path, material)
+
+    assert result is not None
+    _preview_bytes, metadata = result
+    assert metadata["extraction_method"] == "full_frame_fallback"
+    assert metadata["crop_width"] == 120
+    assert metadata["crop_height"] == 80
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
