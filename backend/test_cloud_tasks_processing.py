@@ -198,6 +198,32 @@ def test_task_payload_contains_job_id_only():
     assert "drive_resumable_url" not in source
 
 
+def test_health_includes_safe_deployment_identity(monkeypatch):
+    monkeypatch.setenv("APP_COMMIT_SHA", "422f2553831597342015f8e201b420c64414b626")
+    monkeypatch.setenv("K_SERVICE", "purityloop-worker")
+    monkeypatch.setenv("K_REVISION", "purityloop-worker-00042-abc")
+    monkeypatch.setenv("IMAGE_TAG", "purityloop-backend:422f255")
+    monkeypatch.setenv("IMAGE_DIGEST", "sha256:abc123")
+    monkeypatch.setattr(main, "SERVICE_MODE", "worker")
+
+    payload = main.health()
+
+    assert payload["app_commit_sha"] == "422f2553831597342015f8e201b420c64414b626"
+    assert payload["cloud_run_service"] == "purityloop-worker"
+    assert payload["cloud_run_revision"] == "purityloop-worker-00042-abc"
+    assert payload["service_mode"] == "worker"
+    assert payload["image_tag"] == "purityloop-backend:422f255"
+    assert payload["image_digest"] == "sha256:abc123"
+    assert "SUPABASE_SERVICE_ROLE_KEY" not in json.dumps(payload)
+
+
+def test_worker_build_revision_prefers_app_commit_sha(monkeypatch):
+    monkeypatch.setenv("APP_COMMIT_SHA", "422f2553831597342015f8e201b420c64414b626")
+    monkeypatch.setenv("K_REVISION", "purityloop-worker-00001-old")
+
+    assert main._worker_build_revision() == "422f2553831597342015f8e201b420c64414b626"
+
+
 class FakeTasksClient:
     def __init__(self):
         self.created_request = None

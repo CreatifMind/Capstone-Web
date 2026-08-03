@@ -774,6 +774,7 @@ def get_model():
 def safe_startup_diagnostics() -> dict:
     browser_model_available = BROWSER_MODEL_PATH.exists()
     return {
+        **deployment_identity(),
         "model_path": str(BROWSER_MODEL_PATH),
         "model_name": BROWSER_MODEL_NAME,
         "model_engine": BROWSER_INFERENCE_ENGINE,
@@ -789,6 +790,23 @@ def safe_startup_diagnostics() -> dict:
         "ffmpeg_available": bool(shutil.which("ffmpeg")),
         "ffprobe_available": bool(shutil.which("ffprobe")),
         "allowed_origins": ALLOWED_ORIGINS,
+    }
+
+
+def deployment_identity() -> dict:
+    app_commit_sha = (
+        os.getenv("APP_COMMIT_SHA")
+        or os.getenv("GIT_COMMIT_SHA")
+        or os.getenv("VERCEL_GIT_COMMIT_SHA")
+        or "unknown"
+    )
+    return {
+        "app_commit_sha": app_commit_sha,
+        "cloud_run_service": os.getenv("K_SERVICE") or "",
+        "cloud_run_revision": os.getenv("K_REVISION") or "",
+        "service_mode": SERVICE_MODE,
+        "image_tag": os.getenv("IMAGE_TAG") or "",
+        "image_digest": os.getenv("IMAGE_DIGEST") or "",
     }
 
 
@@ -3074,7 +3092,13 @@ def _video_processing_log(event: str, **fields) -> None:
 
 
 def _worker_build_revision() -> str:
-    return os.getenv("K_REVISION") or os.getenv("GIT_COMMIT_SHA") or os.getenv("VERCEL_GIT_COMMIT_SHA") or "local"
+    return (
+        os.getenv("APP_COMMIT_SHA")
+        or os.getenv("K_REVISION")
+        or os.getenv("GIT_COMMIT_SHA")
+        or os.getenv("VERCEL_GIT_COMMIT_SHA")
+        or "local"
+    )
 
 
 def _video_job_dir(scan_id: str) -> Path:
@@ -3521,6 +3545,16 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
     frame_total = 0
     fps = DEFAULT_VIDEO_FPS
     try:
+        _video_processing_log(
+            "mp4_job_worker_identity",
+            job_id=scan_id,
+            scan_id=scan_id,
+            file_id=file_id,
+            filename=name,
+            worker_build_revision=_worker_build_revision(),
+            preview_generation_impl="representative_frame_annotation",
+            **deployment_identity(),
+        )
         payload_size = len(payload or b"")
         _video_processing_log(
             "upload_received",
