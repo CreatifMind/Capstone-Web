@@ -1680,16 +1680,20 @@ def to_detected_materials(result) -> list[dict]:
     return materials
 
 
-def _material_preview_detection(material: dict, image_width: int, image_height: int) -> dict:
+def _material_bbox_xyxy(material: dict, image_width: int, image_height: int) -> list[float]:
     best_box = material.get("best_box")
     xyxy = best_box.get("xyxy") if isinstance(best_box, dict) else None
     if isinstance(xyxy, list) and len(xyxy) >= 4:
-        x1, y1, x2, y2 = [_coerce_float(value) for value in xyxy[:4]]
-    else:
-        x1 = (_coerce_float(material.get("bbox_x")) / 100) * image_width
-        y1 = (_coerce_float(material.get("bbox_y")) / 100) * image_height
-        x2 = x1 + ((_coerce_float(material.get("bbox_width")) / 100) * image_width)
-        y2 = y1 + ((_coerce_float(material.get("bbox_height")) / 100) * image_height)
+        return [_coerce_float(value) for value in xyxy[:4]]
+    x1 = (_coerce_float(material.get("bbox_x")) / 100) * image_width
+    y1 = (_coerce_float(material.get("bbox_y")) / 100) * image_height
+    x2 = x1 + ((_coerce_float(material.get("bbox_width")) / 100) * image_width)
+    y2 = y1 + ((_coerce_float(material.get("bbox_height")) / 100) * image_height)
+    return [x1, y1, x2, y2]
+
+
+def _material_preview_detection(material: dict, image_width: int, image_height: int) -> dict:
+    x1, y1, x2, y2 = _material_bbox_xyxy(material, image_width, image_height)
     return {
         "track_id": material.get("track_id"),
         "category": material.get("category"),
@@ -1704,6 +1708,142 @@ def _material_preview_detection(material: dict, image_width: int, image_height: 
         ],
         "mask": material.get("segmentation_mask") or material.get("mask"),
     }
+
+
+def _translate_mask_to_crop(mask, image_width: int, image_height: int, crop_x: int, crop_y: int, crop_width: int, crop_height: int) -> list | None:
+    if not mask:
+        return None
+    translated = []
+    for point in mask:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        x = _coerce_float(point[0])
+        y = _coerce_float(point[1])
+        if x <= 1 and y <= 1:
+            x *= image_width
+            y *= image_height
+        translated.append([
+            max(0, min(crop_width - 1, round(x - crop_x))),
+            max(0, min(crop_height - 1, round(y - crop_y))),
+        ])
+    return translated if len(translated) >= 3 else None
+
+
+def _tracked_object_crop_bounds(frame, material: dict) -> tuple[int, int, int, int, list[int]]:
+    image_height, image_width = frame.shape[:2]
+    x1, y1, x2, y2 = _clip_box(_material_bbox_xyxy(material, image_width, image_height), image_width, image_height)
+    box_width = max(1, x2 - x1)
+    box_height = max(1, y2 - y1)
+    padding = max(8, round(max(box_width, box_height) * 0.18))
+    crop_x1 = max(0, x1 - padding)
+    crop_y1 = max(0, y1 - padding)
+    crop_x2 = min(image_width, x2 + padding)
+    crop_y2 = min(image_height, y2 + padding)
+    return crop_x1, crop_y1, crop_x2, crop_y2, [x1, y1, x2, y2]
+
+
+def _tracked_object_crop_preview(frame, material: dict) -> tuple[bytes, dict]:
+    import cv2
+
+    image_height, image_width = frame.shape[:2]
+    crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, material)
+    x1, y1, x2, y2 = box_xyxy
+    crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+    if crop.size == 0:
+        raise ValueError("Tracked-object preview crop is empty")
+    crop_height, crop_width = crop.shape[:2]
+    detection = {
+        "track_id": material.get("track_id"),
+        "category": material.get("category"),
+        "material_name": material.get("material_name") or material.get("category"),
+        "confidence": material.get("confidence") or material.get("track_max_confidence") or material.get("track_avg_confidence"),
+        "best_box": {"xyxy": [x1 - crop_x1, y1 - crop_y1, x2 - crop_x1, y2 - crop_y1]},
+        "bbox": [
+            (x1 - crop_x1) / crop_width if crop_width else 0,
+            (y1 - crop_y1) / crop_height if crop_height else 0,
+            (x2 - crop_x1) / crop_width if crop_width else 0,
+            (y2 - crop_y1) / crop_height if crop_height else 0,
+        ],
+        "mask": _translate_mask_to_crop(
+            material.get("segmentation_mask") or material.get("mask"),
+            image_width,
+            image_height,
+            crop_x1,
+            crop_y1,
+            crop_width,
+            crop_height,
+        ),
+    }
+    annotated = _annotate_video_frame(crop, [detection], footer_count=1)
+    ok, encoded = cv2.imencode(".jpg", annotated)
+    if not ok:
+        raise ValueError("Unable to encode tracked-object annotated preview")
+    return encoded.tobytes(), {
+        "format": "representative_frame_annotation",
+        "source_width": image_width,
+        "source_height": image_height,
+        "crop_x": crop_x1,
+        "crop_y": crop_y1,
+        "crop_width": crop_width,
+        "crop_height": crop_height,
+        "box_xyxy": box_xyxy,
+        "translated_box_xyxy": detection["best_box"]["xyxy"],
+        "frame": (material.get("best_box") or {}).get("frame") if isinstance(material.get("best_box"), dict) else None,
+        "timestamp": (material.get("best_box") or {}).get("timestamp") if isinstance(material.get("best_box"), dict) else None,
+    }
+
+
+def _encode_tracked_object_preview(frame_bytes: bytes, filename: str | None, material: dict) -> tuple[bytes, dict]:
+    import cv2
+    import numpy as np
+
+    frame = cv2.imdecode(np.frombuffer(frame_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if frame is None:
+        raise ValueError("Unable to decode tracked-object representative frame")
+    return _tracked_object_crop_preview(frame, material)
+
+
+def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict) -> tuple[bytes, dict] | None:
+    if not video_path:
+        return None
+    import cv2
+
+    source = Path(video_path)
+    if not source.exists():
+        return None
+    best_box = material.get("best_box") if isinstance(material.get("best_box"), dict) else {}
+    frame_index = int(_coerce_float(best_box.get("frame"), 0))
+    capture = cv2.VideoCapture(str(source))
+    try:
+        if not capture.isOpened():
+            return None
+        capture.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_index))
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            return None
+        crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, material)
+        crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+        if crop.size == 0:
+            return None
+        ok, encoded = cv2.imencode(".jpg", crop)
+        if not ok:
+            raise ValueError("Unable to encode annotated-video fallback preview")
+        crop_height, crop_width = crop.shape[:2]
+        return encoded.tobytes(), {
+            "format": "annotated_video_frame_fallback",
+            "video_path": str(source),
+            "source_width": frame.shape[1],
+            "source_height": frame.shape[0],
+            "crop_x": crop_x1,
+            "crop_y": crop_y1,
+            "crop_width": crop_width,
+            "crop_height": crop_height,
+            "box_xyxy": box_xyxy,
+            "frame": best_box.get("frame"),
+            "timestamp": best_box.get("timestamp"),
+        }
+    finally:
+        capture.release()
 
 
 def _encode_annotated_image_preview(file_bytes: bytes, filename: str | None, materials: list[dict]) -> bytes:
@@ -3104,20 +3244,14 @@ def _persist_tracked_video_objects(
     database: SupabaseExecutor,
     existing_drive_metadata: dict,
     annotated_video_metadata: dict | None = None,
+    annotated_video_path: str | Path | None = None,
 ) -> list[str]:
     scan_ids: list[str] = []
     namespace = UUID(str(job["id"]))
     for item in tracked_objects:
         stable_object_id = str(item["stable_object_id"])
-        crop_bytes = item.get("_best_crop_bytes")
-        if not crop_bytes:
-            continue
+        frame_bytes = item.get("_best_crop_bytes")
         public_material = {key: value for key, value in item.items() if not key.startswith("_")}
-        try:
-            with Image.open(BytesIO(crop_bytes)) as crop_image:
-                crop_width, crop_height = crop_image.size
-        except Exception:
-            crop_width, crop_height = 100, 100
         public_material["material_name"] = (
             public_material.get("material_name")
             or public_material.get("category")
@@ -3129,19 +3263,64 @@ def _persist_tracked_video_objects(
             or public_material.get("track_avg_confidence")
             or 0
         )
-        preview_bytes = _encode_annotated_image_preview(crop_bytes, f"{Path(source_name).stem}_{stable_object_id}.jpg", [public_material])
-        if not isinstance(public_material.get("track_debug"), dict):
-            public_material["track_debug"] = {}
-        public_material["track_debug"]["preview_bbox"] = {
-            "format": "representative_frame_best_box",
-            "crop_width": crop_width,
-            "crop_height": crop_height,
+        preview_bytes = None
+        preview_metadata = {
+            "format": "unavailable",
             "best_box": public_material.get("best_box"),
             "bbox_x": public_material.get("bbox_x"),
             "bbox_y": public_material.get("bbox_y"),
             "bbox_width": public_material.get("bbox_width"),
             "bbox_height": public_material.get("bbox_height"),
         }
+        filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
+        if frame_bytes:
+            try:
+                preview_bytes, preview_metadata = _encode_tracked_object_preview(frame_bytes, filename, public_material)
+            except Exception as exc:
+                best_box = public_material.get("best_box") if isinstance(public_material.get("best_box"), dict) else {}
+                _video_processing_log(
+                    "tracked_preview_annotation_failed",
+                    scan_id=str(job["id"]),
+                    logical_object_id=stable_object_id,
+                    track_id=public_material.get("track_id"),
+                    frame=best_box.get("frame"),
+                    bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
+                    error_type=type(exc).__name__,
+                    error=safe_error_message(exc),
+                )
+                traceback.print_exc()
+        if preview_bytes is None:
+            try:
+                fallback = _extract_annotated_video_object_preview(annotated_video_path, public_material)
+                if fallback:
+                    preview_bytes, preview_metadata = fallback
+            except Exception as exc:
+                best_box = public_material.get("best_box") if isinstance(public_material.get("best_box"), dict) else {}
+                _video_processing_log(
+                    "tracked_preview_annotated_video_fallback_failed",
+                    scan_id=str(job["id"]),
+                    logical_object_id=stable_object_id,
+                    track_id=public_material.get("track_id"),
+                    frame=best_box.get("frame"),
+                    bbox=best_box.get("xyxy") or public_material.get("best_bbox_norm"),
+                    error_type=type(exc).__name__,
+                    error=safe_error_message(exc),
+                )
+                traceback.print_exc()
+        if preview_bytes is None and frame_bytes:
+            preview_bytes = frame_bytes
+        if preview_bytes is None:
+            _video_processing_log(
+                "tracked_preview_unavailable",
+                scan_id=str(job["id"]),
+                logical_object_id=stable_object_id,
+                track_id=public_material.get("track_id"),
+            )
+            continue
+        if not isinstance(public_material.get("track_debug"), dict):
+            public_material["track_debug"] = {}
+        public_material["track_debug"]["preview_bbox"] = preview_metadata
+        public_material["track_debug"]["preview_annotation_status"] = preview_metadata.get("format", "unavailable")
         public_material["result_type"] = "video_track_object"
         object_summary = summarize([public_material])
         object_summary.update({
@@ -3157,7 +3336,6 @@ def _persist_tracked_video_objects(
             },
         })
         scan_uuid = uuid5(namespace, stable_object_id)
-        filename = f"{Path(source_name).stem}_{stable_object_id}.jpg"
         _video_debug(
             "database_write",
             scan_id=str(scan_uuid),
@@ -3375,6 +3553,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             database=database,
             existing_drive_metadata=existing,
             annotated_video_metadata=annotated_video_metadata,
+            annotated_video_path=encoded_tmp_path if encoded_tmp_path.exists() else annotated_tmp_path,
         )
         summary = _video_tracking_summary(logical_objects)
         summary.update({

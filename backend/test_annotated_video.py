@@ -183,7 +183,48 @@ def test_tracked_video_preview_uses_full_representative_frame_not_crop():
     assert material["track_debug"]["representative_bbox_format"] == "normalized_original_frame_xyxy"
 
 
-def test_tracked_object_persistence_annotates_representative_frame_with_real_bbox(monkeypatch):
+def test_tracked_object_crop_preview_uses_real_bbox_mask_label_and_track_id():
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    frame_bytes = main._encode_frame_jpeg(frame)
+    material = {
+        "track_id": "4",
+        "category": "plastic",
+        "material_name": "plastic",
+        "confidence": 0.91,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 2, "timestamp": 0.2},
+        "segmentation_mask": [[0.25, 0.25], [0.5, 0.25], [0.5, 0.5], [0.25, 0.5]],
+    }
+
+    preview_bytes, metadata = main._encode_tracked_object_preview(frame_bytes, "track.jpg", material)
+    decoded = cv2.imdecode(np.frombuffer(preview_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert preview_bytes != frame_bytes
+    assert metadata["format"] == "representative_frame_annotation"
+    assert metadata["box_xyxy"] == [30, 20, 60, 40]
+    assert metadata["translated_box_xyxy"][0] > 0
+    assert decoded.shape[0] < 80
+    assert decoded.shape[1] < 120
+    assert int(decoded.sum()) != int(frame.sum())
+
+
+def test_tracked_object_crop_preview_without_mask_still_renders_annotation():
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame_bytes = main._encode_frame_jpeg(frame)
+    material = {
+        "track_id": "9",
+        "category": "metal",
+        "confidence": 0.82,
+        "best_box": {"xyxy": [20, 15, 70, 45], "frame": 0, "timestamp": 0.0},
+    }
+
+    preview_bytes, metadata = main._encode_tracked_object_preview(frame_bytes, "track.jpg", material)
+
+    assert preview_bytes != frame_bytes
+    assert metadata["format"] == "representative_frame_annotation"
+
+
+def test_tracked_object_persistence_persists_annotated_crop_with_real_bbox(monkeypatch):
     frame = np.zeros((80, 120, 3), dtype=np.uint8)
     frame[:, :] = (20, 80, 120)
     frame_bytes = main._encode_frame_jpeg(frame)
@@ -233,7 +274,91 @@ def test_tracked_object_persistence_annotates_representative_frame_with_real_bbo
     assert scan_ids == ["persisted-track"]
     assert captured["file_bytes"] != frame_bytes
     assert captured["material"]["best_box"]["xyxy"] == [30, 20, 60, 40]
-    assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "representative_frame_best_box"
+    assert captured["material"]["track_debug"]["preview_bbox"]["format"] == "representative_frame_annotation"
+    assert captured["material"]["track_debug"]["preview_annotation_status"] == "representative_frame_annotation"
+    assert captured["material"]["track_debug"]["preview_bbox"]["translated_box_xyxy"][0] > 0
+
+
+def test_tracked_object_persistence_falls_back_without_failing_job(monkeypatch):
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    frame_bytes = main._encode_frame_jpeg(frame)
+    item = {
+        "stable_object_id": "scan-1-object-0001",
+        "object_uid": "scan-1-object-0001",
+        "track_id": "4",
+        "category": "plastic",
+        "material_name": "plastic",
+        "confidence": 0.91,
+        "track_max_confidence": 0.91,
+        "track_avg_confidence": 0.88,
+        "track_hazard_status": "clear",
+        "recyclable_status": "recyclable",
+        "contaminant_status": "clean",
+        "review_required": False,
+        "decision_status": "accepted",
+        "display_status": "Confirmed Recyclable",
+        "disposal_route": "Recyclable Stream",
+        "bbox_x": 25,
+        "bbox_y": 25,
+        "bbox_width": 25,
+        "bbox_height": 25,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
+        "_best_crop_bytes": frame_bytes,
+    }
+    captured = {}
+
+    def fail_preview(*_args, **_kwargs):
+        raise RuntimeError("preview failed")
+
+    def fake_persist(file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
+        captured["file_bytes"] = file_bytes
+        captured["material"] = materials[0]
+        return {"scan_result_id": "persisted-track"}
+
+    monkeypatch.setattr(main, "_encode_tracked_object_preview", fail_preview)
+    monkeypatch.setattr(main, "_extract_annotated_video_object_preview", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "persist_scan", fake_persist)
+
+    scan_ids = main._persist_tracked_video_objects(
+        tracked_objects=[item],
+        source_name="video.mp4",
+        file_id="drive-1",
+        job={"id": "55555555-5555-4555-8555-555555555555"},
+        principal=None,
+        database=NoopDatabase(),
+        existing_drive_metadata={},
+    )
+
+    assert scan_ids == ["persisted-track"]
+    assert captured["file_bytes"] == frame_bytes
+    assert captured["material"]["track_debug"]["preview_annotation_status"] == "unavailable"
+
+
+def test_tracked_object_preview_uses_annotated_video_frame_fallback(tmp_path):
+    video_path = tmp_path / "annotated.mp4"
+    writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (120, 80))
+    assert writer.isOpened()
+    for index in range(3):
+        frame = np.zeros((80, 120, 3), dtype=np.uint8)
+        cv2.rectangle(frame, (30, 20), (60, 40), (0, 255, 0), 2)
+        writer.write(frame)
+    writer.release()
+    material = {
+        "track_id": "4",
+        "category": "plastic",
+        "confidence": 0.91,
+        "best_box": {"xyxy": [30, 20, 60, 40], "frame": 1, "timestamp": 0.1},
+    }
+
+    fallback = main._extract_annotated_video_object_preview(video_path, material)
+
+    assert fallback is not None
+    preview_bytes, metadata = fallback
+    decoded = cv2.imdecode(np.frombuffer(preview_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert metadata["format"] == "annotated_video_frame_fallback"
+    assert decoded.shape[0] < 80
+    assert decoded.shape[1] < 120
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg/FFprobe unavailable")
