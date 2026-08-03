@@ -168,7 +168,7 @@ const html = `
       </div>
 
       <div class="business-video-shell" data-aos="fade-up" data-aos-delay="100">
-        <video class="business-video" controls playsinline preload="metadata" poster="/assets/capstone-project-poster.jpg">
+        <video class="business-video" controls loop playsinline preload="metadata" poster="/assets/capstone-project-poster.jpg">
           <source src="/assets/Capstone Project.mp4" type="video/mp4" />
           Your browser does not support the video tag.
         </video>
