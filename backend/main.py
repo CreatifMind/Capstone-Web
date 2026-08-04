@@ -6123,12 +6123,19 @@ def analytics_summary(
         database = SupabaseExecutor(supabase)
 
         def build_scans(client):
-            query = client.table(SCAN_RESULTS_TABLE).select("id,source_name,source_type,batch_id,overall_status,human_review_required,overall_confidence,created_at,reviewed_at")
+            query = client.table(SCAN_RESULTS_TABLE).select("id,source_name,source_type,batch_id,overall_status,human_review_required,overall_confidence,created_at,reviewed_at,contamination_risk")
+            if start_date:
+                query = query.gte("created_at", start_date).lt("created_at", end_date)
+            return query.order("created_at", desc=True)
+
+        def build_jobs(client):
+            query = client.table(JOBS_TABLE).select("id,source,status,processed_count,total_count,attempts,failed_count,created_at,started_at,completed_at,error")
             if start_date:
                 query = query.gte("created_at", start_date).lt("created_at", end_date)
             return query.order("created_at", desc=True)
 
         scans = analytics_page_rows(database, SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+        jobs = analytics_page_rows(database, JOBS_TABLE, principal, build_jobs, ANALYTICS_PAGE_SIZE)
         scan_ids = [str(scan["id"]) for scan in scans if scan.get("id")]
         materials = analytics_child_rows(database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
         decisions = analytics_child_rows(database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
@@ -6147,6 +6154,8 @@ def analytics_summary(
         review_durations: list[float] = []
         high_risk_count = 0
         recovery_opportunity_count = 0
+        reviewer_stats: dict[str, dict] = {}
+        accuracy_by_category: dict[str, dict] = {}
 
         for material in materials:
             category = analytics_category(material.get("category") or material.get("material_name"))
@@ -6178,9 +6187,22 @@ def analytics_summary(
                 created_at, reviewed_at = analytics_timestamp(scan.get("created_at")), analytics_timestamp(decision.get("created_at"))
                 if created_at and reviewed_at and reviewed_at >= created_at:
                     review_durations.append((reviewed_at - created_at).total_seconds() * 1000)
+            if decision:
+                reviewer = decision.get("reviewer_email") or "Unknown reviewer"
+                r = reviewer_stats.setdefault(reviewer, {"reviewer_email": reviewer, "reviewed_count": 0, "agree_count": 0, "override_count": 0, "confirmed_count": 0, "rejected_count": 0})
+                r["reviewed_count"] += 1
+                r["confirmed_count" if decision.get("outcome") == "confirmed" else "rejected_count"] += 1
+                ai_category = analytics_category(material.get("original_category") or material.get("category") or material.get("material_name"))
+                chosen_category = analytics_category(decision.get("chosen_category"))
+                agreed = ai_category == chosen_category
+                r["agree_count" if agreed else "override_count"] += 1
+                accuracy_row = accuracy_by_category.setdefault(ai_category, {"category": ai_category, "label": ANALYTICS_MATERIAL_ESTIMATES[ai_category]["label"], "reviewed_count": 0, "agree_count": 0})
+                accuracy_row["reviewed_count"] += 1
+                accuracy_row["agree_count"] += int(agreed)
 
         trend: dict[str, dict] = {}
         batch_counts: dict[str, int] = {}
+        risk_counts: dict[str, int] = {}
         for scan in scans:
             created_at = analytics_timestamp(scan.get("created_at"))
             if created_at:
@@ -6189,6 +6211,22 @@ def analytics_summary(
                 trend.setdefault(key, {"key": key, "label": local_day.strftime("%b %-d"), "value": 0})["value"] += 1
             if scan.get("batch_id"):
                 batch_counts[str(scan["batch_id"])] = batch_counts.get(str(scan["batch_id"]), 0) + 1
+            risk_key = str(scan.get("contamination_risk") or "unknown").lower()
+            risk_counts[risk_key] = risk_counts.get(risk_key, 0) + 1
+
+        status_counts: dict[str, int] = {}
+        durations_ms: list[float] = []
+        jobs_with_retries = 0
+        failed_items_total = 0
+        for job in jobs:
+            status = str(job.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            if (job.get("attempts") or 0) > 1:
+                jobs_with_retries += 1
+            failed_items_total += job.get("failed_count") or 0
+            job_started, job_completed = analytics_timestamp(job.get("started_at")), analytics_timestamp(job.get("completed_at"))
+            if job_started and job_completed and job_completed >= job_started:
+                durations_ms.append((job_completed - job_started).total_seconds() * 1000)
 
         resale_rows = sorted(category_data.values(), key=lambda row: (-row["estimatedResaleValueRm"], -row["count"]))
         for row in resale_rows:
@@ -6224,6 +6262,17 @@ def analytics_summary(
             "high_risk_count": high_risk_count,
             "recovery_opportunity_count": recovery_opportunity_count,
             "recent_events": recent_events,
+            "reviewer_activity": sorted(reviewer_stats.values(), key=lambda row: -row["reviewed_count"]),
+            "upload_pipeline_health": {
+                "total_jobs": len(jobs),
+                "status_counts": status_counts,
+                "jobs_with_retries": jobs_with_retries,
+                "failed_items_total": failed_items_total,
+                "average_processing_duration_ms": sum(durations_ms) / len(durations_ms) if durations_ms else None,
+                "recent_jobs": [{"id": job.get("id"), "source": job.get("source"), "status": job.get("status"), "processed_count": job.get("processed_count"), "total_count": job.get("total_count"), "attempts": job.get("attempts"), "created_at": job.get("created_at")} for job in jobs[:5]],
+            },
+            "risk_severity_breakdown": [{"risk": risk, "count": count} for risk, count in sorted(risk_counts.items(), key=lambda item: -item[1])],
+            "ai_accuracy_by_category": sorted(({**row, "accuracy_pct": (row["agree_count"] / row["reviewed_count"] * 100) if row["reviewed_count"] else 0} for row in accuracy_by_category.values()), key=lambda row: -row["reviewed_count"]),
         }
     except SupabaseTemporarilyUnavailable:
         return JSONResponse(status_code=503, content={"detail": "Analytics data is temporarily unavailable.", "retryable": True}, headers={"Retry-After": "2"})

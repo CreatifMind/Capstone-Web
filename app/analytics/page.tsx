@@ -104,6 +104,13 @@ const html = `
             <article class="analytics-overview-card analytics-manager-actions"><header><div><h2>Manager Actions</h2><p>Prioritised operational work</p></div></header><div id="analyticsManagerActions" class="analytics-action-list"></div><a class="primary-btn" href="/review">Go to Review Queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></article>
           </section>
 
+          <section class="analytics-overview-grid-secondary">
+            <article class="analytics-overview-card analytics-reviewer-card"><header><div><h2>Reviewer Activity</h2><p>Who reviewed, agree vs override</p></div></header><div id="analyticsReviewerActivity" class="analytics-action-list"></div><p class="analytics-chart-summary" data-overview="reviewer-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-reviewers">View reviewer details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-pipeline-card"><header><div><h2>Upload Pipeline Health</h2><p>Batch success, failure, retries</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewPipelineHealth"></canvas></div><p class="analytics-chart-summary" data-overview="pipeline-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-pipeline">View pipeline details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-risk-card"><header><div><h2>Risk Severity</h2><p>Low / medium / high scans</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewRiskSeverity"></canvas></div><p class="analytics-chart-summary" data-overview="risk-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-risk">View risk details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+            <article class="analytics-overview-card analytics-accuracy-card"><header><div><h2>AI Accuracy by Category</h2><p>AI guess vs human confirmed</p></div></header><div class="analytics-chart-wrap"><canvas id="overviewAiAccuracy"></canvas></div><p class="analytics-chart-summary" data-overview="accuracy-summary"></p><button class="analytics-detail-link" type="button" data-drill-target="detail-accuracy">View accuracy details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></article>
+          </section>
+
           <section class="analytics-recent-log" aria-labelledby="analyticsRecentLogHeading"><header><div><h2 id="analyticsRecentLogHeading">Recent Verification History</h2><p class="analytics-data-note">Recent saved records from the shared scan history.</p></div><a href="/review">Open Review Workspace <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></header><div class="analytics-table-wrap"><table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Status</th><th>Details</th></tr></thead><tbody id="analyticsRecentLog"><tr><td colspan="5">Loading analytics...</td></tr></tbody></table></div></section>
         </section>
 
@@ -331,6 +338,118 @@ const html = `
                 <div class="bar-list compact" data-belt-uptime></div>
                 <div class="bar-list compact" data-belt-composition></div>
               </div>
+            </div>
+          </article>
+
+          <!-- REVIEWER ACTIVITY DETAIL -->
+          <article class="panel detail-panel" id="detail-reviewers">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Reviewer Detail</p>
+                <h2>Reviewer Activity Breakdown</h2>
+              </div>
+            </div>
+            <p class="detail-copy">Who reviewed detections, and how often they agreed with or overrode the AI's
+              category guess.</p>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Reviewer</th>
+                    <th>Reviewed</th>
+                    <th>Agreed</th>
+                    <th>Overrode</th>
+                    <th>Confirmed</th>
+                    <th>Rejected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colspan="6"><div class="feed-empty">No reviewer data yet.</div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- UPLOAD PIPELINE HEALTH DETAIL -->
+          <article class="panel detail-panel" id="detail-pipeline">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Pipeline Detail</p>
+                <h2>Upload Pipeline Health</h2>
+              </div>
+            </div>
+            <p class="detail-copy">Health of the upload/processing system itself, separate from what's found in the
+              scans.</p>
+            <div class="detail-grid three">
+              <div class="metric-tile static"><span>Total Jobs</span><strong data-pipeline-total>0</strong><small>In
+                  selected period</small></div>
+              <div class="metric-tile static"><span>Avg Processing Time</span><strong
+                  data-pipeline-duration>—</strong><small>Start to finish</small></div>
+              <div class="metric-tile static"><span>Jobs With Retries</span><strong
+                  data-pipeline-retries>0</strong><small data-pipeline-failed-items>0 failed items</small></div>
+            </div>
+            <h3>Status Breakdown</h3>
+            <div class="bar-list compact" data-pipeline-status></div>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Attempts</th>
+                    <th>Started</th>
+                  </tr>
+                </thead>
+                <tbody data-pipeline-recent>
+                  <tr>
+                    <td colspan="5"><div class="feed-empty">No upload jobs yet.</div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- RISK SEVERITY DETAIL -->
+          <article class="panel detail-panel" id="detail-risk">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Risk Detail</p>
+                <h2>Risk Severity Breakdown</h2>
+              </div>
+            </div>
+            <p class="detail-copy">Scans grouped by contamination risk level.</p>
+            <div class="bar-list compact" data-risk-rows></div>
+          </article>
+
+          <!-- AI ACCURACY DETAIL -->
+          <article class="panel detail-panel" id="detail-accuracy">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Accuracy Detail</p>
+                <h2>AI Accuracy by Material Category</h2>
+              </div>
+            </div>
+            <p class="detail-copy">How often the AI's original guess matched what a human reviewer ultimately
+              confirmed. Click a row for the material deep dive.</p>
+            <div class="table-wrap">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Reviewed</th>
+                    <th>Agreed</th>
+                    <th>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colspan="4"><div class="feed-empty">No accuracy data yet.</div></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </article>
         </section>
