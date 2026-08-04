@@ -122,6 +122,7 @@ app.add_middleware(
 )
 
 model = None
+model_device_effective = None
 
 
 def _new_supabase_client():
@@ -140,6 +141,7 @@ PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
 VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
 SERVICE_MODE = os.getenv("SERVICE_MODE", "api").strip().lower() or "api"
 PROCESSING_BACKEND = os.getenv("PROCESSING_BACKEND") or ("cloud-tasks" if os.getenv("ENVIRONMENT", "").lower() == "production" else "local-thread")
+MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip() or "cpu"
 CLOUD_TASKS_PROJECT_ID = os.getenv("CLOUD_TASKS_PROJECT_ID")
 CLOUD_TASKS_LOCATION = os.getenv("CLOUD_TASKS_LOCATION")
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE")
@@ -760,19 +762,108 @@ def scoped_query(query, principal: Principal):
     return query
 
 
+def _sanitize_device_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    return re.sub(r"[^A-Za-z0-9 ._:+-]+", "", str(value)).strip()[:120] or None
+
+
+def _cuda_device_index(device: str) -> int:
+    parts = device.split(":", 1)
+    if parts[0] != "cuda" or len(parts) > 2:
+        raise RuntimeError(f"Unsupported MODEL_DEVICE: {device}")
+    if len(parts) == 1 or parts[1] == "":
+        return 0
+    try:
+        index = int(parts[1])
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid CUDA MODEL_DEVICE index: {device}") from exc
+    if index < 0:
+        raise RuntimeError(f"Invalid CUDA MODEL_DEVICE index: {device}")
+    return index
+
+
+def _torch_cuda_diagnostics() -> tuple[Any | None, dict]:
+    try:
+        import torch
+    except Exception as exc:
+        return None, {
+            "model_device_requested": MODEL_DEVICE,
+            "cuda_available": False,
+            "cuda_device_count": 0,
+            "cuda_device_name": None,
+            "torch_import_error": type(exc).__name__,
+        }
+
+    cuda = getattr(torch, "cuda", None)
+    cuda_available = bool(cuda and cuda.is_available())
+    cuda_device_count = int(cuda.device_count()) if cuda and cuda_available else 0
+    device_name = None
+    if cuda_available and cuda_device_count > 0:
+        try:
+            device_name = _sanitize_device_name(cuda.get_device_name(0))
+        except Exception:
+            device_name = None
+    return torch, {
+        "model_device_requested": MODEL_DEVICE,
+        "cuda_available": cuda_available,
+        "cuda_device_count": cuda_device_count,
+        "cuda_device_name": device_name,
+    }
+
+
+def _select_model_device() -> tuple[str, dict]:
+    torch, diagnostics = _torch_cuda_diagnostics()
+    requested = MODEL_DEVICE
+    if not requested.startswith("cuda"):
+        return requested, diagnostics
+    if torch is None:
+        raise RuntimeError(f"MODEL_DEVICE={requested} requires PyTorch.")
+    if not diagnostics["cuda_available"]:
+        raise RuntimeError(f"MODEL_DEVICE={requested} requires CUDA, but torch.cuda.is_available() is false.")
+    if diagnostics["cuda_device_count"] < 1:
+        raise RuntimeError(f"MODEL_DEVICE={requested} requires at least one CUDA device.")
+    index = _cuda_device_index(requested)
+    if index >= diagnostics["cuda_device_count"]:
+        raise RuntimeError(f"MODEL_DEVICE={requested} requested CUDA device {index}, but only {diagnostics['cuda_device_count']} CUDA device(s) exist.")
+    selected = f"cuda:{index}"
+    try:
+        diagnostics["cuda_device_name"] = _sanitize_device_name(torch.cuda.get_device_name(index))
+    except Exception:
+        diagnostics["cuda_device_name"] = None
+    return selected, diagnostics
+
+
+def _model_parameter_device(loaded_model: Any) -> str | None:
+    try:
+        parameters = loaded_model.model.parameters()
+        return str(next(parameters).device)
+    except Exception:
+        return None
+
+
 def get_model():
-    global model
+    global model, model_device_effective
     if model is None:
         print(f"[startup] Loading YOLO model from: {MODEL_PATH}")
         if not MODEL_PATH.exists():
             print(f"[startup] YOLO model file not found at: {MODEL_PATH}")
             raise HTTPException(status_code=500, detail="YOLO model file not found.")
-        model = YOLO(str(MODEL_PATH))
+        selected_device, diagnostics = _select_model_device()
+        print(f"[startup] model device {json.dumps({**diagnostics, 'selected_model_device': selected_device}, sort_keys=True)}")
+        loaded_model = YOLO(str(MODEL_PATH))
+        model_to = getattr(loaded_model, "to", None)
+        moved_model = model_to(selected_device) if callable(model_to) else loaded_model
+        model = moved_model if moved_model is not None else loaded_model
+        model_device_effective = _model_parameter_device(model) or selected_device
+        if MODEL_DEVICE.startswith("cuda") and not str(model_device_effective).startswith("cuda"):
+            raise RuntimeError(f"MODEL_DEVICE={MODEL_DEVICE} requested CUDA, but model loaded on {model_device_effective}.")
     return model
 
 
 def safe_startup_diagnostics() -> dict:
     browser_model_available = BROWSER_MODEL_PATH.exists()
+    _torch, gpu = _torch_cuda_diagnostics()
     return {
         **deployment_identity(),
         "model_path": str(BROWSER_MODEL_PATH),
@@ -789,6 +880,9 @@ def safe_startup_diagnostics() -> dict:
         "drive_configured": bool(GOOGLE_DRIVE_UPLOADED_IMAGES_FOLDER_ID),
         "ffmpeg_available": bool(shutil.which("ffmpeg")),
         "ffprobe_available": bool(shutil.which("ffprobe")),
+        "model_loaded": model is not None,
+        "model_device_effective": model_device_effective,
+        **gpu,
         "allowed_origins": ALLOWED_ORIGINS,
     }
 
@@ -3825,7 +3919,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 pending_frame = None
             frame = _normalize_video_frame(frame, width, height)
             timestamp = frame_index / fps if fps else 0.0
-            results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False)
+            results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False, device=MODEL_DEVICE)
             result = results[0] if results else None
             detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
             aggregator.observe(frame_index, timestamp, detections)
@@ -4305,6 +4399,8 @@ def process_internal_job(payload: WorkerJobInput):
         raise HTTPException(status_code=404, detail="Not found.")
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         raise HTTPException(status_code=500, detail="Worker is not configured.")
+    if MODEL_DEVICE.startswith("cuda"):
+        get_model()
     job_id = str(payload.job_id)
     database = SupabaseExecutor()
     try:
@@ -5040,7 +5136,14 @@ async def predict(file: UploadFile = File(...), principal: Principal = Depends(r
 
 @app.get("/health")
 def health_check():
+    model_error = None
+    try:
+        get_model()
+    except Exception as exc:
+        model_error = safe_error_message(exc)
     return {
         "status": "ok",
         "service": "purityloop-backend",
+        **safe_startup_diagnostics(),
+        "model_error": model_error,
     }
