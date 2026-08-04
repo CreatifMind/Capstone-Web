@@ -15,9 +15,9 @@ const html = `
     <!-- Desktop Links -->
     <div class="nav-links">
       <a href="#hero" class="nav-link active">Home</a>
+      <a href="#methodology" class="nav-link">Methodology</a>
       <a href="#features" class="nav-link">Features</a>
-      <a href="#analytics" class="nav-link">Platform</a>
-      <a href="#contact" class="nav-link">Contact</a>
+      <a href="#analytics" class="nav-link">Analytics</a>
     </div>
 
     <!-- Actions -->
@@ -45,8 +45,9 @@ const html = `
     <div class="mobile-menu-links">
       <div data-theme-slot="landing-mobile"></div>
       <a href="#hero" class="nav-link" role="menuitem">Home</a>
+      <a href="#methodology" class="nav-link" role="menuitem">Methodology</a>
       <a href="#features" class="nav-link" role="menuitem">Features</a>
-      <a href="#analytics" class="nav-link" role="menuitem">Platform</a>
+      <a href="#analytics" class="nav-link" role="menuitem">Analytics</a>
       <a href="/login" class="nav-link" role="menuitem">Login</a>
     </div>
   </div>
@@ -67,11 +68,11 @@ const html = `
       <div class="hero-copy">
         <div class="hero-tag">
           <span class="hero-tag-dot"></span>
-          CAPSTONE PROJECT | YOLOV8 | AUTOMATED MRF CLASSIFICATION
+          <span class="hero-tag-text">CAPSTONE PROJECT | YOLOV8 | AUTOMATED MRF CLASSIFICATION</span>
         </div>
 
         <h1 class="hero-headline">
-          Automated waste sorting for
+          Automated waste<span class="hero-phone-break"><br /></span> sorting for
           <span class="highlight">cleaner recycling loops.</span>
         </h1>
 
@@ -97,8 +98,8 @@ const html = `
       <div class="hero-visual">
         <div class="hero-dashboard-card">
           <div class="hdc-header">
-            <span class="hdc-title">Live Detection Feed</span>
-            <span class="hdc-live"><span class="hdc-live-dot"></span> YOLOv8</span>
+            <span class="hdc-title">Detection Preview</span>
+            <span class="hdc-live"><span class="hdc-live-dot"></span> DEMONSTRATION</span>
           </div>
 
           <div class="hdc-metrics hdc-capability-grid">
@@ -136,18 +137,18 @@ const html = `
           <div class="hdc-items">
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#10B981"></span>
-              <span class="hdc-item-label">Contaminant Blocking</span>
-              <span class="hdc-item-val">Active</span>
+              <span class="hdc-item-label">Contaminant Review</span>
+              <span class="hdc-item-val">Enabled</span>
             </div>
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#3B82F6"></span>
-              <span class="hdc-item-label">Supabase Audit Trail</span>
+              <span class="hdc-item-label">Audit Trail</span>
               <span class="hdc-item-val">Connected</span>
             </div>
             <div class="hdc-item">
               <span class="hdc-item-dot" style="background:#F59E0B"></span>
-              <span class="hdc-item-label">Recovery Analytics</span>
-              <span class="hdc-item-val">Live</span>
+              <span class="hdc-item-label">Analytics Workspace</span>
+              <span class="hdc-item-val">Available</span>
             </div>
           </div>
         </div>
@@ -188,7 +189,7 @@ const html = `
       <div class="section-header centered" data-aos="fade-up">
         <div class="section-tag"><i class="fa-solid fa-triangle-exclamation"></i> The Problem</div>
         <h2 class="section-headline">Waste Sorting Problems Cost<br>Facilities Millions</h2>
-        <p class="section-sub">Manual recycling operations suffer from human error, contamination, and zero real-time
+        <p class="section-sub">Manual recycling operations suffer from human error, contamination, and limited
           visibility into material quality.</p>
       </div>
 
@@ -196,17 +197,15 @@ const html = `
         <div class="problem-card" data-aos="fade-up" data-aos-delay="0">
           <div class="problem-icon red"><i class="fa-solid fa-boxes-stacked"></i></div>
           <h3>Contaminant Infiltration</h3>
-          <p>Batteries, chemicals, and organic waste enter recyclable streams, causing entire bale rejections and costly
+          <p>Batteries, suspected contaminants, and organic waste enter recyclable streams, causing entire bale rejections and costly
             re-processing.</p>
-          <span class="problem-stat"><i class="fa-solid fa-arrow-up"></i> 23% contamination rate</span>
         </div>
 
         <div class="problem-card" data-aos="fade-up" data-aos-delay="80">
           <div class="problem-icon amber"><i class="fa-solid fa-eye-slash"></i></div>
           <h3>Zero Sorting Visibility</h3>
-          <p>Operators have no real-time confidence scores, no material purity tracking, and no audit trail for sorted
+          <p>Operators have limited confidence scoring, material purity tracking, and audit trails for sorted
             batches.</p>
-          <span class="problem-stat"><i class="fa-solid fa-arrow-up"></i> 31% audit failure rate</span>
         </div>
 
         <div class="problem-card" data-aos="fade-up" data-aos-delay="160">
@@ -214,7 +213,6 @@ const html = `
           <h3>Manual Review Backlog</h3>
           <p>Low-confidence scans pile up for human review, creating workflow bottlenecks that delay commodity baling
             and shipment.</p>
-          <span class="problem-stat"><i class="fa-solid fa-clock"></i> 8+ hrs avg delay</span>
         </div>
 
         <div class="problem-card" data-aos="fade-up" data-aos-delay="240">
@@ -222,7 +220,6 @@ const html = `
           <h3>No Material Intelligence</h3>
           <p>Without per-material yield tracking, facilities can't identify which waste streams generate the highest
             commodity value.</p>
-          <span class="problem-stat"><i class="fa-solid fa-arrow-up"></i> $842k untapped revenue</span>
         </div>
       </div>
     </div>
@@ -414,19 +411,18 @@ const html = `
       <div class="feature-row">
         <div class="feature-content" data-aos="fade-right">
           <div class="feature-num">Feature 01</div>
-          <h3>Real-Time YOLOv8 Classification</h3>
-          <p>Sub-second detection across 9 waste categories: plastic, metal, glass, paper, cardboard, food organics,
-            textile, battery, and general trash, with exact confidence mapping per item.</p>
+          <h3>Image and Video Waste Detection</h3>
+          <p>YOLOv8m-seg supports browser-assisted image detection, uploaded image analysis, and tracked MP4 processing across nine waste categories.</p>
           <ul class="feature-list">
-            <li><i class="fa-solid fa-check"></i> 9 material categories with 97%+ average confidence</li>
+            <li><i class="fa-solid fa-check"></i> Detection and classification across 9 supported waste categories</li>
             <li><i class="fa-solid fa-check"></i> Live bounding box overlays with colour-coded risk</li>
-            <li><i class="fa-solid fa-check"></i> Instant hazard flag for batteries and chemicals</li>
+            <li><i class="fa-solid fa-check"></i> Battery hazard alerts and configurable contaminant-review rules</li>
           </ul>
         </div>
         <div class="feature-visual" data-aos="fade-left">
           <div class="feature-visual-header">
             <span style="font-size:0.875rem;font-weight:700;">Active Scan Viewport</span>
-            <span class="feature-visual-tag">ONLINE</span>
+            <span class="feature-visual-tag">EXAMPLE RESULT</span>
           </div>
           <div
             style="background:#111827;border-radius:12px;aspect-ratio:16/9;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
@@ -487,8 +483,7 @@ const html = `
         <div class="feature-content" data-aos="fade-left">
           <div class="feature-num">Feature 02</div>
           <h3>Hazard Quarantine & Contaminant Isolation</h3>
-          <p>Batteries, lithium cells, chemical containers, and high-organic materials are flagged for operator review
-            before they can contaminate recyclable bales.</p>
+          <p>Detected batteries can trigger hazard alerts, while configurable review rules help operators assess other suspected contaminants.</p>
           <ul class="feature-list">
             <li><i class="fa-solid fa-check"></i> Fire-risk battery alerts for operators</li>
             <li><i class="fa-solid fa-check"></i> Multi-level severity classification (low/high/critical)</li>
@@ -513,7 +508,7 @@ const html = `
             </div>
             <div class="alert-feed-row review">
               <span class="alert-feed-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <div><strong>Low Confidence Review | glass-upload.jpg</strong><br><small>Glass result at 82% | manual review needed</small></div>
+              <div><strong>Low Confidence Review | glass-upload.jpg</strong><br><small>Ambiguous glass classification | manual review needed</small></div>
               <span class="alert-feed-severity">Review</span>
             </div>
           </div>
@@ -564,41 +559,6 @@ const html = `
     </div>
   </section>
 
-
-  <!-- ══════════════════════════════════════
-       SECTION 7 — LIVE IMPACT COUNTERS
-  ══════════════════════════════════════ -->
-  <section id="impact" class="section impact-section">
-    <div class="section-inner">
-      <div class="section-header centered impact-header" data-aos="fade-up">
-        <div class="section-tag impact-tag">
-          <i class="fa-solid fa-flask"></i> ILLUSTRATIVE PLATFORM METRICS
-        </div>
-        <h2 class="section-headline">Platform Performance at a Glance</h2>
-        <p class="section-sub">Example interface values showing how PurityLoop AI presents classification, review and operations information.</p>
-      </div>
-
-      <div class="impact-grid">
-        <div class="impact-item" data-aos="fade-up" data-aos-delay="0">
-          <span id="count-1" class="impact-num">98.2%</span>
-          <p class="impact-label">Classification Visibility</p>
-          <p class="impact-sub">Example 9-category dashboard signal</p>
-        </div>
-        <div class="impact-item" data-aos="fade-up" data-aos-delay="100">
-          <span id="count-2" class="impact-num">40%</span>
-          <p class="impact-label">Contamination Reduction</p>
-          <p class="impact-sub">vs. manual sorting baseline</p>
-        </div>
-        <div class="impact-item" data-aos="fade-up" data-aos-delay="200">
-          <span id="count-3" class="impact-num">30%</span>
-          <p class="impact-label">Audit Time Saved</p>
-          <p class="impact-sub">Per sorting batch cycle</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-
   <!-- ══════════════════════════════════════
        SECTION 8 — ANALYTICS SHOWCASE
   ══════════════════════════════════════ -->
@@ -608,7 +568,7 @@ const html = `
         <div>
           <div class="section-tag"><i class="fa-solid fa-chart-area"></i> Analytics</div>
           <h2 class="section-headline">AI-Powered Analytics<br>Dashboard</h2>
-          <p class="section-sub">Live charts and real-time metrics that power smarter decisions across every upload
+          <p class="section-sub">Dashboard charts and review metrics that support smarter decisions across every upload
             batch.</p>
         </div>
       </div>
@@ -669,7 +629,7 @@ const html = `
   <!-- ══════════════════════════════════════
        SECTION 10 — FINAL CTA
   ══════════════════════════════════════ -->
-  <section id="contact" class="section section-alt final-cta">
+  <section id="cta" class="section section-alt final-cta">
     <div class="section-inner">
       <div class="final-cta-inner" data-aos="fade-up">
         <div class="section-tag" style="justify-content:center;"><i class="fa-solid fa-rocket"></i> Get Started</div>
@@ -702,9 +662,10 @@ const html = `
     </div>
     <div class="footer-links">
       <a href="#hero">Home</a>
+      <a href="#methodology">Methodology</a>
       <a href="#features">Features</a>
       <a href="#analytics">Analytics</a>
-      <a href="/login">Platform</a>
+      <a href="/login">Login</a>
     </div>
     <p class="footer-copy">© 2026 PurityLoop AI | Capstone Presentation Project | Built with YOLOv8 +
       JavaScript</p>

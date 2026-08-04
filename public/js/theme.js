@@ -287,40 +287,6 @@ function initGSAP() {
   window.addEventListener('purityloop:page-cleanup', () => context.revert(), { once: true });
 }
 
-/* ── 8. COUNTUP ANIMATION ── */
-function initCountUp() {
-  if (typeof CountUp === 'undefined') return;
-
-  const items = [
-    { id: 'count-1', end: 98.2, suffix: '%', decimalPlaces: 1 },
-    { id: 'count-2', end: 40, suffix: '%' },
-    { id: 'count-3', end: 30, suffix: '%' },
-  ];
-
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const el = entry.target;
-      const item = (Array.isArray(items) ? items : []).find(i => i.id === el.id);
-      if (!item) return;
-      const cu = new CountUp.CountUp(el, item.end, {
-        suffix: item.suffix,
-        decimalPlaces: item.decimalPlaces || 0,
-        duration: 2.2,
-        useEasing: true,
-      });
-      if (!cu.error) cu.start();
-      observer.unobserve(el);
-    });
-  }, { threshold: 0.5 });
-
-  items.forEach(item => {
-    const el = document.getElementById(item.id);
-    if (el) observer.observe(el);
-  });
-  window.addEventListener('purityloop:page-cleanup', () => observer.disconnect(), { once: true });
-}
-
 /* ── 9. TYPED.JS HERO SUBHEADLINE ── */
 function initTyped() {
   if (typeof Typed === 'undefined') return;
@@ -329,7 +295,7 @@ function initTyped() {
   el.dataset.typedReady = 'true';
   const typed = new Typed(el, {
     strings: [
-      'Classify uploaded waste images in seconds.',
+      'Classify uploaded waste images with browser-assisted AI.',
       'Recover recyclable value with AI confidence scoring.',
       'Detect contamination before it reaches the final stream.',
       'Route uncertain results to human review.',
@@ -925,7 +891,6 @@ function initPurityLoopTheme() {
   runThemeInit('landing nav init', initLandingNav);
   runThemeInit('AOS init', initAOS);
   runThemeInit('GSAP init', initGSAP, revealLandingFallback);
-  runThemeInit('CountUp init', initCountUp);
   runThemeInit('Typed init', initTyped);
   runThemeInit('hero bars init', initHeroBars);
   runThemeInit('landing charts init', initLandingCharts);
