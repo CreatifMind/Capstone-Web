@@ -105,3 +105,78 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "0.918",
   ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 });
+
+test("landing page methodology infographic uses approved DL framework content", () => {
+  [
+    "PurityLoop AI — DL Framework &amp; Development Plan",
+    "Improving the Model Together using the OSEMN Framework",
+    "Deep Learning Framework",
+    "Data Preparation",
+    "Model Training",
+    "Validation &amp; Deploy",
+    "Collect Data",
+    "Clean &amp; Prepare",
+    "Analyze &amp; Understand",
+    "Build &amp; Train",
+    "Evaluate &amp; Improve",
+    "640 × 640 px",
+    "CSP-DarkNet",
+    "PANet",
+    "Data Audit",
+    "EDA &amp; Explore",
+    "Diagnostic Train",
+    "Remove Duplicates",
+    "Balance Dataset",
+    "Baseline Train",
+    "16 Sources",
+    "9 Classes",
+    "77,466",
+    "16,468",
+    "~5,000 images per class",
+    "Tune &amp; Optimise",
+    "Real-World Test",
+    "Live Deployment",
+    "Final Combined Model",
+    "Talvin",
+    "Chris",
+    "Naomi",
+    "Training Algorithm",
+    "Model Architecture",
+  ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
+
+test("landing page methodology removes unsupported targets and routing claims", () => {
+  [
+    "TARGETS — NOT FINAL RESULTS",
+    "Production Model Success Metrics",
+    "Battery Recall",
+    "Inference Speed",
+    "Standard class threshold",
+    "Battery / hazardous threshold",
+    "&ge; 0.85",
+    "&ge; 0.70",
+    "&ge; 80%",
+    "&lt; 50ms",
+    "&ge; 0.90",
+    "GREEN BAND",
+    "RED BAND",
+    "YELLOW BAND",
+    "AUTO SORT",
+    "AUTO FLAG",
+    "HUMAN OPERATOR REVIEW",
+    "Model retrained every 100 operator corrections",
+    "Wang et al.",
+    "mAP@50 = 82.6%",
+    "Plastic ≥ 0.85",
+    "Paper ≥ 0.85",
+    "Cardboard ≥ 0.85",
+    "Metal ≥ 0.85",
+    "Glass ≥ 0.85",
+    "Textile ≥ 0.85",
+    "Food/Organic ≥ 0.85",
+    "Battery ≥ 0.80",
+    "General Trash ≥ 0.85",
+  ].forEach((text) => assert.doesNotMatch(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+
+  assert.doesNotMatch(styles, /methodology-target-(badge|list)/);
+});

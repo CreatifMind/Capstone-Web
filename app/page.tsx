@@ -253,7 +253,7 @@ const html = `
           </button>
           <button id="methodology-tab-4" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-4" tabindex="-1" data-methodology-tab="3">
             <span>04 — Validation Criteria</span>
-            <small>The target mAP, recall, inference latency, confidence thresholds and human-review rules.</small>
+            <small>The approved DL framework, OSEMN workflow, data gates, training roles and deployment path.</small>
           </button>
           <button id="methodology-tab-5" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-5" tabindex="-1" data-methodology-tab="4">
             <span>05 — Model Performance</span>
@@ -298,25 +298,69 @@ const html = `
           <article id="methodology-panel-4" class="methodology-panel" role="tabpanel" aria-labelledby="methodology-tab-4" tabindex="0" data-methodology-panel="3" hidden>
             <div class="methodology-panel-copy">
               <span class="methodology-index">04 / Validation Criteria</span>
-              <h3>Model Acceptance Targets &amp; Routing Rules</h3>
-              <p>Proposed performance targets and operational confidence thresholds. These values are validation criteria, not final measured results.</p>
-              <span class="methodology-target-badge">TARGETS — NOT FINAL RESULTS</span>
-              <dl class="methodology-target-list" aria-label="Validation target values">
-                <div><dt>mAP@0.5</dt><dd>&ge; 0.85</dd></div>
-                <div><dt>mAP@0.5:0.95</dt><dd>&ge; 0.70</dd></div>
-                <div><dt>Battery Recall</dt><dd>&ge; 80%</dd></div>
-                <div><dt>Inference Speed</dt><dd>&lt; 50ms</dd></div>
-              </dl>
-              <dl class="methodology-target-list methodology-routing-list" aria-label="Routing rule targets">
-                <div><dt>Standard class threshold</dt><dd>&ge; 0.85</dd></div>
-                <div><dt>Battery / hazardous threshold</dt><dd>&ge; 0.90</dd></div>
-                <div><dt>Below threshold</dt><dd>Human review</dd></div>
-              </dl>
+              <h3>DL Framework &amp; Development Plan</h3>
+              <p>Summarises the approved OSEMN development path, architecture components, dataset cleanup gates, team responsibilities and deployment sequence.</p>
             </div>
             <div class="methodology-evidence">
-              <figure class="methodology-figure">
-                <img data-src="/assets/Production Model Success Metrics.png" width="1536" height="1024" alt="Production model success metrics diagram showing capstone validation targets for mAP, recall, inference latency, class thresholds, and human review rules." data-methodology-image="3" loading="lazy" />
-              </figure>
+              <div class="framework-infographic" aria-label="PurityLoop AI DL Framework and Development Plan">
+                <header class="framework-infographic-header">
+                  <h4>PurityLoop AI — DL Framework &amp; Development Plan</h4>
+                  <p>Improving the Model Together using the OSEMN Framework</p>
+                  <ol class="framework-osemn-list" aria-label="OSEMN framework stages">
+                    <li><strong>OBTAIN</strong><span>Collect Data</span></li>
+                    <li><strong>SCRUB</strong><span>Clean &amp; Prepare</span></li>
+                    <li><strong>EXPLORE</strong><span>Analyze &amp; Understand</span></li>
+                    <li><strong>MODEL</strong><span>Build &amp; Train</span></li>
+                    <li><strong>INTERPRET</strong><span>Evaluate &amp; Improve</span></li>
+                  </ol>
+                </header>
+
+                <div class="framework-stage-grid" aria-label="Development zones">
+                  <article>
+                    <i class="fa-solid fa-diagram-project"></i>
+                    <h5>Deep Learning Framework</h5>
+                    <p>YOLOv8m-seg | 640 × 640 input</p>
+                  </article>
+                  <article>
+                    <i class="fa-solid fa-database"></i>
+                    <h5>Data Preparation</h5>
+                    <p>16 Sources | 9 Classes</p>
+                  </article>
+                  <article>
+                    <i class="fa-solid fa-microchip"></i>
+                    <h5>Model Training</h5>
+                    <p>Baseline train and optimisation</p>
+                  </article>
+                  <article>
+                    <i class="fa-solid fa-rocket"></i>
+                    <h5>Validation &amp; Deploy</h5>
+                    <p>Real-world test and deployment</p>
+                  </article>
+                </div>
+
+                <div class="framework-card-grid" aria-label="Framework and preparation steps">
+                  <article><i class="fa-solid fa-image"></i><div><h5>Input Image</h5><p>640 × 640 px</p></div></article>
+                  <article><i class="fa-solid fa-network-wired"></i><div><h5>Backbone</h5><p>CSP-DarkNet</p></div></article>
+                  <article><i class="fa-solid fa-share-nodes"></i><div><h5>Neck</h5><p>PANet</p></div></article>
+                  <article><i class="fa-solid fa-clipboard-check"></i><div><h5>Data Audit</h5><p>Step 1</p></div></article>
+                  <article><i class="fa-solid fa-chart-line"></i><div><h5>EDA &amp; Explore</h5><p>Step 2</p></div></article>
+                  <article><i class="fa-solid fa-vial-circle-check"></i><div><h5>Diagnostic Train</h5><p>Step 3</p></div></article>
+                  <article><i class="fa-solid fa-copy"></i><div><h5>Remove Duplicates</h5><p>Step 5</p></div></article>
+                  <article><i class="fa-solid fa-scale-balanced"></i><div><h5>Balance Dataset</h5><p>Step 6</p></div></article>
+                  <article><i class="fa-solid fa-brain"></i><div><h5>Baseline Train</h5><p>Step 7</p></div></article>
+                </div>
+
+                <div class="framework-band-list" aria-label="Development plan evidence">
+                  <div><strong>DATA QUALITY</strong><span>77,466 duplicate images removed | 16,468 bad data removed | Balanced dataset: ~5,000 images per class</span><i class="fa-solid fa-filter-circle-xmark"></i></div>
+                  <div><strong>MODEL DEVELOPMENT</strong><span>Best data + best architecture + best algorithm settings</span><i class="fa-solid fa-layer-group"></i></div>
+                  <div><strong>VALIDATION &amp; DEPLOYMENT</strong><span>Tune &amp; Optimise → Real-World Test → Live Deployment</span><i class="fa-solid fa-flag-checkered"></i></div>
+                </div>
+
+                <footer class="framework-infographic-footer">
+                  <span>Final Combined Model</span>
+                  <p>Talvin — Data Quality | Chris — Training Algorithm | Naomi — Model Architecture</p>
+                </footer>
+              </div>
             </div>
           </article>
 
