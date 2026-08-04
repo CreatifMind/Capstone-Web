@@ -16,6 +16,8 @@ assert.match(migration, /REVOKE ALL ON public\.model_review_runs FROM anon/);
 assert.match(migration, /REVOKE ALL ON public\.model_review_runs FROM authenticated/);
 assert.match(adminLib, /export async function requireActiveDevelopment\(\)/);
 assert.match(adminLib, /return requireActiveRole\(\["development_team"\]\)/);
+assert.match(adminLib, /export async function requireActiveDevelopmentWorkspace\(\)/);
+assert.match(adminLib, /return requireActiveRole\(\["development_team", "plant_manager"\]\)/);
 
 const middleware = fs.readFileSync("middleware.ts", "utf8");
 assert.match(middleware, /const isModelReviewApi = pathname\.startsWith\("\/api\/model-review\/"\)/);
@@ -55,13 +57,17 @@ assert.match(settingsRoute, /Only the development team can edit the confidence t
 assert.match(settingsRoute, /Only the development team can edit the retrain threshold/);
 assert.match(settingsRoute, /from\("model_review_settings"\)/);
 
+const modelReviewContext = fs.readFileSync("lib/model-review/context.ts", "utf8");
+assert.match(modelReviewContext, /requireActiveDevelopmentWorkspace/);
+assert.match(modelReviewContext, /context\.profile\.role !== "plant_manager"/);
+
 const types = fs.readFileSync("components/model-review-console/types.ts", "utf8");
 const layout = fs.readFileSync("app/development/layout.tsx", "utf8");
 const page = fs.readFileSync("app/development/page.tsx", "utf8");
 assert.match(types, /export type DevelopmentRole = "development_team" \| "plant_manager"/);
 assert.match(types, /export type SharedStats = \{/);
 assert.match(layout, /PageHtml bodyClass="ops-pro-page mrc-page lab-ui dark-ai dark-app"/);
-assert.match(page, /requireActiveDevelopment\(\)/);
+assert.match(page, /requireActiveDevelopmentWorkspace\(\)/);
 assert.match(page, /redirect\("\/login"\)/);
 
 const console_ = fs.readFileSync("components/model-review-console/ModelReviewConsole.tsx", "utf8");

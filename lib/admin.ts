@@ -43,3 +43,7 @@ export async function requireActiveAdmin() {
 export async function requireActiveDevelopment() {
   return requireActiveRole(["development_team"]);
 }
+
+export async function requireActiveDevelopmentWorkspace() {
+  return requireActiveRole(["development_team", "plant_manager"]);
+}

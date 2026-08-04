@@ -74,7 +74,7 @@ test("development team and plant manager have protected role homes", () => {
   assert.match(roles, /"plant_manager"/);
   assert.match(roles, /role === "development_team"\) return "\/development"/);
   assert.match(roles, /role === "plant_manager"\) return "\/overview"/);
-  assert.match(developmentPage, /requireActiveDevelopment\(\)/);
+  assert.match(developmentPage, /requireActiveDevelopmentWorkspace\(\)/);
   assert.match(developmentPage, /export const dynamic = "force-dynamic"/);
 });
 
