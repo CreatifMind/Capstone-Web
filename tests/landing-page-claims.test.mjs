@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync("app/page.tsx", "utf8");
@@ -104,4 +104,32 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "0.579",
     "0.918",
   ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
+
+test("methodology removes separate targets panel while preserving methodology assets", () => {
+  [
+    "TARGETS — NOT FINAL RESULTS",
+    "methodology-target-badge",
+    "methodology-target-list",
+    "Standard class threshold",
+    "Battery / hazardous threshold",
+  ].forEach((text) => assert.doesNotMatch(landingSource, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+
+  [
+    "/assets/DL Framework & Development Plan.png",
+    "/assets/Production Model Success Metrics.png",
+  ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
+
+test("white DL framework infographic asset remains available at expected dimensions", () => {
+  const assetPath = "public/assets/DL Framework & Development Plan.png";
+  const asset = readFileSync(assetPath);
+  const signature = asset.subarray(0, 8).toString("hex");
+  const width = asset.readUInt32BE(16);
+  const height = asset.readUInt32BE(20);
+
+  assert.equal(signature, "89504e470d0a1a0a");
+  assert.equal(width, 1536);
+  assert.equal(height, 1024);
+  assert.ok(statSync(assetPath).size > 100_000);
 });

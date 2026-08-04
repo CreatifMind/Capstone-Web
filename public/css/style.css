@@ -13988,59 +13988,6 @@ body.audit-review-modal-open { overflow: hidden; }
   line-height: 1.2;
 }
 
-.methodology-target-badge {
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
-  color: var(--primary);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.methodology-target-list {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0 0;
-}
-
-.methodology-routing-list {
-  margin-top: 6px;
-}
-
-.methodology-target-list div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
-}
-
-.methodology-target-list dt {
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 900;
-  line-height: 1.2;
-}
-
-.methodology-target-list dd {
-  margin: 0;
-  color: var(--primary);
-  font-size: 0.82rem;
-  font-weight: 950;
-  white-space: nowrap;
-}
-
 .methodology-evidence {
   min-width: 0;
   display: grid;
@@ -14341,7 +14288,6 @@ body.audit-review-modal-open { overflow: hidden; }
 @media (max-width: 640px) {
   .capstone-research-grid,
   .measured-performance-grid,
-  .methodology-target-list,
   .measured-model-facts,
   .measured-insight-grid {
     grid-template-columns: 1fr;

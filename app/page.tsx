@@ -300,18 +300,6 @@ const html = `
               <span class="methodology-index">04 / Validation Criteria</span>
               <h3>Model Acceptance Targets &amp; Routing Rules</h3>
               <p>Proposed performance targets and operational confidence thresholds. These values are validation criteria, not final measured results.</p>
-              <span class="methodology-target-badge">TARGETS — NOT FINAL RESULTS</span>
-              <dl class="methodology-target-list" aria-label="Validation target values">
-                <div><dt>mAP@0.5</dt><dd>&ge; 0.85</dd></div>
-                <div><dt>mAP@0.5:0.95</dt><dd>&ge; 0.70</dd></div>
-                <div><dt>Battery Recall</dt><dd>&ge; 80%</dd></div>
-                <div><dt>Inference Speed</dt><dd>&lt; 50ms</dd></div>
-              </dl>
-              <dl class="methodology-target-list methodology-routing-list" aria-label="Routing rule targets">
-                <div><dt>Standard class threshold</dt><dd>&ge; 0.85</dd></div>
-                <div><dt>Battery / hazardous threshold</dt><dd>&ge; 0.90</dd></div>
-                <div><dt>Below threshold</dt><dd>Human review</dd></div>
-              </dl>
             </div>
             <div class="methodology-evidence">
               <figure class="methodology-figure">
