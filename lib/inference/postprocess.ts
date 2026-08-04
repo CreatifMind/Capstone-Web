@@ -44,7 +44,7 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
   return {
     rawCandidates: CANDIDATE_COUNT,
     confidenceCandidates: candidates.length,
-    detections: reviewDetections.filter(detection => detection.className !== "general_trash"),
+    detections: reviewDetections,
     reviewDetections
   };
 }
