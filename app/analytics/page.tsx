@@ -295,7 +295,7 @@ const html = `
                 <p class="eyebrow">AI Upload Diagnostics</p>
                 <h2>Upload Source: <span data-belt-id>Upload queue</span></h2>
                 <p class="detail-copy" data-belt-insight>Uploaded images are processed by the classifier and routed to
-                  human review only when confidence is below 85%.</p>
+                  human review only when confidence is below 32%.</p>
               </div>
             </div>
 

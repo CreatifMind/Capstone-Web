@@ -137,6 +137,7 @@ REVIEW_DECISIONS_TABLE = "scan_review_decisions"
 JOBS_TABLE = "processing_jobs"
 UPLOAD_SESSIONS_TABLE = "upload_sessions"
 PROCESSED_DRIVE_FILES_TABLE = "processed_drive_files"
+FALSE_POSITIVE_REPORTS_TABLE = "false_positive_reports"
 PREVIEW_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "mock_uploaded_images")
 VIDEO_WORK_ROOT = Path(os.getenv("VIDEO_WORK_ROOT", "/tmp/purityloop"))
 SERVICE_MODE = os.getenv("SERVICE_MODE", "api").strip().lower() or "api"
@@ -160,7 +161,9 @@ OAUTH_DRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
 ]
-CONFIRMATION_THRESHOLD = 0.85
+MODEL_CANDIDATE_THRESHOLD = 0.10
+DECISION_CONFIDENCE_THRESHOLD = 0.32
+CONFIRMATION_THRESHOLD = DECISION_CONFIDENCE_THRESHOLD
 ANALYTICS_PAGE_SIZE = 500
 ANALYTICS_CHILD_PAGE_SIZE = 500
 SCAN_HISTORY_DEFAULT_LIMIT = 10
@@ -184,7 +187,7 @@ ANALYTICS_MATERIAL_ESTIMATES = {
     "battery": {"label": "Battery", "average_weight_kg": 0.023, "price_per_kg_rm": 3.50, "material_class": "contaminant"},
     "cardboard": {"label": "Cardboard", "average_weight_kg": 0.125, "price_per_kg_rm": 0.25, "material_class": "recyclable"},
 }
-BROWSER_CONFIDENCE_THRESHOLD = 0.32
+BROWSER_CONFIDENCE_THRESHOLD = MODEL_CANDIDATE_THRESHOLD
 BROWSER_NMS_IOU_THRESHOLD = 0.70
 BROWSER_MODEL_NAME = "best.onnx"
 BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
@@ -2122,9 +2125,43 @@ def material_status(category: str) -> tuple[str, str]:
     return "unknown", "unknown"
 
 
+def normalized_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(confidence):
+        return 0.0
+    if confidence > 1:
+        confidence = confidence / 100
+    return max(0.0, min(1.0, confidence))
+
+
+def _looks_like_uuid(value: Any) -> bool:
+    try:
+        UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def determine_detection_status(confidence: float, is_contaminant: bool) -> dict[str, str]:
+    if normalized_confidence(confidence) < DECISION_CONFIDENCE_THRESHOLD:
+        return {
+            "review_status": "needs_review",
+            "ai_status": "low_confidence_detection",
+        }
+    return {
+        "review_status": "confirmed",
+        "ai_status": "confirmed_contaminant" if is_contaminant else "confirmed_recyclable",
+    }
+
+
 def evaluate_material(category: str, confidence: float) -> dict:
     material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
-    review_required = category == "general_trash" or confidence < CONFIRMATION_THRESHOLD
+    confidence = normalized_confidence(confidence)
+    status = determine_detection_status(confidence, material_class == "contaminant")
+    review_required = status["review_status"] == "needs_review" or material_class == "unknown"
     decision_status = "review_needed" if review_required else "confirmed"
     if review_required:
         display_status = "Review Needed"
@@ -3087,6 +3124,17 @@ class ReviewDecisionInput(BaseModel):
     reviewer_email: str | None = None
 
 
+class FalsePositiveReportInput(BaseModel):
+    detected_material_id: UUID | None = None
+    expected_category: str
+    reason: str
+    note: str | None = None
+
+
+class FalsePositiveDismissInput(BaseModel):
+    reason: str | None = None
+
+
 class BrowserVerifiedDetection(BaseModel):
     detection_index: int
     class_id: int
@@ -3228,6 +3276,307 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
             })
         validated.append(material)
     return sorted(validated, key=lambda item: item["_detection_index"])
+
+
+FALSE_POSITIVE_REASONS = {
+    "wrong_class",
+    "incorrect_object",
+    "background_false_detection",
+    "duplicate_detection",
+    "low_quality_prediction",
+    "other",
+}
+FALSE_POSITIVE_ACTIVE_STATUSES = {"reported", "queued", "reprocessing", "failed"}
+FALSE_POSITIVE_TERMINAL_STATUSES = {"resolved", "dismissed"}
+FALSE_POSITIVE_REPROCESS_ACTIVE_STATUSES = {"queued", "reprocessing"}
+FALSE_POSITIVE_REVIEW_ROLES = {"development_team", "plant_manager"}
+
+
+def false_positive_log(event: str, **fields: Any) -> None:
+    safe_fields = {
+        key: ("[redacted]" if key.lower() in {"token", "authorization", "service_role_key", "api_key", "password", "signed_url"} else value)
+        for key, value in fields.items()
+    }
+    print(f"[false-positive] {event} {json.dumps(safe_fields, default=str, sort_keys=True)}")
+
+
+def _load_active_profile(database: SupabaseExecutor, principal: Principal) -> dict | None:
+    if principal.kind != "user":
+        return None
+    response = database.execute(
+        lambda client: client.table("user_profiles")
+        .select("id,auth_user_id,email,role,status,deleted_at")
+        .eq("auth_user_id", principal.id)
+        .maybe_single()
+        .execute()
+    )
+    profile = response.data if response else None
+    if not profile or profile.get("status") != "active" or profile.get("deleted_at"):
+        return None
+    return profile
+
+
+def _require_false_positive_principal(database: SupabaseExecutor, principal: Principal) -> dict:
+    profile = _load_active_profile(database, principal)
+    if not profile:
+        raise HTTPException(status_code=403, detail="Active workspace profile is required.")
+    return profile
+
+
+def _require_false_positive_reviewer(database: SupabaseExecutor, principal: Principal) -> dict:
+    profile = _require_false_positive_principal(database, principal)
+    if profile.get("role") not in FALSE_POSITIVE_REVIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Development Team or Plant Manager access is required.")
+    return profile
+
+
+def _first_material(scan: dict, material_id: str | None, database: SupabaseExecutor) -> dict:
+    def select_material(client: Any) -> Any:
+        query = client.table(DETECTED_MATERIALS_TABLE).select("*").eq("scan_result_id", str(scan["id"]))
+        if material_id:
+            query = query.eq("id", material_id)
+        return query.limit(1).execute()
+
+    response = database.execute(select_material)
+    rows = response.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Detected material was not found for this scan.")
+    return rows[0]
+
+
+def _load_scan_for_false_positive(scan_id: str, database: SupabaseExecutor, principal: Principal) -> dict:
+    response = database.execute(
+        lambda client: scoped_query(client.table(SCAN_RESULTS_TABLE).select("*").eq("id", scan_id), principal).execute()
+    )
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Scan result was not found.")
+    return response.data[0]
+
+
+def _safe_false_positive_report(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    return {
+        key: row.get(key)
+        for key in (
+            "id",
+            "original_scan_id",
+            "original_detected_material_id",
+            "batch_id",
+            "processing_job_id",
+            "reported_by",
+            "predicted_category",
+            "predicted_confidence",
+            "expected_category",
+            "reason",
+            "note",
+            "source_type",
+            "source_name",
+            "source_storage_path",
+            "source_drive_file_id",
+            "original_model_version",
+            "original_model_hash",
+            "status",
+            "reprocess_job_id",
+            "reprocessed_scan_id",
+            "reprocess_model_version",
+            "reprocess_model_hash",
+            "failure_reason",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "dismissed_at",
+        )
+    }
+
+
+def resolve_original_upload(scan_id: str, database: SupabaseExecutor, principal: Principal, detected_material_id: str | None = None) -> dict:
+    try:
+        UUID(str(scan_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Scan result was not found.") from exc
+    scan = _load_scan_for_false_positive(str(scan_id), database, principal)
+    material = _first_material(scan, str(detected_material_id) if detected_material_id else None, database)
+    source_type = str(scan.get("source_type") or scan.get("result_kind") or "image")
+    if source_type == "tracked_video" or scan.get("result_kind") in {"video_track_object", "tracked_video_object"}:
+        source_type = "video/mp4"
+    source = {
+        "scan": scan,
+        "material": material,
+        "batch_id": scan.get("batch_id"),
+        "processing_job_id": scan.get("processing_job_id"),
+        "source_type": source_type,
+        "source_name": scan.get("source_name") or scan.get("drive_file_name"),
+        "source_storage_path": scan.get("source_storage_path") or scan.get("source_ref"),
+        "source_drive_file_id": scan.get("drive_file_id"),
+        "original_model_version": scan.get("model_version"),
+        "original_model_hash": scan.get("model_hash"),
+        "source_owner": scan.get("user_id"),
+        "original_category": canonical_category_key(material.get("category") or material.get("material_name")),
+        "original_confidence": normalized_confidence(material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence")),
+    }
+    if not source["source_drive_file_id"] and not source["source_storage_path"]:
+        false_positive_log("false_positive_source_resolution_failed", original_scan_id=scan_id, original_detected_material_id=material.get("id"), safe_error_code="SOURCE_REFERENCE_MISSING")
+        raise HTTPException(status_code=409, detail={"code": "SOURCE_REFERENCE_MISSING", "message": "Original source reference is missing."})
+    false_positive_log(
+        "false_positive_source_resolved",
+        original_scan_id=scan_id,
+        original_detected_material_id=material.get("id"),
+        batch_id=source["batch_id"],
+        source_type=source["source_type"],
+        source_filename=source["source_name"],
+        source_drive_file_id=source["source_drive_file_id"],
+        original_category=source["original_category"],
+        original_confidence=source["original_confidence"],
+    )
+    return source
+
+
+def _load_false_positive_report(database: SupabaseExecutor, report_id: str) -> dict:
+    try:
+        UUID(str(report_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="False-positive report was not found.") from exc
+    response = database.execute(
+        lambda client: client.table(FALSE_POSITIVE_REPORTS_TABLE).select("*").eq("id", report_id).maybe_single().execute()
+    )
+    report = response.data if response else None
+    if not report:
+        raise HTTPException(status_code=404, detail="False-positive report was not found.")
+    return report
+
+
+def _update_false_positive_report(database: SupabaseExecutor, report_id: str, **fields: Any) -> dict:
+    response = database.execute(
+        lambda client: client.table(FALSE_POSITIVE_REPORTS_TABLE)
+        .update({**fields, "updated_at": datetime.now(timezone.utc).isoformat()})
+        .eq("id", report_id)
+        .execute()
+    )
+    rows = response.data or []
+    if not rows:
+        raise HTTPException(status_code=500, detail="Unable to update false-positive report.")
+    return rows[0]
+
+
+def _active_false_positive_for_material(database: SupabaseExecutor, scan_id: str, material_id: str, expected_category: str) -> dict | None:
+    response = database.execute(
+        lambda client: client.table(FALSE_POSITIVE_REPORTS_TABLE)
+        .select("*")
+        .eq("original_scan_id", scan_id)
+        .eq("original_detected_material_id", material_id)
+        .eq("expected_category", expected_category)
+        .in_("status", list(FALSE_POSITIVE_ACTIVE_STATUSES))
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def _find_active_reprocess_job(database: SupabaseExecutor, report: dict) -> dict | None:
+    job_id = report.get("reprocess_job_id")
+    if not job_id:
+        return None
+    response = database.execute(lambda client: client.table(JOBS_TABLE).select("*").eq("id", str(job_id)).maybe_single().execute())
+    job = response.data if response else None
+    if job and str(job.get("status") or "") in {"upload_pending", "queued", "processing"}:
+        return job
+    return None
+
+
+def _create_false_positive_reprocess_job(database: SupabaseExecutor, report: dict, principal: Principal) -> dict:
+    if _find_active_reprocess_job(database, report):
+        false_positive_log("false_positive_reprocess_duplicate_blocked", report_id=report.get("id"), reprocess_job_id=report.get("reprocess_job_id"))
+        raise HTTPException(status_code=409, detail={"message": "A reprocessing job is already queued or running.", "job_id": report.get("reprocess_job_id")})
+    drive_file_id = report.get("source_drive_file_id")
+    if not drive_file_id:
+        updated = _update_false_positive_report(database, str(report["id"]), status="failed", failure_reason="UNSUPPORTED_SOURCE_TYPE")
+        false_positive_log("false_positive_source_resolution_failed", report_id=report.get("id"), safe_error_code="UNSUPPORTED_SOURCE_TYPE")
+        raise HTTPException(status_code=409, detail={"code": "UNSUPPORTED_SOURCE_TYPE", "message": "Only Drive-backed sources can be reprocessed by the current pipeline.", "report": _safe_false_positive_report(updated)})
+    job_row = {
+        "source": "drive_file",
+        "source_ref": drive_file_id,
+        "options": {
+            "job_type": "false_positive_reprocess",
+            "parent_report_id": str(report["id"]),
+            "parent_scan_id": str(report["original_scan_id"]),
+            "parent_job_id": str(report.get("processing_job_id") or ""),
+            "expected_category": report.get("expected_category"),
+        },
+        "created_by": principal.id,
+        "created_by_type": principal.kind,
+    }
+    inserted = database.execute(lambda client: client.table(JOBS_TABLE).insert(job_row).execute().data or [])
+    if not inserted:
+        raise HTTPException(status_code=500, detail="Unable to create reprocessing job.")
+    job = inserted[0]
+    updated = _update_false_positive_report(database, str(report["id"]), status="queued", reprocess_job_id=str(job["id"]), failure_reason=None)
+    if PROCESSING_BACKEND == "cloud-tasks":
+        try:
+            task = enqueue_processing_task(str(job["id"]))
+            database.execute(
+                lambda client: client.table(JOBS_TABLE).update(
+                    {"status": "queued", "dispatched_at": datetime.now(timezone.utc).isoformat(), "dispatch_error": None}
+                ).eq("id", str(job["id"])).execute()
+            )
+        except Exception as exc:
+            updated = _update_false_positive_report(database, str(report["id"]), status="failed", failure_reason=f"QUEUE_FAILURE: {safe_error_message(exc)}")
+            database.execute(
+                lambda client: client.table(JOBS_TABLE).update(
+                    {"status": "queued", "dispatch_error": safe_error_message(exc), "updated_at": datetime.now(timezone.utc).isoformat()}
+                ).eq("id", str(job["id"])).execute()
+            )
+            false_positive_log("false_positive_reprocess_failed", report_id=report.get("id"), reprocess_job_id=job.get("id"), safe_error_code="QUEUE_FAILURE", safe_error_message=safe_error_message(exc))
+            raise HTTPException(status_code=503, detail={"message": "Unable to dispatch reprocessing task.", "report": _safe_false_positive_report(updated)}) from exc
+    false_positive_log("false_positive_reprocess_queued", report_id=report.get("id"), reprocess_job_id=job.get("id"), original_scan_id=report.get("original_scan_id"), source_drive_file_id=drive_file_id)
+    return {"job": job, "report": updated}
+
+
+def _finalize_false_positive_reprocess(database: SupabaseExecutor, job_id: str, scan_ids: list[str]) -> None:
+    response = database.execute(
+        lambda client: client.table(FALSE_POSITIVE_REPORTS_TABLE).select("*").eq("reprocess_job_id", job_id).limit(1).execute()
+    )
+    reports = response.data or []
+    if not reports:
+        return
+    report = reports[0]
+    fields: dict[str, Any] = {
+        "reprocessed_scan_id": scan_ids[0] if scan_ids else None,
+        "reprocess_model_version": os.getenv("MODEL_VERSION", "yolov8-purityloop"),
+        "reprocess_model_hash": os.getenv("MODEL_HASH") or "",
+        "failure_reason": None,
+    }
+    status = "failed"
+    if scan_ids:
+        try:
+            scan = _load_scan_for_false_positive(str(scan_ids[0]), database, Principal("api_key", "worker", frozenset({"scan:read"})))
+            material = _first_material(scan, None, database)
+            new_category = canonical_category_key(material.get("category") or material.get("material_name"))
+            new_confidence = normalized_confidence(material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"))
+            expected = canonical_category_key(report.get("expected_category"))
+            if new_confidence >= DECISION_CONFIDENCE_THRESHOLD and new_category == expected:
+                status = "resolved"
+                fields["resolved_at"] = datetime.now(timezone.utc).isoformat()
+            else:
+                status = "reported"
+            false_positive_log(
+                "false_positive_reprocess_completed" if status == "resolved" else "false_positive_reprocess_unresolved",
+                report_id=report.get("id"),
+                reprocess_job_id=job_id,
+                reprocessed_scan_id=scan_ids[0],
+                expected_category=expected,
+                new_category=new_category,
+                new_confidence=new_confidence,
+                decision_threshold=DECISION_CONFIDENCE_THRESHOLD,
+                report_resolution_decision=status,
+            )
+        except Exception as exc:
+            status = "failed"
+            fields["failure_reason"] = safe_worker_error_message(exc)
+    else:
+        fields["failure_reason"] = "REPROCESSING_CREATED_NO_SCAN"
+    _update_false_positive_report(database, str(report["id"]), status=status, **fields)
 
 
 class UploadStartInput(BaseModel):
@@ -5190,6 +5539,10 @@ def _complete_processing_job(job_id: str, database: SupabaseExecutor, scan_ids: 
             raise
         print(f"[worker] optional completion cleanup skipped: {type(exc).__name__}: {safe_worker_error_message(exc)}")
         _update_job(job_id, database, **completion)
+    try:
+        _finalize_false_positive_reprocess(database, job_id, scan_ids)
+    except Exception as exc:
+        print(f"[false-positive] reprocess completion linkage failed: {type(exc).__name__}: {safe_worker_error_message(exc)}")
 
 
 def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
@@ -5215,12 +5568,13 @@ def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
         raise ValueError("Only Drive file and Drive folder ingestion is enabled; URL ingestion is disabled for SSRF safety.")
 
     scan_ids: list[str] = []
+    is_false_positive_reprocess = isinstance(job.get("options"), dict) and job.get("options", {}).get("job_type") == "false_positive_reprocess"
     for file_id in file_ids:
         existing_response = database.execute(
             lambda client: client.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
         )
         existing = existing_response.data if existing_response else None
-        if existing:
+        if existing and not is_false_positive_reprocess:
             saved = database.execute(
                 lambda client: client.table(SCAN_RESULTS_TABLE).select("id").eq("batch_id", str(job["id"])).execute()
             ).data or []
@@ -5231,10 +5585,11 @@ def _process_job(job: dict, database: SupabaseExecutor) -> list[str]:
             response = client.table(PROCESSED_DRIVE_FILES_TABLE).select("drive_file_id").eq("drive_file_id", file_id).maybe_single().execute()
             return response.data if response and response.data else None
 
-        database.execute(
-            lambda client: client.table(PROCESSED_DRIVE_FILES_TABLE).insert({"drive_file_id": file_id, "scan_result_id": scan_ids[-1] if scan_ids else None}).execute(),
-            recover=recover_processed_file,
-        )
+        if not is_false_positive_reprocess:
+            database.execute(
+                lambda client: client.table(PROCESSED_DRIVE_FILES_TABLE).insert({"drive_file_id": file_id, "scan_result_id": scan_ids[-1] if scan_ids else None}).execute(),
+                recover=recover_processed_file,
+            )
     return scan_ids
 
 
@@ -5260,6 +5615,10 @@ def _worker_loop() -> None:
             job_id = str(active_job["id"])
             scan_ids = _process_job(active_job, database)
             _update_job(job_id, database, status="completed", scan_ids=scan_ids, processed_count=len(scan_ids), total_count=len(scan_ids), completed_at=datetime.now(timezone.utc).isoformat())
+            try:
+                _finalize_false_positive_reprocess(database, job_id, scan_ids)
+            except Exception as exc:
+                print(f"[false-positive] reprocess completion linkage failed: {type(exc).__name__}: {safe_worker_error_message(exc)}")
             active_job = None
         except SupabaseTemporarilyUnavailable:
             # Keep this in-memory job alive. A later retry resumes via persisted frame names.
@@ -5497,6 +5856,184 @@ def process_internal_job(payload: WorkerJobInput):
         except Exception:
             pass
         return JSONResponse(status_code=500, content={"detail": "Processing failed.", "retryable": True})
+
+
+@app.post("/api/scans/{scan_id}/false-positive")
+def create_false_positive_report(scan_id: str, payload: FalsePositiveReportInput, principal: Principal = Depends(require_scope("review:write"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_principal(database, principal)
+    expected_category = canonical_category_key(payload.expected_category)
+    if expected_category == "unknown":
+        raise HTTPException(status_code=400, detail="Expected category is not supported.")
+    reason = str(payload.reason or "").strip().lower()
+    if reason not in FALSE_POSITIVE_REASONS:
+        raise HTTPException(status_code=400, detail="False-positive reason is not supported.")
+    note = str(payload.note or "").strip() if payload.note else None
+    if note and len(note) > 1000:
+        raise HTTPException(status_code=400, detail="False-positive note must be 1000 characters or fewer.")
+    source = resolve_original_upload(scan_id, database, principal, str(payload.detected_material_id) if payload.detected_material_id else None)
+    predicted_category = source["original_category"]
+    if expected_category == predicted_category:
+        raise HTTPException(status_code=400, detail="Expected category must differ from the original prediction.")
+    material_id = str(source["material"].get("id") or "")
+    duplicate = _active_false_positive_for_material(database, str(source["scan"]["id"]), material_id, expected_category)
+    if duplicate:
+        return JSONResponse(status_code=409, content={"ok": False, "duplicate": True, "report": _safe_false_positive_report(duplicate)})
+    row = {
+        "original_scan_id": str(source["scan"]["id"]),
+        "original_detected_material_id": material_id or None,
+        "batch_id": source["batch_id"] if _looks_like_uuid(source["batch_id"]) else None,
+        "processing_job_id": source["processing_job_id"] if _looks_like_uuid(source["processing_job_id"]) else None,
+        "reported_by": principal.id,
+        "predicted_category": predicted_category,
+        "predicted_confidence": source["original_confidence"],
+        "expected_category": expected_category,
+        "reason": reason,
+        "note": note,
+        "source_type": source["source_type"],
+        "source_name": source["source_name"],
+        "source_storage_path": source["source_storage_path"],
+        "source_drive_file_id": source["source_drive_file_id"],
+        "original_model_version": source["original_model_version"],
+        "original_model_hash": source["original_model_hash"],
+        "status": "reported",
+    }
+    inserted = database.execute(lambda client: client.table(FALSE_POSITIVE_REPORTS_TABLE).insert(row).execute().data or [])
+    if not inserted:
+        raise HTTPException(status_code=500, detail="Unable to create false-positive report.")
+    report = inserted[0]
+    false_positive_log(
+        "false_positive_report_created",
+        report_id=report.get("id"),
+        original_scan_id=row["original_scan_id"],
+        original_detected_material_id=row["original_detected_material_id"],
+        reporter_id=principal.id,
+        original_category=predicted_category,
+        original_confidence=source["original_confidence"],
+        expected_category=expected_category,
+        source_type=source["source_type"],
+        source_filename=source["source_name"],
+        original_model_version=source["original_model_version"],
+        original_model_hash=source["original_model_hash"],
+    )
+    return {
+        "ok": True,
+        "report_id": report["id"],
+        "status": report.get("status", "reported"),
+        "original_scan_id": row["original_scan_id"],
+        "predicted_category": predicted_category,
+        "predicted_confidence": source["original_confidence"],
+        "expected_category": expected_category,
+    }
+
+
+@app.get("/api/false-positives/{report_id}")
+def get_false_positive_report(report_id: str, principal: Principal = Depends(require_scope("scan:read"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_principal(database, principal)
+    report = _load_false_positive_report(database, report_id)
+    scan = _load_scan_for_false_positive(str(report["original_scan_id"]), database, principal)
+    material = _first_material(scan, str(report["original_detected_material_id"]) if report.get("original_detected_material_id") else None, database)
+    reprocessed_scan = None
+    if report.get("reprocessed_scan_id"):
+        try:
+            reprocessed_scan = _load_scan_for_false_positive(str(report["reprocessed_scan_id"]), database, principal)
+        except HTTPException:
+            reprocessed_scan = None
+    return {
+        "report": _safe_false_positive_report(report),
+        "original_scan": {
+            "id": scan.get("id"),
+            "source_name": scan.get("source_name") or scan.get("drive_file_name"),
+            "source_type": scan.get("source_type"),
+            "model_version": scan.get("model_version"),
+            "created_at": scan.get("created_at"),
+        },
+        "original_prediction": {
+            "detected_material_id": material.get("id"),
+            "category": report.get("predicted_category"),
+            "confidence": normalized_confidence(report.get("predicted_confidence")),
+        },
+        "reprocessed_result": reprocessed_scan,
+        "decision_threshold": DECISION_CONFIDENCE_THRESHOLD,
+    }
+
+
+@app.get("/api/false-positives")
+def list_false_positive_reports(
+    status: str | None = None,
+    predicted_category: str | None = None,
+    expected_category: str | None = None,
+    scan_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    principal: Principal = Depends(require_scope("scan:read")),
+):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_principal(database, principal)
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    def run(client):
+        query = client.table(FALSE_POSITIVE_REPORTS_TABLE).select("*", count="exact")
+        if status:
+            query = query.eq("status", str(status).strip().lower())
+        if predicted_category:
+            query = query.eq("predicted_category", canonical_category_key(predicted_category))
+        if expected_category:
+            query = query.eq("expected_category", canonical_category_key(expected_category))
+        if scan_id:
+            query = query.eq("original_scan_id", scan_id)
+        return query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+    response = database.execute(run)
+    return {"items": [_safe_false_positive_report(row) for row in (response.data or [])], "total": int(getattr(response, "count", 0) or 0), "limit": limit, "offset": offset}
+
+
+@app.post("/api/false-positives/{report_id}/reprocess")
+def reprocess_false_positive(report_id: str, principal: Principal = Depends(require_scope("scan:write"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_principal(database, principal)
+    report = _load_false_positive_report(database, report_id)
+    if report.get("status") in FALSE_POSITIVE_TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail="Resolved or dismissed reports cannot be reprocessed.")
+    result = _create_false_positive_reprocess_job(database, report, principal)
+    return {"ok": True, "report": _safe_false_positive_report(result["report"]), "job_id": result["job"]["id"], "status": result["report"].get("status", "queued")}
+
+
+@app.post("/api/false-positives/{report_id}/retry")
+def retry_false_positive(report_id: str, principal: Principal = Depends(require_scope("scan:write"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_principal(database, principal)
+    report = _load_false_positive_report(database, report_id)
+    if report.get("status") != "failed":
+        raise HTTPException(status_code=409, detail="Only failed reports can be retried.")
+    result = _create_false_positive_reprocess_job(database, report, principal)
+    return {"ok": True, "report": _safe_false_positive_report(result["report"]), "job_id": result["job"]["id"], "status": result["report"].get("status", "queued")}
+
+
+@app.post("/api/false-positives/{report_id}/dismiss")
+def dismiss_false_positive(report_id: str, payload: FalsePositiveDismissInput | None = None, principal: Principal = Depends(require_scope("review:write"))):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
+    database = SupabaseExecutor(supabase)
+    _require_false_positive_reviewer(database, principal)
+    report = _load_false_positive_report(database, report_id)
+    if report.get("status") == "dismissed":
+        return {"ok": True, "report": _safe_false_positive_report(report)}
+    note = str(payload.reason or "").strip() if payload and payload.reason else ""
+    failure_reason = f"DISMISSED: {note[:500]}" if note else "DISMISSED"
+    updated = _update_false_positive_report(database, report_id, status="dismissed", dismissed_at=datetime.now(timezone.utc).isoformat(), failure_reason=failure_reason)
+    false_positive_log("false_positive_report_dismissed", report_id=report_id, original_scan_id=report.get("original_scan_id"), reporter_id=report.get("reported_by"))
+    return {"ok": True, "report": _safe_false_positive_report(updated)}
 
 
 @app.get("/api/analytics")

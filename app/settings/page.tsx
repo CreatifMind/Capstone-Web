@@ -72,9 +72,9 @@ const html = `
             <h2>Detection confidence</h2>
             <div class="threshold-control">
               <span>Manual review below</span>
-              <strong>85%</strong>
+              <strong>32%</strong>
             </div>
-            <input type="range" min="50" max="99" value="85" aria-label="Detection confidence threshold" disabled />
+            <input type="range" min="10" max="99" value="32" aria-label="Detection confidence threshold" disabled />
           </article>
 
           <article class="settings-card panel bbox-card">
