@@ -171,6 +171,63 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertEqual(main.summarize(battery)["overall_status"], "review_required")
         self.assertEqual(main.summarize([])["overall_status"], "review_required")
 
+    def test_browser_detected_confidence_boundaries_drive_hitl_not_validation(self):
+        cases = [
+            (0.00, True),
+            (0.18, True),
+            (0.3199, True),
+            (0.32, False),
+            (0.75, False),
+            (1.00, False),
+        ]
+        for confidence, review_required in cases:
+            with self.subTest(confidence=confidence):
+                materials = main.validate_browser_detected_detections([
+                    detected(confidence=confidence)
+                ], 640, 480)
+                self.assertEqual(materials[0]["confidence"], round(confidence, 4))
+                self.assertEqual(materials[0]["review_required"], review_required)
+                self.assertEqual(
+                    main.summarize(materials)["overall_status"],
+                    "review_required" if review_required else "accepted",
+                )
+
+    def test_browser_detected_rejects_only_malformed_confidence_values(self):
+        missing = detected()
+        del missing["confidence"]
+        cases = [
+            detected(confidence=-0.01),
+            detected(confidence=1.01),
+            detected(confidence=float("nan")),
+            detected(confidence=float("inf")),
+            detected(confidence=None),
+            missing,
+            detected(confidence="not-a-number"),
+        ]
+        for raw in cases:
+            with self.subTest(confidence=raw.get("confidence", "<missing>")):
+                with self.assertRaises(HTTPException) as context:
+                    main.validate_browser_detected_detections([raw], 640, 480)
+                self.assertEqual(context.exception.status_code, 400)
+
+    def test_mixed_browser_detected_scan_requires_review_when_any_detection_is_low(self):
+        materials = main.validate_browser_detected_detections([
+            detected(detection_index=0, confidence=0.75),
+            detected(detection_index=1, class_id=3, model_class_name="metal", confidence=0.18),
+        ], 640, 480)
+
+        self.assertTrue(any(item["review_required"] for item in materials))
+        self.assertEqual(main.summarize(materials)["overall_status"], "review_required")
+
+    def test_multiple_browser_detected_confirmed_when_all_detections_meet_hitl_threshold(self):
+        materials = main.validate_browser_detected_detections([
+            detected(detection_index=0, confidence=0.32),
+            detected(detection_index=1, class_id=3, model_class_name="metal", confidence=0.91),
+        ], 640, 480)
+
+        self.assertFalse(any(item["review_required"] for item in materials))
+        self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
+
     def test_machine_detected_high_confidence_non_battery_is_accepted(self):
         materials = main.validate_browser_detected_detections([detected()], 640, 480)
         self.assertFalse(materials[0]["review_required"])
@@ -260,6 +317,40 @@ class BrowserVerifiedScanTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
         self.assertEqual(context.exception.detail, "Browser confidence threshold must be 0.32.")
+
+    def test_browser_detected_endpoint_persists_empty_detection_scan_for_review(self):
+        raw = image_bytes()
+        captured = {}
+
+        def fake_persist(file_bytes, filename, source_type, materials, summary, **kwargs):
+            captured.update({
+                "file_bytes": file_bytes,
+                "materials": materials,
+                "summary": summary,
+                "kwargs": kwargs,
+            })
+            return {"scan_result_id": str(kwargs["scan_result_id"]), **summary, "detected_materials": materials}
+
+        with patch.object(main, "persist_scan", side_effect=fake_persist):
+            result = asyncio.run(main.save_browser_detected_scan(
+                file=FakeUpload(raw),
+                submission_id=UUID("44444444-4444-4444-8444-444444444444"),
+                original_width=160,
+                original_height=120,
+                model_name=main.BROWSER_MODEL_NAME,
+                model_version=main.BROWSER_MODEL_VERSION,
+                inference_engine=main.BROWSER_INFERENCE_ENGINE,
+                confidence_threshold=main.BROWSER_DECISION_CONFIDENCE_THRESHOLD,
+                nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
+                detections=json.dumps([]),
+                principal=fake_principal(),
+            ))
+
+        self.assertEqual(result["scan_result_id"], "44444444-4444-4444-8444-444444444444")
+        self.assertEqual(captured["file_bytes"], raw)
+        self.assertEqual(captured["materials"], [])
+        self.assertEqual(captured["summary"]["overall_status"], "review_required")
+        self.assertTrue(captured["summary"]["human_review_required"])
 
     def test_browser_verified_endpoint_persists_annotated_bytes(self):
         raw = image_bytes()

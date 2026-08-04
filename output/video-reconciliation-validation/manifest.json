@@ -1,0 +1,149 @@
+[
+  {
+    "expected_groups": [
+      [
+        "1"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "single track stays single",
+    "video": "output/video-reconciliation-validation/static_one_object.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "7"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "brief lost track resumes nearby",
+    "video": "output/video-reconciliation-validation/occlusion_id_switch.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "raw position shifts but stabilized position agrees",
+    "video": "output/video-reconciliation-validation/panning_stationary.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "large raw shake but reliable stabilized coordinates agree",
+    "video": "output/video-reconciliation-validation/camera_shake.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "moderate camera scale change remains size-compatible",
+    "video": "output/video-reconciliation-validation/scale_change.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "near-full-frame fragment cannot force a false split",
+    "video": "output/video-reconciliation-validation/near_full_frame_fragment.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "edge-clipped fragment joins category-consistent continuation",
+    "video": "output/video-reconciliation-validation/edge_truncated_fragment.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "A-B and B-C edges connect a component without A-C evidence",
+    "video": "output/video-reconciliation-validation/bridge_fragment.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ],
+      [
+        "3"
+      ],
+      [
+        "4"
+      ],
+      [
+        "5"
+      ]
+    ],
+    "expected_physical_objects": 5,
+    "notes": "same-scene objects remain separate",
+    "video": "output/video-reconciliation-validation/five_stationary_objects.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 2,
+    "notes": "same category nearby but simultaneous",
+    "video": "output/video-reconciliation-validation/same_category_nearby.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 1,
+    "notes": "class changes but physical evidence agrees",
+    "video": "output/video-reconciliation-validation/class_change.mp4"
+  },
+  {
+    "expected_groups": [
+      [
+        "1"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "expected_physical_objects": 2,
+    "notes": "coexisting tracks stay separate",
+    "video": "output/video-reconciliation-validation/crossing_paths.mp4"
+  }
+]

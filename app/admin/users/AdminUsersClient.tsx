@@ -71,7 +71,6 @@ export default function AdminUsersClient() {
       .then((body) => { if (body?.profile) setProfile(body.profile); })
       .catch(() => setProfile(null));
   }, []);
-
   const openView = async (user: AdminUser) => {
     setViewTarget(user);
     viewDialog.current?.showModal();

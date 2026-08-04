@@ -159,6 +159,7 @@ SUPABASE_STORAGE_PRIVATE
 VIDEO_WORK_ROOT
 DEFAULT_VIDEO_FPS
 MAX_VIDEO_UPLOAD_BYTES
+VIDEO_DUPLICATE_* and VIDEO_CAMERA_MOTION_MIN_RESPONSE for physical-object reconciliation tuning; defaults are documented in backend/.env.example
 MODEL_PATH only if legacy `/api/predict` or backend PyTorch video inference is intentionally enabled
 MODEL_VERSION
 ALLOWED_ORIGINS

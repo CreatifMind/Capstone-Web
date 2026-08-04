@@ -1,0 +1,503 @@
+{
+  "passed": true,
+  "scenarios": [
+    {
+      "actual_groups": [
+        [
+          "1"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "single track stays single",
+      "passed": true,
+      "peak_memory_bytes": 4969,
+      "processing_time_ms": 0.265,
+      "raw_track_count": 1,
+      "video": "output/video-reconciliation-validation-final/static_one_object.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "7"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1",
+          "7"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "brief lost track resumes nearby",
+      "passed": true,
+      "peak_memory_bytes": 15020,
+      "processing_time_ms": 1.499,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/occlusion_id_switch.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": true,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "panning_stationary-object-0001",
+            "panning_stationary-object-0002"
+          ],
+          "reason": "same physical object evidence accepted",
+          "trajectory_distance": 0.01
+        }
+      ],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 2,
+      "notes": "raw position shifts but stabilized position agrees",
+      "passed": true,
+      "peak_memory_bytes": 36547,
+      "processing_time_ms": 5.65,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/panning_stationary.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": true,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "camera_shake-object-0001",
+            "camera_shake-object-0002"
+          ],
+          "reason": "same physical object evidence accepted",
+          "trajectory_distance": 0.005
+        }
+      ],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 2,
+      "notes": "large raw shake but reliable stabilized coordinates agree",
+      "passed": true,
+      "peak_memory_bytes": 20435,
+      "processing_time_ms": 7.413,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/camera_shake.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "moderate camera scale change remains size-compatible",
+      "passed": true,
+      "peak_memory_bytes": 6731,
+      "processing_time_ms": 2.306,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/scale_change.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "near-full-frame fragment cannot force a false split",
+      "passed": true,
+      "peak_memory_bytes": 6757,
+      "processing_time_ms": 3.721,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/near_full_frame_fragment.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "edge-clipped fragment joins category-consistent continuation",
+      "passed": true,
+      "peak_memory_bytes": 14840,
+      "processing_time_ms": 2.189,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/edge_truncated_fragment.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2",
+          "3"
+        ]
+      ],
+      "association_reasons": [],
+      "expected_groups": [
+        [
+          "1",
+          "2",
+          "3"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 1,
+      "notes": "A-B and B-C edges connect a component without A-C evidence",
+      "passed": true,
+      "peak_memory_bytes": 18370,
+      "processing_time_ms": 7.761,
+      "raw_track_count": 3,
+      "video": "output/video-reconciliation-validation-final/bridge_fragment.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ],
+        [
+          "3"
+        ],
+        [
+          "4"
+        ],
+        [
+          "5"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0001",
+            "five_stationary_objects-object-0002"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.082
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0001",
+            "five_stationary_objects-object-0003"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.222
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0001",
+            "five_stationary_objects-object-0004"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.362
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0001",
+            "five_stationary_objects-object-0005"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.502
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0002",
+            "five_stationary_objects-object-0003"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.082
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0002",
+            "five_stationary_objects-object-0004"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.222
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0002",
+            "five_stationary_objects-object-0005"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.362
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0003",
+            "five_stationary_objects-object-0004"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.082
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0003",
+            "five_stationary_objects-object-0005"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.222
+        },
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "five_stationary_objects-object-0004",
+            "five_stationary_objects-object-0005"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.082
+        }
+      ],
+      "expected_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ],
+        [
+          "3"
+        ],
+        [
+          "4"
+        ],
+        [
+          "5"
+        ]
+      ],
+      "expected_physical_objects": 5,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 5,
+      "first_pass_logical_count": 5,
+      "notes": "same-scene objects remain separate",
+      "passed": true,
+      "peak_memory_bytes": 69382,
+      "processing_time_ms": 54.274,
+      "raw_track_count": 5,
+      "video": "output/video-reconciliation-validation-final/five_stationary_objects.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "same_category_nearby-object-0001",
+            "same_category_nearby-object-0002"
+          ],
+          "reason": "simultaneous low-IoU boxes for 26 frames",
+          "trajectory_distance": 0.112
+        }
+      ],
+      "expected_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 2,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 2,
+      "first_pass_logical_count": 2,
+      "notes": "same category nearby but simultaneous",
+      "passed": true,
+      "peak_memory_bytes": 24915,
+      "processing_time_ms": 4.45,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/same_category_nearby.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": true,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "class_change-object-0001",
+            "class_change-object-0002"
+          ],
+          "reason": "same physical object evidence accepted",
+          "trajectory_distance": 0.0
+        }
+      ],
+      "expected_groups": [
+        [
+          "1",
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 1,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 1,
+      "first_pass_logical_count": 2,
+      "notes": "class changes but physical evidence agrees",
+      "passed": true,
+      "peak_memory_bytes": 25269,
+      "processing_time_ms": 3.38,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/class_change.mp4"
+    },
+    {
+      "actual_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ]
+      ],
+      "association_reasons": [
+        {
+          "accepted": false,
+          "appearance_score": 1.0,
+          "object_ids": [
+            "crossing_paths-object-0001",
+            "crossing_paths-object-0002"
+          ],
+          "reason": "simultaneous low-IoU boxes for 31 frames",
+          "trajectory_distance": 0.362
+        }
+      ],
+      "expected_groups": [
+        [
+          "1"
+        ],
+        [
+          "2"
+        ]
+      ],
+      "expected_physical_objects": 2,
+      "false_merges": 0,
+      "false_splits": 0,
+      "final_physical_cluster_count": 2,
+      "first_pass_logical_count": 2,
+      "notes": "coexisting tracks stay separate",
+      "passed": true,
+      "peak_memory_bytes": 18656,
+      "processing_time_ms": 5.349,
+      "raw_track_count": 2,
+      "video": "output/video-reconciliation-validation-final/crossing_paths.mp4"
+    }
+  ]
+}

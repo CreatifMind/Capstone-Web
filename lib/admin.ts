@@ -32,7 +32,7 @@ export async function requireActiveRole(allowedRoles: readonly Role[]) {
     .maybeSingle<UserProfile>();
   if (profileError || !profile) return { error: "forbidden" as const };
   if (profile.status !== "active" || profile.deleted_at) return { error: "inactive" as const, profile };
-  if (!allowedRoles.includes(profile.role)) return { error: "forbidden" as const, profile };
+  if (profile.role !== "plant_manager" && !allowedRoles.includes(profile.role)) return { error: "forbidden" as const, profile };
   return { user, profile, service };
 }
 

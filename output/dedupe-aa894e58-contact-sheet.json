@@ -1,0 +1,164 @@
+[
+  {
+    "category": "cardboard",
+    "confidence": 0.6919,
+    "frame_range": [
+      119,
+      128
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0005",
+    "scan_id": "0e73ec90-0d86-58d3-ae3b-15c0b901852a",
+    "source_track_ids": [
+      "12",
+      "13"
+    ],
+    "tile": 1
+  },
+  {
+    "category": "plastic",
+    "confidence": 0.7522,
+    "frame_range": [
+      154,
+      173
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0006",
+    "scan_id": "16c70c74-caab-5a7f-af06-6b71a5a4855a",
+    "source_track_ids": [
+      "22"
+    ],
+    "tile": 2
+  },
+  {
+    "category": "plastic",
+    "confidence": 0.7023,
+    "frame_range": [
+      167,
+      301
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0008",
+    "scan_id": "1dea76dd-dad1-5662-89fb-610ee65f1e31",
+    "source_track_ids": [
+      "28",
+      "33",
+      "46"
+    ],
+    "tile": 3
+  },
+  {
+    "category": "plastic",
+    "confidence": 0.7921,
+    "frame_range": [
+      104,
+      170
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0003",
+    "scan_id": "2f31120a-78f3-5941-bdb0-10e521d54923",
+    "source_track_ids": [
+      "10",
+      "23"
+    ],
+    "tile": 4
+  },
+  {
+    "category": "plastic",
+    "confidence": 0.4667,
+    "frame_range": [
+      111,
+      140
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0004",
+    "scan_id": "4d2f42ba-27c6-515e-a89e-5c51463b80a9",
+    "source_track_ids": [
+      "11"
+    ],
+    "tile": 5
+  },
+  {
+    "category": "cardboard",
+    "confidence": 0.4171,
+    "frame_range": [
+      224,
+      231
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0010",
+    "scan_id": "5c409e53-6f25-5f9a-a851-aa8aa7cce794",
+    "source_track_ids": [
+      "38",
+      "39"
+    ],
+    "tile": 6
+  },
+  {
+    "category": "metal",
+    "confidence": 0.7054,
+    "frame_range": [
+      49,
+      174
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0002",
+    "scan_id": "6d78f2ab-b633-5385-a9f3-1bed91099431",
+    "source_track_ids": [
+      "3",
+      "5"
+    ],
+    "tile": 7
+  },
+  {
+    "category": "cardboard",
+    "confidence": 0.9593,
+    "frame_range": [
+      0,
+      94
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0001",
+    "scan_id": "9978d2a2-6017-5348-b3e4-54318380a8f0",
+    "source_track_ids": [
+      "1"
+    ],
+    "tile": 8
+  },
+  {
+    "category": "cardboard",
+    "confidence": 0.9281,
+    "frame_range": [
+      158,
+      301
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0007",
+    "scan_id": "9e371ee9-be8d-5636-9889-071ffa3f4cc4",
+    "source_track_ids": [
+      "26",
+      "42"
+    ],
+    "tile": 9
+  },
+  {
+    "category": "cardboard",
+    "confidence": 0.6382,
+    "frame_range": [
+      235,
+      239
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0011",
+    "scan_id": "bdc32c7f-2040-5063-85fc-f582b42bff6e",
+    "source_track_ids": [
+      "40"
+    ],
+    "tile": 10
+  },
+  {
+    "category": "plastic",
+    "confidence": 0.8253,
+    "frame_range": [
+      194,
+      299
+    ],
+    "logical_object_id": "aa894e58-e4d8-446a-a5f0-69b0600d03a1-object-0009",
+    "scan_id": "e76a7eb7-78f4-51cb-9b45-8e2136a6769b",
+    "source_track_ids": [
+      "35",
+      "37"
+    ],
+    "tile": 11
+  }
+]

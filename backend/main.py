@@ -197,7 +197,7 @@ BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
 GENERAL_TRASH_CATEGORY = "general_trash"
-BROWSER_CONFIDENCE_DETAIL = f"Detection confidence must be between {BROWSER_CONFIDENCE_THRESHOLD:.2f} and 1."
+BROWSER_CONFIDENCE_DETAIL = "Detection confidence must be between 0 and 1."
 BROWSER_DECISION_CONFIDENCE_THRESHOLD = DECISION_CONFIDENCE_THRESHOLD
 BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_DECISION_CONFIDENCE_THRESHOLD:.2f}."
 BROWSER_NMS_CONTRACT_DETAIL = f"Browser NMS IoU threshold must be {BROWSER_NMS_IOU_THRESHOLD:.2f}."
@@ -3176,6 +3176,18 @@ class BrowserDetectedDetection(BaseModel):
     y2: float
 
 
+def validate_detection_confidence(value: object) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Detection confidence must be a valid number.") from exc
+    if not math.isfinite(confidence):
+        raise HTTPException(status_code=400, detail="Detection confidence must be finite.")
+    if not 0.0 <= confidence <= 1.0:
+        raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
+    return confidence
+
+
 def validate_browser_detections(
     raw_detections: Any,
     image_width: int,
@@ -3201,8 +3213,7 @@ def validate_browser_detections(
             raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
         if detection.verified_class not in BROWSER_MODEL_CLASSES:
             raise HTTPException(status_code=400, detail="Verified class is outside the fixed model contract.")
-        if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
+        confidence = validate_detection_confidence(detection.confidence)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -3230,14 +3241,14 @@ def validate_browser_detections(
             "material_name": detection.verified_class,
             "category": category,
             "original_category": original_category if original_category != category else None,
-            "confidence": round(detection.confidence, 4),
+            "confidence": round(confidence, 4),
             "recyclable_status": recyclable_status,
             "contaminant_status": contaminant_status,
             "bbox_x": round((x1 / image_width) * 100, 4),
             "bbox_y": round((y1 / image_height) * 100, 4),
             "bbox_width": round(((x2 - x1) / image_width) * 100, 4),
             "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
-            **evaluate_material(category, detection.confidence),
+            **evaluate_material(category, confidence),
         })
     return sorted(validated, key=lambda item: item["_detection_index"])
 
@@ -3260,8 +3271,7 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
         category_name = BROWSER_MODEL_CLASSES[detection.class_id]
         if detection.model_class_name != category_name:
             raise HTTPException(status_code=400, detail="Detection class ID and model class name do not match.")
-        if not math.isfinite(detection.confidence) or not BROWSER_CONFIDENCE_THRESHOLD <= detection.confidence <= 1:
-            raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_DETAIL)
+        confidence = validate_detection_confidence(detection.confidence)
         coordinates = (detection.x1, detection.y1, detection.x2, detection.y2)
         if not all(math.isfinite(value) for value in coordinates):
             raise HTTPException(status_code=400, detail="Detection coordinates must be finite.")
@@ -3275,14 +3285,14 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
             "_detection_index": detection.detection_index,
             "material_name": category_name,
             "category": category,
-            "confidence": round(detection.confidence, 4),
+            "confidence": round(confidence, 4),
             "recyclable_status": recyclable_status,
             "contaminant_status": contaminant_status,
             "bbox_x": round((x1 / image_width) * 100, 4),
             "bbox_y": round((y1 / image_height) * 100, 4),
             "bbox_width": round(((x2 - x1) / image_width) * 100, 4),
             "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
-            **evaluate_material(category, detection.confidence),
+            **evaluate_material(category, confidence),
         }
         if category == "battery":
             material.update({
