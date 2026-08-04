@@ -24,6 +24,18 @@ class ClassificationTests(unittest.TestCase):
         self.assertFalse(evaluate_material("plastic", 0.32)["review_required"])
         self.assertTrue(evaluate_material("plastic", 0.3199)["review_required"])
 
+    def test_general_trash_always_requires_manual_review(self):
+        for confidence in (0.10, 0.31, 0.32, 0.75, 0.99):
+            material = evaluate_material("general_trash", confidence)
+            self.assertTrue(material["review_required"])
+            self.assertEqual(material["decision_status"], "review_needed")
+            self.assertEqual(material["display_status"], "Review Needed")
+            self.assertEqual(material["disposal_route"], "Manual Audit Queue")
+            self.assertEqual(
+                determine_detection_status(confidence, True, "General Trash"),
+                {"review_status": "needs_review", "ai_status": "manual_review_required"},
+            )
+
     def test_detection_status_helper_splits_review_and_confirmed_states(self):
         self.assertEqual(
             determine_detection_status(0.3199, False),

@@ -25,7 +25,7 @@ assert.match(analyticsPage, /data-drill-target="detail-composition"/);
 assert.match(analyticsPage, /data-drill-target="detail-resale"/);
 assert.match(analyticsPage, /data-drill-target="detail-yield"/);
 assert.match(analyticsPage, /id="analyticsDrillDetails"/);
-assert.match(adminUsersPage, /Add User/);
+assert.match(adminUsersPage, /Create User/);
 assert.match(adminUsersPage, /onSubmit=\{create\}/);
 assert.doesNotMatch(adminUsersPage, /Request Administrator Invite/);
 assert.match(themeSource, /No account or password was saved/);
@@ -55,6 +55,12 @@ assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.79 }).revie
 assert.equal(plEvaluateMaterial({ category: "Textile", confidence: 0.55 }).reviewRequired, false);
 assert.equal(plEvaluateMaterial({ category: "Cardboard", confidence: 0.32 }).displayStatus, "Confirmed Recyclable");
 assert.equal(plEvaluateMaterial({ category: "Cardboard", confidence: 0.3199 }).displayStatus, "Review Needed");
+for (const confidence of [0.10, 0.31, 0.32, 0.75, 0.99]) {
+  const trash = plEvaluateMaterial({ category: "General Trash", confidence });
+  assert.equal(trash.reviewRequired, true);
+  assert.equal(trash.displayStatus, "Review Needed");
+  assert.equal(trash.disposalRoute, "Manual Audit Queue");
+}
 assert.equal(plEvaluateMaterial({ category: "Food Organics", confidence: 0.88 }).displayStatus, "Confirmed Contaminant");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.72, review_decision: { chosen_category: "Battery", disposition: "contaminant" } }).displayStatus, "Confirmed Contaminant");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.72, review_decision: { chosen_category: "Plastic", disposition: "recyclable", outcome: "rejected" } }).displayStatus, "Rejected");
@@ -78,9 +84,9 @@ const overviewScans = [
   { id: "missing-optional", created_at: "2026-07-14T11:00:00.000Z", detected_materials: [] },
 ];
 const overview = plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-14T12:00:00.000Z" });
-assert.equal(overview.reviewCount, 2, "only values below 32% need review");
+assert.equal(overview.reviewCount, 3, "low confidence and General Trash need review");
 assert.equal(overview.allLowConfidenceCount, 2, "resolved low-confidence detections remain visible to the overview");
-assert.equal(overview.confirmedTodayCount, 6, "confirmed contaminants and completed reviews count as confirmed, not review");
+assert.equal(overview.confirmedTodayCount, 5, "confirmed contaminants and completed reviews count as confirmed, not review");
 assert.equal(overview.highRiskCount, 1, "confirmed battery is high risk");
 assert.equal(overview.recoveryOpportunityCount, 3, "only confirmed recyclables with value are recovery opportunities");
 assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 9, "trend includes scans without optional preview/source fields");

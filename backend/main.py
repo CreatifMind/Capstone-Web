@@ -196,6 +196,7 @@ BROWSER_INFERENCE_ENGINE = "browser-onnx"
 BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
+GENERAL_TRASH_CATEGORY = "general_trash"
 BROWSER_CONFIDENCE_DETAIL = f"Detection confidence must be between {BROWSER_CONFIDENCE_THRESHOLD:.2f} and 1."
 BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_CONFIDENCE_THRESHOLD:.2f}."
 BROWSER_NMS_CONTRACT_DETAIL = f"Browser NMS IoU threshold must be {BROWSER_NMS_IOU_THRESHOLD:.2f}."
@@ -2145,7 +2146,12 @@ def _looks_like_uuid(value: Any) -> bool:
         return False
 
 
-def determine_detection_status(confidence: float, is_contaminant: bool) -> dict[str, str]:
+def determine_detection_status(confidence: float, is_contaminant: bool, category: str = "unknown") -> dict[str, str]:
+    if material_category(category) == GENERAL_TRASH_CATEGORY:
+        return {
+            "review_status": "needs_review",
+            "ai_status": "manual_review_required",
+        }
     if normalized_confidence(confidence) < DECISION_CONFIDENCE_THRESHOLD:
         return {
             "review_status": "needs_review",
@@ -2160,7 +2166,7 @@ def determine_detection_status(confidence: float, is_contaminant: bool) -> dict[
 def evaluate_material(category: str, confidence: float) -> dict:
     material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
     confidence = normalized_confidence(confidence)
-    status = determine_detection_status(confidence, material_class == "contaminant")
+    status = determine_detection_status(confidence, material_class == "contaminant", category)
     review_required = status["review_status"] == "needs_review" or material_class == "unknown"
     decision_status = "review_needed" if review_required else "confirmed"
     if review_required:
