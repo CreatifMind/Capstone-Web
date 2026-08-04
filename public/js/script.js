@@ -5,6 +5,9 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB per image
 const MAX_BATCH_IMAGES = 10;
 const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const DEFAULT_SCAN_ASSET = "/assets/items/upload-result-reference.png";
+const PL_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const PL_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const PL_GENERIC_FILE_MIME_TYPES = new Set(["", "application/octet-stream", "binary/octet-stream"]);
 
 function plSafeArray(value) {
   return Array.isArray(value) ? value : [];
@@ -35,6 +38,17 @@ function plSafeFiles(files) {
   } catch {
     return [];
   }
+}
+
+function plFileExtension(name) {
+  const match = String(name || "").toLowerCase().match(/\.[a-z0-9]+$/);
+  return match ? match[0] : "";
+}
+
+function plIsSupportedImageFile(file) {
+  const mime = String(file?.type || "").trim().toLowerCase();
+  if (PL_IMAGE_MIME_TYPES.has(mime)) return true;
+  return PL_GENERIC_FILE_MIME_TYPES.has(mime) && PL_IMAGE_EXTENSIONS.has(plFileExtension(file?.name));
 }
 
 const PL_SCAN_LOGS_KEY = "purityloop_scan_logs";
@@ -1326,7 +1340,7 @@ function initUploadPage() {
   }
 
   function isBrowserOnnxImage(item) {
-    return item?.mediaType === "image" && /^image\/(jpeg|png|webp)$/i.test(String(item.file?.type || ""));
+    return item?.mediaType === "image" && plIsSupportedImageFile(item.file);
   }
 
   function shouldUseBrowserOnnxForItem(item) {
@@ -1621,7 +1635,7 @@ function initUploadPage() {
 
     for (const file of list) {
       const key = `${file.name}|${file.size}|${file.lastModified}`;
-      if (!/^image\/(jpeg|png|webp)$/.test(String(file.type || "").toLowerCase())) {
+      if (!plIsSupportedImageFile(file)) {
         rejectFile(rejected, file.name, "Unsupported file type.", "direct");
         continue;
       }

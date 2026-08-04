@@ -2734,10 +2734,20 @@ def summarize(materials: list[dict]) -> dict:
 
 
 def _image_content_type(filename: str | None, content_type: str | None) -> tuple[str, str]:
-    suffix = (Path(filename or "upload.jpg").suffix or ".jpg").lower()
-    content_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
-    normalized = content_types.get(suffix)
-    if not normalized or (content_type and not content_type.startswith("image/")):
+    suffix = Path(filename or "").suffix.lower()
+    suffix_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    mime_types = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    mime = str(content_type or "").split(";", 1)[0].strip().lower()
+    generic_mime = mime in {"", "application/octet-stream", "binary/octet-stream"}
+    normalized = suffix_types.get(suffix)
+    if normalized:
+        if mime and not (mime.startswith("image/") or generic_mime):
+            raise HTTPException(status_code=400, detail="Upload one JPG, PNG, or WebP image file.")
+        return suffix, normalized
+    if mime in mime_types:
+        inferred_suffix = mime_types[mime]
+        return inferred_suffix, suffix_types[inferred_suffix]
+    if not normalized:
         raise HTTPException(status_code=400, detail="Upload one JPG, PNG, or WebP image file.")
     return suffix, normalized
 

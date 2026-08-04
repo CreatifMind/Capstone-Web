@@ -38,6 +38,13 @@ function loadImage(url: string) {
   });
 }
 
+function isSupportedImageFile(file: File) {
+  const mime = String(file.type || "").trim().toLowerCase();
+  if (["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(mime)) return true;
+  if (mime && mime !== "application/octet-stream" && mime !== "binary/octet-stream") return false;
+  return /\.(jpe?g|png|webp)$/i.test(file.name || "");
+}
+
 export default function UploadBrowserInferenceBridge({ flags }: { flags: UploadBrowserInferenceFlags }) {
   const enabled = flags.single;
 
@@ -47,7 +54,7 @@ export default function UploadBrowserInferenceBridge({ flags }: { flags: UploadB
       flags,
       async detect(file) {
         if (!enabled) throw new Error("Browser ONNX is disabled.");
-        if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+        if (!isSupportedImageFile(file)) {
           throw new Error("Browser ONNX supports JPG, JPEG, PNG, and WEBP images.");
         }
 
