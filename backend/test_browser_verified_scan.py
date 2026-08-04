@@ -176,6 +176,14 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertFalse(materials[0]["review_required"])
         self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
 
+    def test_machine_detected_keeps_browser_candidate_threshold_separate_from_decision_contract(self):
+        materials = main.validate_browser_detected_detections([
+            detected(confidence=main.BROWSER_CONFIDENCE_THRESHOLD)
+        ], 640, 480)
+
+        self.assertEqual(materials[0]["confidence"], main.BROWSER_CONFIDENCE_THRESHOLD)
+        self.assertLess(main.BROWSER_CONFIDENCE_THRESHOLD, main.BROWSER_DECISION_CONFIDENCE_THRESHOLD)
+
     def test_machine_detected_high_confidence_general_trash_requires_review(self):
         materials = main.validate_browser_detected_detections([
             detected(class_id=8, model_class_name="general_trash", confidence=0.98)
@@ -222,7 +230,7 @@ class BrowserVerifiedScanTests(unittest.TestCase):
                 model_name=main.BROWSER_MODEL_NAME,
                 model_version=main.BROWSER_MODEL_VERSION,
                 inference_engine=main.BROWSER_INFERENCE_ENGINE,
-                confidence_threshold=main.BROWSER_CONFIDENCE_THRESHOLD,
+                confidence_threshold=main.BROWSER_DECISION_CONFIDENCE_THRESHOLD,
                 nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
                 detections=json.dumps([detected(x1=20, y1=20, x2=100, y2=90)]),
                 principal=fake_principal(),
@@ -231,6 +239,27 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertEqual(result["scan_result_id"], "22222222-2222-4222-8222-222222222222")
         self.assertEqual(captured["source_type"], "image")
         self.assertNotEqual(captured["file_bytes"], raw)
+
+    def test_browser_detected_endpoint_rejects_candidate_threshold_as_contract_metadata(self):
+        raw = image_bytes()
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(main.save_browser_detected_scan(
+                file=FakeUpload(raw),
+                submission_id=UUID("44444444-4444-4444-8444-444444444444"),
+                original_width=160,
+                original_height=120,
+                model_name=main.BROWSER_MODEL_NAME,
+                model_version=main.BROWSER_MODEL_VERSION,
+                inference_engine=main.BROWSER_INFERENCE_ENGINE,
+                confidence_threshold=main.BROWSER_CONFIDENCE_THRESHOLD,
+                nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
+                detections=json.dumps([detected(x1=20, y1=20, x2=100, y2=90)]),
+                principal=fake_principal(),
+            ))
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(context.exception.detail, "Browser confidence threshold must be 0.32.")
 
     def test_browser_verified_endpoint_persists_annotated_bytes(self):
         raw = image_bytes()
@@ -250,7 +279,7 @@ class BrowserVerifiedScanTests(unittest.TestCase):
                 model_name=main.BROWSER_MODEL_NAME,
                 model_version=main.BROWSER_MODEL_VERSION,
                 inference_engine=main.BROWSER_INFERENCE_ENGINE,
-                confidence_threshold=main.BROWSER_CONFIDENCE_THRESHOLD,
+                confidence_threshold=main.BROWSER_DECISION_CONFIDENCE_THRESHOLD,
                 nms_iou_threshold=main.BROWSER_NMS_IOU_THRESHOLD,
                 verified_detections=json.dumps([detection(x1=20, y1=20, x2=100, y2=90)]),
                 verification_outcome="verified",

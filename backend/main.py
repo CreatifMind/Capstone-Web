@@ -198,7 +198,8 @@ BROWSER_MODEL_CLASSES = (
 )
 GENERAL_TRASH_CATEGORY = "general_trash"
 BROWSER_CONFIDENCE_DETAIL = f"Detection confidence must be between {BROWSER_CONFIDENCE_THRESHOLD:.2f} and 1."
-BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_CONFIDENCE_THRESHOLD:.2f}."
+BROWSER_DECISION_CONFIDENCE_THRESHOLD = DECISION_CONFIDENCE_THRESHOLD
+BROWSER_CONFIDENCE_CONTRACT_DETAIL = f"Browser confidence threshold must be {BROWSER_DECISION_CONFIDENCE_THRESHOLD:.2f}."
 BROWSER_NMS_CONTRACT_DETAIL = f"Browser NMS IoU threshold must be {BROWSER_NMS_IOU_THRESHOLD:.2f}."
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 SUPABASE_RETRY_ATTEMPTS = 6
@@ -6249,7 +6250,7 @@ async def save_browser_detected_scan(
         raise HTTPException(status_code=400, detail="Browser model identity does not match the fixed contract.")
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
-    if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
+    if not math.isclose(confidence_threshold, BROWSER_DECISION_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
         raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
         raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)
@@ -6304,7 +6305,7 @@ async def save_browser_verified_scan(
         raise HTTPException(status_code=400, detail="Browser model identity does not match the fixed contract.")
     if inference_engine != BROWSER_INFERENCE_ENGINE:
         raise HTTPException(status_code=400, detail="Inference engine must be browser-onnx.")
-    if not math.isclose(confidence_threshold, BROWSER_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
+    if not math.isclose(confidence_threshold, BROWSER_DECISION_CONFIDENCE_THRESHOLD, abs_tol=1e-9):
         raise HTTPException(status_code=400, detail=BROWSER_CONFIDENCE_CONTRACT_DETAIL)
     if not math.isclose(nms_iou_threshold, BROWSER_NMS_IOU_THRESHOLD, abs_tol=1e-9):
         raise HTTPException(status_code=400, detail=BROWSER_NMS_CONTRACT_DETAIL)

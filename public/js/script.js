@@ -2262,7 +2262,7 @@ function initUploadPage() {
     formData.append("model_name", "best.onnx");
     formData.append("model_version", PL_BROWSER_MODEL_VERSION);
     formData.append("inference_engine", "browser-onnx");
-    formData.append("confidence_threshold", String(PL_BROWSER_CONFIDENCE_THRESHOLD));
+    formData.append("confidence_threshold", String(PL_DECISION_CONFIDENCE_THRESHOLD));
     formData.append("nms_iou_threshold", String(PL_BROWSER_NMS_IOU_THRESHOLD));
     formData.append("detections", JSON.stringify(detections));
     try {
@@ -2330,7 +2330,7 @@ function initUploadPage() {
     formData.append("model_name", "best.onnx");
     formData.append("model_version", PL_BROWSER_MODEL_VERSION);
     formData.append("inference_engine", "browser-onnx");
-    formData.append("confidence_threshold", String(PL_BROWSER_CONFIDENCE_THRESHOLD));
+    formData.append("confidence_threshold", String(PL_DECISION_CONFIDENCE_THRESHOLD));
     formData.append("nms_iou_threshold", String(PL_BROWSER_NMS_IOU_THRESHOLD));
     formData.append("verified_detections", JSON.stringify(verifiedDetections));
     formData.append("verification_outcome", "verified");
