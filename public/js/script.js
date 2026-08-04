@@ -5122,7 +5122,11 @@ function renderMaterialDetail(materialName, options = {}) {
   panel.querySelectorAll("[data-material-kpi-three]").forEach(el => { el.textContent = "Avg Confidence"; });
   panel.querySelectorAll("[data-material-trend-title]").forEach(el => { el.textContent = "Saved Scan Trend"; });
   panel.querySelectorAll("[data-material-zone-title]").forEach(el => { el.textContent = "Saved Material Status"; });
-  panel.querySelectorAll("[data-material-trend]").forEach(el => renderSparkBars(el, count ? aggregateRow ? [avgConfidence] : materials.map(material => plConfidencePercent(material.confidence)) : [], color));
+  panel.querySelectorAll("[data-material-trend]").forEach(el => {
+    if (!count) { el.innerHTML = `<div class="feed-empty">No saved detections yet.</div>`; return; }
+    if (aggregateRow) { el.innerHTML = `<div class="feed-empty">Per-detection trend isn't available in this summary view (see Avg Confidence above).</div>`; return; }
+    renderSparkBars(el, materials.map(material => plConfidencePercent(material.confidence)), color);
+  });
   panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, zones, color, ""));
 
   if (activate) activateDetailPanel("detail-material");
