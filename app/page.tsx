@@ -317,20 +317,15 @@ const html = `
             <div class="methodology-evidence">
               <div class="measured-performance-panel" aria-label="Measured model performance results">
                 <div class="measured-performance-summary">
-                  <div class="measured-performance-hero">
-                    <span>Primary score</span>
-                    <strong>59.5</strong>
-                    <small>mAP@0.5</small>
-                  </div>
                   <dl class="measured-performance-grid">
-                    <div><dt>Precision</dt><dd>0.606</dd></div>
-                    <div><dt>Recall</dt><dd>0.579</dd></div>
-                    <div><dt>Naming accuracy</dt><dd>0.918</dd></div>
+                    <div><dt>Box mAP@0.5</dt><dd>59.5%</dd><small>Primary detection metric</small></div>
+                    <div><dt>Precision</dt><dd>60.6%</dd><small>Correctness of retained predictions</small></div>
+                    <div><dt>Recall</dt><dd>57.9%</dd><small>Share of target objects detected</small></div>
+                    <div><dt>Validation Set</dt><dd>8K+ images</dd><small>Held-out validation data</small></div>
                   </dl>
                 </div>
                 <dl class="measured-model-facts">
                   <div><dt>Model</dt><dd>YOLOv8m-seg</dd></div>
-                  <div><dt>Validation Set</dt><dd>8K+ images</dd></div>
                   <div><dt>Deployment</dt><dd>best.onnx</dd></div>
                 </dl>
                 <div class="measured-insight-grid">

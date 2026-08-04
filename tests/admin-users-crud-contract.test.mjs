@@ -25,6 +25,14 @@ test("service role and Supabase admin APIs stay out of user-management client", 
   assert.doesNotMatch(adminHelper, /profile\.role !== "plant_manager"/);
 });
 
+test("plant manager can access add and edit controls without exposing delete control", () => {
+  assert.match(client, /profile\?\.role === "admin" \|\| profile\?\.role === "plant_manager"/);
+  assert.match(client, /const canDeleteUsers = profile\?\.role === "admin"/);
+  assert.match(client, /canManageUsers && <button className="admin-add primary-btn"/);
+  assert.match(client, /title="Edit"/);
+  assert.match(client, /\{canDeleteUsers && <button type="button" className="admin-icon-btn danger"/);
+});
+
 test("destructive and self-protection rules are enforced server-side", () => {
   assert.match(itemRoute, /confirmationEmail/);
   assert.match(itemRoute, /SELF_DELETE/);

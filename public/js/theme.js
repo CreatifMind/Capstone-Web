@@ -210,8 +210,11 @@ function initLandingNav() {
   });
 
   // Active section highlight while scrolling
-  const sections = document.querySelectorAll('section[id]');
   const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+  const navTargets = [...new Set([...navLinks].map(link => link.getAttribute('href')).filter(Boolean))];
+  const sections = navTargets
+    .map(href => document.getElementById(href.slice(1)))
+    .filter(Boolean);
   const observer = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {

@@ -14018,72 +14018,61 @@ body.audit-review-modal-open { overflow: hidden; }
 
 .measured-performance-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   margin: 0;
 }
 
 .measured-performance-summary {
-  display: grid;
-  grid-template-columns: minmax(160px, 0.9fr) minmax(0, 2.1fr);
-  gap: 10px;
-  align-items: stretch;
-}
-
-.measured-performance-hero {
   min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--primary) 14%, transparent), transparent),
-    var(--surface);
-}
-
-.measured-performance-hero span,
-.measured-performance-hero small {
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.measured-performance-hero strong {
-  color: var(--primary);
-  font-size: clamp(2.2rem, 5vw, 3.5rem);
-  font-weight: 950;
-  line-height: 0.95;
 }
 
 .measured-performance-grid div {
   min-width: 0;
-  padding: 10px;
+  min-height: 124px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
 }
 
+.measured-performance-grid div:first-child {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, transparent), transparent),
+    var(--surface);
+}
+
 .measured-performance-grid dt {
   color: var(--text-secondary);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 900;
   line-height: 1.3;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .measured-performance-grid dd {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--primary);
-  font-size: 0.78rem;
-  font-weight: 900;
+  font-size: clamp(1.18rem, 2vw, 1.48rem);
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.measured-performance-grid small {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .measured-model-facts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -14279,11 +14268,6 @@ body.audit-review-modal-open { overflow: hidden; }
   .measured-insight-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .measured-performance-summary {
-    grid-template-columns: 1fr;
-  }
-}
 
 @media (max-width: 640px) {
   .capstone-research-grid,

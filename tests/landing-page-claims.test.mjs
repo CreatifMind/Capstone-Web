@@ -99,11 +99,22 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "landingInventoryChart",
     "landingRiskChart",
     "landingProcChart",
-    "59.5",
+    "59.5%",
+    "60.6%",
+    "57.9%",
+    "Box mAP@0.5",
+    "Primary detection metric",
+    "Correctness of retained predictions",
+    "Share of target objects detected",
+    "Held-out validation data",
+  ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+
+  [
+    "Naming accuracy",
     "0.606",
     "0.579",
     "0.918",
-  ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+  ].forEach((text) => assert.doesNotMatch(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 });
 
 test("methodology removes separate targets panel while preserving methodology assets", () => {
@@ -132,4 +143,10 @@ test("white DL framework infographic asset remains available at expected dimensi
   assert.equal(width, 1536);
   assert.equal(height, 1024);
   assert.ok(statSync(assetPath).size > 100_000);
+});
+
+test("landing nav scroll spy observes only sections represented by nav links", () => {
+  assert.match(theme, /const navTargets = \[\.\.\.new Set/);
+  assert.match(theme, /document\.getElementById\(href\.slice\(1\)\)/);
+  assert.doesNotMatch(theme, /const sections = document\.querySelectorAll\('section\\[id\\]'\)/);
 });
