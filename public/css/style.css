@@ -12037,6 +12037,9 @@ body[data-page="analytics"] .analytics-overview.is-error .analytics-chart-wrap {
 @keyframes analyticsOverviewShimmer { to { background-position: -220% 0; } }
 @media (max-width: 1280px) { body[data-page="analytics"] .analytics-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { body[data-page="analytics"] .analytics-overview-grid { grid-template-columns: 1fr; } body[data-page="analytics"] .analytics-overview-card { min-height: 300px; } body[data-page="analytics"] .analytics-manager-actions { min-height: 292px; } }
+body[data-page="analytics"] .analytics-overview-grid-secondary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: stretch; margin-top: 16px; }
+@media (max-width: 1280px) { body[data-page="analytics"] .analytics-overview-grid-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { body[data-page="analytics"] .analytics-overview-grid-secondary { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { body[data-page="analytics"] .analytics-overview.is-loading * { animation: none; } }
 
 /* Analytics uses the shared dark palette rather than its light-only card colors. */
@@ -14778,6 +14781,7 @@ body[data-page="upload"] .upload-queue-item :where(strong, small, p) {
 body[data-page="analytics"] .analytics-overview,
 body[data-page="analytics"] .analytics-kpi-grid,
 body[data-page="analytics"] .analytics-overview-grid,
+body[data-page="analytics"] .analytics-overview-grid-secondary,
 body[data-page="analytics"] .analytics-overview-card,
 body[data-page="analytics"] .analytics-chart-wrap,
 body[data-page="analytics"] .analytics-insight-grid,

@@ -888,6 +888,34 @@ function plGetAnalyticsSummary(options = {}) {
   const lastUploadBatchCount = lastUploadBatchId
     ? allScans.filter(scan => (scan?.batch_id || scan?.batchId || scan?.upload_batch_id) === lastUploadBatchId).length
     : lastUpload ? 1 : 0;
+  const reviewerStats = {};
+  const accuracyByCategory = {};
+  materialRows.forEach(({ material }) => {
+    const decision = material?.review_decision;
+    if (!decision) return;
+    const reviewer = decision.reviewer_email || "Unknown reviewer";
+    const r = reviewerStats[reviewer] || (reviewerStats[reviewer] = { reviewer_email: reviewer, reviewed_count: 0, agree_count: 0, override_count: 0, confirmed_count: 0, rejected_count: 0 });
+    r.reviewed_count += 1;
+    if (decision.outcome === "confirmed") r.confirmed_count += 1; else r.rejected_count += 1;
+    const aiCategory = normalizeMaterialCategory(material.original_category || material.category || material.material_name);
+    const chosenCategory = normalizeMaterialCategory(decision.chosen_category);
+    const agreed = aiCategory === chosenCategory;
+    if (agreed) r.agree_count += 1; else r.override_count += 1;
+    const estimate = MATERIAL_ESTIMATES[aiCategory] || MATERIAL_ESTIMATES["general trash"];
+    const accRow = accuracyByCategory[aiCategory] || (accuracyByCategory[aiCategory] = { category: aiCategory, label: estimate.label, reviewed_count: 0, agree_count: 0 });
+    accRow.reviewed_count += 1;
+    if (agreed) accRow.agree_count += 1;
+  });
+  const reviewerActivity = Object.values(reviewerStats).sort((a, b) => b.reviewed_count - a.reviewed_count);
+  const aiAccuracyByCategory = Object.values(accuracyByCategory)
+    .map(row => ({ ...row, accuracy_pct: row.reviewed_count ? (row.agree_count / row.reviewed_count) * 100 : 0 }))
+    .sort((a, b) => b.reviewed_count - a.reviewed_count);
+  const riskCounts = scans.reduce((acc, scan) => {
+    const risk = String(scan.contamination_risk || "unknown").toLowerCase();
+    acc[risk] = (acc[risk] || 0) + 1;
+    return acc;
+  }, {});
+  const riskSeverityBreakdown = Object.entries(riskCounts).map(([risk, count]) => ({ risk, count })).sort((a, b) => b.count - a.count);
   return {
     scans,
     materials,
@@ -927,7 +955,11 @@ function plGetAnalyticsSummary(options = {}) {
     trendRows: Array.from(trendByDay, ([label, value]) => ({ label, value })),
     highRiskCount,
     recoveryOpportunityCount,
-    recentEvents
+    recentEvents,
+    reviewerActivity,
+    uploadPipelineHealth: null,
+    riskSeverityBreakdown,
+    aiAccuracyByCategory
   };
 }
 
@@ -4563,7 +4595,11 @@ function plAnalyticsSummaryForActiveScope() {
     recentEvents: plSafeArray(payload.recent_events),
     clearedCount: Number(payload.confirmed_count) || 0,
     quarantinedCount: Number(payload.rejected_count) || 0,
-    nonRecyclableCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0)
+    nonRecyclableCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
+    reviewerActivity: plSafeArray(payload.reviewer_activity),
+    uploadPipelineHealth: payload.upload_pipeline_health || null,
+    riskSeverityBreakdown: plSafeArray(payload.risk_severity_breakdown),
+    aiAccuracyByCategory: plSafeArray(payload.ai_accuracy_by_category)
   };
 }
 
@@ -4665,14 +4701,14 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   const chartPrimary = isDark ? "#4ade80" : "#1d7048";
   const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } };
   if (summary.materialMixRows.length) {
-    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.materialMixRows.map(row => row.label), datasets: [{ data: summary.materialMixRows.map(row => row.estimatedWeightKg), backgroundColor: colors, borderColor: chartSurface, borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${plFormatKg(context.raw)}` } } } } });
+    plOverviewChart("overviewMaterialMix", { type: "doughnut", data: { labels: summary.materialMixRows.map(row => row.label), datasets: [{ data: summary.materialMixRows.map(row => row.estimatedWeightKg), backgroundColor: colors, borderColor: chartSurface, borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", onClick: (event, elements) => { if (elements.length) renderMaterialDetail(summary.materialMixRows[elements[0].index].label); }, onHover: (event, elements) => { event.native.target.style.cursor = elements.length ? "pointer" : "default"; }, plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } }, tooltip: { callbacks: { label: context => `${context.label}: ${plFormatKg(context.raw)}` } } } } });
   } else if (plOverviewCharts.overviewMaterialMix) { plOverviewCharts.overviewMaterialMix.destroy(); delete plOverviewCharts.overviewMaterialMix; }
   const valueRows = summary.resaleRows.filter(row => row.estimatedResaleValueRm > 0);
   chartSummary("overviewValueByCategory", valueRows.length ? `Estimated recoverable value by category: ${valueRows.map(row => `${row.label} ${plFormatRm(row.estimatedResaleValueRm)}`).join(", ")}.` : "Recoverable value: no priced materials in the selected period.");
   chartSummary("overviewDailyTrend", summary.scans.length ? `Daily scan trend for the selected period: ${summary.trendRows.map(row => `${row.label} ${row.value}`).join(", ")}.` : "Daily scan trend: no scan activity in the selected period.");
   if (valueRows.length) {
     const valueLabelsPlugin = { id: "overviewValueLabels", afterDatasetsDraw(chart) { const { ctx } = chart; const meta = chart.getDatasetMeta(0); ctx.save(); ctx.fillStyle = chartValueText; ctx.font = "700 10px IBM Plex Sans, Arial"; ctx.textAlign = "center"; meta.data.forEach((bar, index) => ctx.fillText(Number(valueRows[index].estimatedResaleValueRm).toFixed(2), bar.x, Math.max(13, bar.y - 7))); ctx.restore(); } };
-    plOverviewChart("overviewValueByCategory", { type: "bar", plugins: [valueLabelsPlugin], data: { labels: valueRows.map(row => row.label), datasets: [{ data: valueRows.map(row => row.estimatedResaleValueRm), backgroundColor: colors.slice(0, valueRows.length), borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, layout: { padding: { top: 18 } }, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, maxRotation: 0, minRotation: 0 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: value => `RM ${value}` } } }, plugins: { ...chartBase.plugins, tooltip: { callbacks: { label: context => plFormatRm(context.raw) } } } } });
+    plOverviewChart("overviewValueByCategory", { type: "bar", plugins: [valueLabelsPlugin], data: { labels: valueRows.map(row => row.label), datasets: [{ data: valueRows.map(row => row.estimatedResaleValueRm), backgroundColor: colors.slice(0, valueRows.length), borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, layout: { padding: { top: 18 } }, onClick: (event, elements) => { if (elements.length) renderMaterialDetail(valueRows[elements[0].index].label); }, onHover: (event, elements) => { event.native.target.style.cursor = elements.length ? "pointer" : "default"; }, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, maxRotation: 0, minRotation: 0 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, callback: value => `RM ${value}` } } }, plugins: { ...chartBase.plugins, tooltip: { callbacks: { label: context => plFormatRm(context.raw) } } } } });
   } else if (plOverviewCharts.overviewValueByCategory) { plOverviewCharts.overviewValueByCategory.destroy(); delete plOverviewCharts.overviewValueByCategory; }
   if (summary.scans.length) {
     plOverviewChart("overviewDailyTrend", { type: "line", data: { labels: summary.trendRows.map(row => row.label), datasets: [{ data: summary.trendRows.map(row => row.value), borderColor: chartPrimary, backgroundColor: isDark ? "rgba(74, 222, 128, 0.14)" : "rgba(84, 201, 121, 0.12)", fill: true, tension: 0.3, pointBackgroundColor: chartSurface, pointBorderColor: chartPrimary, pointBorderWidth: 2, pointRadius: 3 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 }, autoSkip: true, maxTicksLimit: 7 } }, y: { beginAtZero: true, grid: { color: chartGrid }, ticks: { color: chartText, precision: 0 } } } } });
@@ -4732,6 +4768,7 @@ function initAnalyticsOverview() {
       plAnalyticsDateData = { summary: payload };
       render();
       updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
+      updateAnalyticsSecondaryPanels(plAnalyticsSummaryForActiveScope());
     } catch (error) {
       if (requestId !== plAnalyticsRequestId) return;
       console.error("PurityLoop: date analytics refresh failed.", error);
@@ -4884,7 +4921,7 @@ function updateAnalyticsDetailPanels(summary) {
   if (resaleBody) {
     resaleBody.innerHTML = summary.resaleRows.length
       ? summary.resaleRows.map(row => `
-          <tr>
+          <tr data-material-detail="${row.label}" style="cursor:pointer;" tabindex="0">
             <td>${row.label}</td>
             <td>${plFormatKg(row.estimatedWeightKg)}</td>
             <td>RM ${row.pricePerKg.toFixed(2)}/kg</td>
@@ -4945,6 +4982,106 @@ function updateAnalyticsDetailPanels(summary) {
           </tr>
         `).join("")
       : `<tr><td colspan="6"><div class="feed-empty">No scan history yet.</div></td></tr>`;
+  }
+}
+
+function updateAnalyticsSecondaryPanels(summary) {
+  const isDark = document.documentElement.dataset.theme === "dark";
+  const colors = isDark ? ["#4ade80", "#22d3ee", "#60a5fa", "#fbbf24", "#86efac", "#f87171", "#5eead4", "#94a3b8", "#fb923c"] : ["#54c979", "#35bfb4", "#4285e8", "#dca73a", "#90caa8", "#d85769", "#5e9f9d", "#7a8893", "#f08b58"];
+  const chartText = isDark ? "#a9bbb0" : "#52635a";
+  const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } };
+
+  // Reviewer Activity
+  const reviewerList = document.getElementById("analyticsReviewerActivity");
+  if (reviewerList) {
+    reviewerList.innerHTML = summary.reviewerActivity.length
+      ? summary.reviewerActivity.slice(0, 4).map(row => `
+          <div class="analytics-action-row">
+            <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+            <div><strong>${plEscapeHtml(row.reviewer_email)}</strong><span>${row.agree_count} agreed, ${row.override_count} overrode</span></div>
+            <b>${row.reviewed_count}</b>
+          </div>
+        `).join("")
+      : `<p class="analytics-empty-action">No reviewer activity yet.</p>`;
+  }
+  plOverviewSet("reviewer-summary", summary.reviewerActivity.length ? `${summary.reviewerActivity.length} reviewer(s) active in this period.` : "No reviewer activity in the selected period.");
+  const reviewersBody = document.getElementById("detail-reviewers")?.querySelector("tbody");
+  if (reviewersBody) {
+    reviewersBody.innerHTML = summary.reviewerActivity.length
+      ? summary.reviewerActivity.map(row => `
+          <tr>
+            <td>${plEscapeHtml(row.reviewer_email)}</td>
+            <td>${row.reviewed_count}</td>
+            <td>${row.agree_count}</td>
+            <td>${row.override_count}</td>
+            <td>${row.confirmed_count}</td>
+            <td>${row.rejected_count}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="6"><div class="feed-empty">No reviewer data yet.</div></td></tr>`;
+  }
+
+  // Upload Pipeline Health
+  const pipeline = summary.uploadPipelineHealth;
+  plOverviewSet("pipeline-summary", pipeline ? `${pipeline.total_jobs} upload job(s), ${pipeline.jobs_with_retries} needed a retry.` : "Upload pipeline health needs a live backend connection.");
+  if (pipeline && pipeline.total_jobs > 0) {
+    const statusEntries = Object.entries(pipeline.status_counts);
+    plOverviewChart("overviewPipelineHealth", { type: "bar", data: { labels: statusEntries.map(([status]) => status), datasets: [{ data: statusEntries.map(([, count]) => count), backgroundColor: colors, borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 } } }, y: { beginAtZero: true, ticks: { color: chartText, precision: 0 } } } } });
+  } else if (plOverviewCharts.overviewPipelineHealth) { plOverviewCharts.overviewPipelineHealth.destroy(); delete plOverviewCharts.overviewPipelineHealth; }
+  const pipelinePanel = document.getElementById("detail-pipeline");
+  if (pipelinePanel) {
+    const totalEl = pipelinePanel.querySelector("[data-pipeline-total]");
+    if (totalEl) totalEl.textContent = pipeline ? pipeline.total_jobs : 0;
+    const durationEl = pipelinePanel.querySelector("[data-pipeline-duration]");
+    if (durationEl) durationEl.textContent = pipeline && Number.isFinite(pipeline.average_processing_duration_ms) ? plFormatReviewTurnaround(pipeline.average_processing_duration_ms) : "No completed jobs";
+    const retriesEl = pipelinePanel.querySelector("[data-pipeline-retries]");
+    if (retriesEl) retriesEl.textContent = pipeline ? pipeline.jobs_with_retries : 0;
+    const failedEl = pipelinePanel.querySelector("[data-pipeline-failed-items]");
+    if (failedEl) failedEl.textContent = `${pipeline ? pipeline.failed_items_total : 0} failed items`;
+    const statusList = pipelinePanel.querySelector("[data-pipeline-status]");
+    if (statusList) renderBarRows(statusList, pipeline ? Object.entries(pipeline.status_counts) : [], "#2f6f8f", "");
+    const recentBody = pipelinePanel.querySelector("[data-pipeline-recent]");
+    if (recentBody) {
+      recentBody.innerHTML = pipeline && pipeline.recent_jobs.length
+        ? pipeline.recent_jobs.map(job => `
+            <tr>
+              <td>${plEscapeHtml(job.source || "Unknown")}</td>
+              <td>${plEscapeHtml(job.status || "unknown")}</td>
+              <td>${job.processed_count ?? 0}/${job.total_count ?? 0}</td>
+              <td>${job.attempts ?? 0}</td>
+              <td>${job.created_at ? plFormatScanTime({ created_at: job.created_at }) : "—"}</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="5"><div class="feed-empty">No upload jobs yet.</div></td></tr>`;
+    }
+  }
+
+  // Risk Severity
+  const riskRows = summary.riskSeverityBreakdown.map(row => [row.risk, row.count]);
+  plOverviewSet("risk-summary", riskRows.length ? `Risk levels across ${summary.riskSeverityBreakdown.reduce((sum, row) => sum + row.count, 0)} scan(s).` : "No risk data in the selected period.");
+  if (riskRows.length) {
+    plOverviewChart("overviewRiskSeverity", { type: "doughnut", data: { labels: riskRows.map(([label]) => label), datasets: [{ data: riskRows.map(([, value]) => value), backgroundColor: colors, borderWidth: 2 }] }, options: { ...chartBase, cutout: "70%", plugins: { ...chartBase.plugins, legend: { display: true, position: "bottom", labels: { boxWidth: 8, boxHeight: 8, padding: 10, color: chartText, font: { size: 10 } } } } } });
+  } else if (plOverviewCharts.overviewRiskSeverity) { plOverviewCharts.overviewRiskSeverity.destroy(); delete plOverviewCharts.overviewRiskSeverity; }
+  const riskList = document.getElementById("detail-risk")?.querySelector("[data-risk-rows]");
+  if (riskList) renderBarRows(riskList, riskRows, "#d85769", "");
+
+  // AI Accuracy by Category
+  plOverviewSet("accuracy-summary", summary.aiAccuracyByCategory.length ? `Accuracy tracked across ${summary.aiAccuracyByCategory.length} categor${summary.aiAccuracyByCategory.length === 1 ? "y" : "ies"}.` : "No reviewed materials in the selected period.");
+  if (summary.aiAccuracyByCategory.length) {
+    plOverviewChart("overviewAiAccuracy", { type: "bar", data: { labels: summary.aiAccuracyByCategory.map(row => row.label), datasets: [{ data: summary.aiAccuracyByCategory.map(row => Number(row.accuracy_pct.toFixed(1))), backgroundColor: colors, borderRadius: 5, maxBarThickness: 34 }] }, options: { ...chartBase, onClick: (event, elements) => { if (elements.length) renderMaterialDetail(summary.aiAccuracyByCategory[elements[0].index].label); }, onHover: (event, elements) => { event.native.target.style.cursor = elements.length ? "pointer" : "default"; }, scales: { x: { grid: { display: false }, ticks: { color: chartText, font: { size: 10 } } }, y: { beginAtZero: true, max: 100, ticks: { color: chartText, callback: value => `${value}%` } } } } });
+  } else if (plOverviewCharts.overviewAiAccuracy) { plOverviewCharts.overviewAiAccuracy.destroy(); delete plOverviewCharts.overviewAiAccuracy; }
+  const accuracyBody = document.getElementById("detail-accuracy")?.querySelector("tbody");
+  if (accuracyBody) {
+    accuracyBody.innerHTML = summary.aiAccuracyByCategory.length
+      ? summary.aiAccuracyByCategory.map(row => `
+          <tr data-material-detail="${row.label}" style="cursor:pointer;" tabindex="0">
+            <td>${row.label}</td>
+            <td>${row.reviewed_count}</td>
+            <td>${row.agree_count}</td>
+            <td>${row.accuracy_pct.toFixed(1)}%</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="4"><div class="feed-empty">No accuracy data yet.</div></td></tr>`;
   }
 }
 
@@ -5063,18 +5200,27 @@ function initDrillThrough() {
     });
   });
 
-  document.querySelectorAll("[data-material-detail]").forEach(trigger => {
-    trigger.addEventListener("click", function (event) {
+  document.addEventListener("click", function (event) {
+    const materialTrigger = event.target.closest("[data-material-detail]");
+    if (materialTrigger) {
       event.stopPropagation();
-      renderMaterialDetail(trigger.dataset.materialDetail);
-    });
+      renderMaterialDetail(materialTrigger.dataset.materialDetail);
+      return;
+    }
+    const beltTrigger = event.target.closest("[data-belt-detail]");
+    if (beltTrigger) {
+      event.stopPropagation();
+      renderStationDetail(beltTrigger.dataset.beltDetail);
+    }
   });
 
-  document.querySelectorAll("[data-belt-detail]").forEach(trigger => {
-    trigger.addEventListener("click", function (event) {
-      event.stopPropagation();
-      renderStationDetail(trigger.dataset.beltDetail);
-    });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const materialTrigger = event.target.closest("[data-material-detail]");
+    if (materialTrigger && materialTrigger.tagName !== "BUTTON") {
+      event.preventDefault();
+      renderMaterialDetail(materialTrigger.dataset.materialDetail);
+    }
   });
 
   if (document.querySelector(".belt-detail-output")) {
