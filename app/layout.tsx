@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   }
 };
 
+const assetVersion = Date.now();
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -72,8 +74,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.8.0/countUp.umd.js"
           strategy="afterInteractive"
         />
-        <Script src="/js/theme.js" strategy="afterInteractive" />
-        <Script src="/js/script.js" strategy="afterInteractive" />
+        <Script src={`/js/theme.js?v=${assetVersion}`} strategy="afterInteractive" />
+        <Script src={`/js/script.js?v=${assetVersion}`} strategy="afterInteractive" />
       </body>
     </html>
   );
