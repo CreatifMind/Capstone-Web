@@ -30,7 +30,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel
 from supabase import create_client
 from ultralytics import YOLO
@@ -275,8 +275,50 @@ VIDEO_TRACK_RECOVERY_CENTER_DISTANCE = float(os.getenv("VIDEO_TRACK_RECOVERY_CEN
 VIDEO_LOGICAL_MERGE_MAX_GAP = max(1, int(os.getenv("VIDEO_LOGICAL_MERGE_MAX_GAP", "90")))
 VIDEO_LOGICAL_MERGE_CENTER_DISTANCE = float(os.getenv("VIDEO_LOGICAL_MERGE_CENTER_DISTANCE", "0.22"))
 VIDEO_LOGICAL_MERGE_SIZE_RATIO = float(os.getenv("VIDEO_LOGICAL_MERGE_SIZE_RATIO", "0.65"))
+VIDEO_DUPLICATE_MAX_GAP = max(1, int(os.getenv("VIDEO_DUPLICATE_MAX_GAP", str(VIDEO_LOGICAL_MERGE_MAX_GAP))))
+VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES = max(0, int(os.getenv("VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES", "5")))
+VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES = max(VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES, int(os.getenv("VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES", "10")))
+VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES = max(1, int(os.getenv("VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES", "12")))
+VIDEO_DUPLICATE_CENTER_DISTANCE = float(os.getenv("VIDEO_DUPLICATE_CENTER_DISTANCE", "0.18"))
+VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE = float(os.getenv("VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE", "0.12"))
+VIDEO_DUPLICATE_IOU = float(os.getenv("VIDEO_DUPLICATE_IOU", "0.08"))
+VIDEO_DUPLICATE_OVERLAP_IOU = float(os.getenv("VIDEO_DUPLICATE_OVERLAP_IOU", "0.30"))
+VIDEO_DUPLICATE_STRONG_OVERLAP_IOU = float(os.getenv("VIDEO_DUPLICATE_STRONG_OVERLAP_IOU", "0.90"))
+VIDEO_DUPLICATE_SIZE_RATIO = float(os.getenv("VIDEO_DUPLICATE_SIZE_RATIO", "0.65"))
+VIDEO_DUPLICATE_STRONG_SIZE_RATIO = float(os.getenv("VIDEO_DUPLICATE_STRONG_SIZE_RATIO", "0.70"))
+VIDEO_DUPLICATE_APPEARANCE_SIMILARITY = float(os.getenv("VIDEO_DUPLICATE_APPEARANCE_SIMILARITY", "0.82"))
+VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY = float(os.getenv("VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY", "0.45"))
+VIDEO_DUPLICATE_STABLE_TRACK_FRAMES = max(1, int(os.getenv("VIDEO_DUPLICATE_STABLE_TRACK_FRAMES", "18")))
+VIDEO_DUPLICATE_FULL_FRAME_AREA = float(os.getenv("VIDEO_DUPLICATE_FULL_FRAME_AREA", "0.70"))
+VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN = float(os.getenv("VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN", "0.015"))
+VIDEO_CAMERA_MOTION_MIN_RESPONSE = float(os.getenv("VIDEO_CAMERA_MOTION_MIN_RESPONSE", "0.03"))
+VIDEO_DUPLICATE_MIN_OBSERVATION_CONFIDENCE = float(os.getenv("VIDEO_DUPLICATE_MIN_OBSERVATION_CONFIDENCE", "0.25"))
+VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS = max(1, int(os.getenv("VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS", "3")))
+VIDEO_DUPLICATE_HANDOVER_MEDIAN_IOU = float(os.getenv("VIDEO_DUPLICATE_HANDOVER_MEDIAN_IOU", "0.80"))
+VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP = max(1, int(os.getenv("VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP", "18")))
+VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP = max(1, int(os.getenv("VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP", "30")))
 VIDEO_TRACKER_CONFIG = os.getenv("VIDEO_TRACKER_CONFIG", "config/bytetrack_purityloop.yaml")
 VIDEO_TRACK_DEBUG_LOGS = os.getenv("VIDEO_TRACK_DEBUG_LOGS", "true").lower() != "false"
+VIDEO_PHYSICAL_RECONCILIATION_DEFAULTS = {
+    "VIDEO_DUPLICATE_MAX_GAP": "Maximum frame gap considered for automatic fragment association. Higher reduces false splits but increases pair checks.",
+    "VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES": "Brief overlap allowed for likely old/new ByteTrack ID handovers.",
+    "VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES": "Upper bound for short overlap when boxes strongly agree.",
+    "VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES": "Duration at which simultaneous low-IoU boxes become a hard separation blocker.",
+    "VIDEO_DUPLICATE_CENTER_DISTANCE": "Maximum raw or stabilized endpoint distance for non-overlapping fragments.",
+    "VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE": "Tighter distance for overlap handovers.",
+    "VIDEO_DUPLICATE_OVERLAP_IOU": "Minimum overlap-frame IoU used to reject separate simultaneous boxes.",
+    "VIDEO_DUPLICATE_STRONG_OVERLAP_IOU": "IoU threshold for a brief ID handover.",
+    "VIDEO_DUPLICATE_SIZE_RATIO": "Minimum compatible width/height ratio; prevents merging differently sized objects.",
+    "VIDEO_DUPLICATE_APPEARANCE_SIMILARITY": "Object-only crop similarity that supports a merge.",
+    "VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY": "Strong object-only appearance mismatch blocker.",
+    "VIDEO_DUPLICATE_FULL_FRAME_AREA": "Representative boxes above this normalized area are low-quality and cannot be positive appearance evidence.",
+    "VIDEO_DUPLICATE_MIN_OBSERVATION_CONFIDENCE": "Minimum confidence for an observation to support a hard separation decision.",
+    "VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS": "Minimum valid observations required before a track can prove sustained separation.",
+    "VIDEO_DUPLICATE_HANDOVER_MEDIAN_IOU": "Median reliable overlap IoU that supports a brief ByteTrack ID handover.",
+    "VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP": "Maximum gap for category-consistent broad or clipped fragment bridges.",
+    "VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP": "Maximum gap for clipped fragments supported by object-only appearance.",
+    "VIDEO_CAMERA_MOTION_MIN_RESPONSE": "Minimum phase-correlation response for camera-motion compensation; invalid motion is ignored.",
+}
 
 
 def _coerce_float(value: Any, fallback: float = 0.0) -> float:
@@ -347,6 +389,311 @@ def _bbox_size(box: list[float] | None) -> tuple[float, float, float]:
     return width, height, aspect
 
 
+def _bits_to_hex(bits: list[int]) -> str:
+    value = 0
+    for bit in bits:
+        value = (value << 1) | (1 if bit else 0)
+    return f"{value:0{(len(bits) + 3) // 4}x}" if bits else ""
+
+
+def _hex_similarity(first: str | None, second: str | None) -> float | None:
+    if not first or not second:
+        return None
+    try:
+        first_bits = bin(int(first, 16))[2:].zfill(len(first) * 4)
+        second_bits = bin(int(second, 16))[2:].zfill(len(second) * 4)
+    except ValueError:
+        return None
+    length = min(len(first_bits), len(second_bits))
+    if length <= 0:
+        return None
+    distance = sum(1 for index in range(length) if first_bits[index] != second_bits[index])
+    return 1.0 - (distance / length)
+
+
+def _histogram_similarity(first: list[float] | None, second: list[float] | None) -> float | None:
+    if not first or not second:
+        return None
+    length = min(len(first), len(second))
+    dot = sum(_coerce_float(first[index]) * _coerce_float(second[index]) for index in range(length))
+    first_norm = math.sqrt(sum(_coerce_float(value) ** 2 for value in first[:length]))
+    second_norm = math.sqrt(sum(_coerce_float(value) ** 2 for value in second[:length]))
+    return dot / (first_norm * second_norm) if first_norm and second_norm else None
+
+
+def appearance_fingerprint_from_bytes(image_bytes: bytes | None, *, bbox: list[float] | None = None, padding_ratio: float = 0.0, strip_top_ratio: float = 0.0, max_bytes: int = 2 * 1024 * 1024) -> dict | None:
+    if not image_bytes or len(image_bytes) > max_bytes:
+        return None
+    try:
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    except Exception:
+        return None
+    width, height = image.size
+    used_object_crop = False
+    if bbox and len(bbox) >= 4:
+        x1, y1, x2, y2 = [_coerce_float(value) for value in bbox[:4]]
+        if max(x1, y1, x2, y2) <= 1:
+            x1, x2 = x1 * width, x2 * width
+            y1, y2 = y1 * height, y2 * height
+        pad_x = max(0.0, x2 - x1) * max(0.0, padding_ratio)
+        pad_y = max(0.0, y2 - y1) * max(0.0, padding_ratio)
+        left, top = max(0, int(x1 - pad_x)), max(0, int(y1 - pad_y))
+        right, bottom = min(width, int(x2 + pad_x)), min(height, int(y2 + pad_y))
+        if right > left and bottom > top:
+            image = image.crop((left, top, right, bottom))
+            width, height = image.size
+            used_object_crop = True
+    if strip_top_ratio > 0 and height > 12:
+        image = image.crop((0, min(height - 1, int(height * strip_top_ratio)), width, height))
+    image = ImageOps.autocontrast(image.resize((64, 64)))
+    gray = image.convert("L")
+    small = list(gray.resize((8, 8)).getdata())
+    mean = sum(small) / len(small)
+    average_hash = _bits_to_hex([1 if value >= mean else 0 for value in small])
+    dhash_pixels = list(gray.resize((9, 8)).getdata())
+    edge_bits = []
+    for row in range(8):
+        offset = row * 9
+        edge_bits.extend(1 if dhash_pixels[offset + col] > dhash_pixels[offset + col + 1] else 0 for col in range(8))
+    histogram: list[float] = []
+    for channel in image.split():
+        bins = [0] * 8
+        for value in channel.getdata():
+            bins[min(7, int(value) // 32)] += 1
+        total = sum(bins) or 1
+        histogram.extend(round(item / total, 6) for item in bins)
+    return {
+        "average_hash": average_hash,
+        "edge_hash": _bits_to_hex(edge_bits),
+        "color_histogram": histogram,
+        "source": "object_crop" if used_object_crop else "crop_bytes",
+    }
+
+
+def appearance_similarity(first: dict | None, second: dict | None) -> dict:
+    if not first or not second:
+        return {"status": "appearance unavailable", "score": None}
+    average_score = _hex_similarity(first.get("average_hash"), second.get("average_hash"))
+    edge_score = _hex_similarity(first.get("edge_hash"), second.get("edge_hash"))
+    color_score = _histogram_similarity(first.get("color_histogram"), second.get("color_histogram"))
+    scores = [value for value in (average_score, edge_score, color_score) if value is not None]
+    if not scores:
+        return {"status": "hash missing", "score": None}
+    fallback = sum(scores) / len(scores)
+    score = (0.35 * (average_score if average_score is not None else fallback)) + (0.35 * (edge_score if edge_score is not None else fallback)) + (0.30 * (color_score if color_score is not None else fallback))
+    return {
+        "status": "appearance compared successfully",
+        "score": round(score, 4),
+        "average_hash_similarity": round(average_score, 4) if average_score is not None else None,
+        "edge_similarity": round(edge_score, 4) if edge_score is not None else None,
+        "color_histogram_similarity": round(color_score, 4) if color_score is not None else None,
+    }
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _fingerprint_quality(item: dict) -> float:
+    source = str(item.get("source") or "").lower()
+    if "full_frame" in source or "context" in source:
+        return 0.0
+    return max(0.0, min(1.0, _coerce_float(item.get("quality_score"), 1.0)))
+
+
+def _appearance_evidence(first: dict, second: dict) -> dict:
+    first_items = (first.get("track_debug") or {}).get("appearance_fingerprints") or []
+    second_items = (second.get("track_debug") or {}).get("appearance_fingerprints") or []
+    comparisons = []
+    for first_item in first_items:
+        for second_item in second_items:
+            pair_quality = min(_fingerprint_quality(first_item), _fingerprint_quality(second_item))
+            if pair_quality < 0.5:
+                continue
+            current = appearance_similarity(first_item, second_item)
+            if current.get("score") is None:
+                continue
+            comparisons.append({
+                **current,
+                "quality": round(pair_quality, 4),
+                "frames": [first_item.get("frame"), second_item.get("frame")],
+            })
+    if not comparisons:
+        return {
+            "status": "appearance unavailable",
+            "score": None,
+            "best_valid_similarity": None,
+            "strongest_median_similarity": None,
+            "valid_pair_count": 0,
+            "agreeing_pair_count": 0,
+            "conflicting_pair_count": 0,
+        }
+    comparisons.sort(key=lambda item: (_coerce_float(item.get("score")), _coerce_float(item.get("quality"))), reverse=True)
+    scores = [_coerce_float(item.get("score")) for item in comparisons]
+    strongest = scores[: min(3, len(scores))]
+    best = comparisons[0]
+    return {
+        **best,
+        "status": "appearance compared successfully",
+        "score": round(_median(strongest) or 0.0, 4),
+        "best_valid_similarity": round(scores[0], 4),
+        "strongest_median_similarity": round(_median(strongest) or 0.0, 4),
+        "valid_pair_count": len(comparisons),
+        "agreeing_pair_count": sum(score >= VIDEO_DUPLICATE_APPEARANCE_SIMILARITY for score in scores),
+        "conflicting_pair_count": sum(score < VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY for score in scores),
+    }
+
+
+def _best_appearance_similarity(first: dict, second: dict) -> dict:
+    return _appearance_evidence(first, second)
+
+
+def _bounded_representative_fingerprints(items: list[dict], limit: int = 5) -> list[dict]:
+    by_frame = {
+        int(_coerce_float(item.get("frame"))): item
+        for item in items
+        if isinstance(item, dict) and item.get("frame") is not None
+    }
+    ordered = [by_frame[frame] for frame in sorted(by_frame)]
+    if len(ordered) <= limit:
+        return ordered
+    candidates = [
+        ordered[0],
+        ordered[len(ordered) // 2],
+        ordered[-1],
+        max(ordered, key=lambda item: (_coerce_float(item.get("confidence")), -int(_coerce_float(item.get("frame"))))),
+        max(ordered, key=lambda item: (_fingerprint_quality(item), _coerce_float(item.get("confidence")), -int(_coerce_float(item.get("frame"))))),
+    ]
+    selected = {int(_coerce_float(item.get("frame"))): item for item in candidates}
+    if len(selected) < limit:
+        for item in sorted(ordered, key=lambda value: (_fingerprint_quality(value), _coerce_float(value.get("confidence"))), reverse=True):
+            selected.setdefault(int(_coerce_float(item.get("frame"))), item)
+            if len(selected) >= limit:
+                break
+    return [selected[frame] for frame in sorted(selected)][:limit]
+
+
+def _bbox_quality(box: list[float] | None) -> dict:
+    if not box or len(box) < 4:
+        return {"score": 0.0, "valid": False, "reason": "bbox missing"}
+    x1, y1, x2, y2 = [_coerce_float(value) for value in box[:4]]
+    width = max(0.0, x2 - x1)
+    height = max(0.0, y2 - y1)
+    area = width * height
+    touches_edge = (
+        x1 <= VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN
+        or y1 <= VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN
+        or x2 >= 1.0 - VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN
+        or y2 >= 1.0 - VIDEO_DUPLICATE_TRUNCATED_EDGE_MARGIN
+    )
+    if width <= 0 or height <= 0:
+        return {"score": 0.0, "valid": False, "reason": "bbox invalid"}
+    if area >= VIDEO_DUPLICATE_FULL_FRAME_AREA:
+        return {"score": 0.05, "valid": False, "reason": "bbox near full frame", "area": round(area, 4)}
+    score = 1.0
+    if touches_edge:
+        score -= 0.35
+    if area < 0.005:
+        score -= 0.25
+    return {
+        "score": round(max(0.0, score), 4),
+        "valid": score >= 0.5,
+        "reason": "valid" if score >= 0.5 else "low quality bbox",
+        "area": round(area, 4),
+        "touches_edge": touches_edge,
+    }
+
+
+class VideoCameraMotionState:
+    """Small deterministic global-translation estimator for future MP4 reconciliation."""
+
+    def __init__(self, width: int, height: int):
+        self.width = max(1, int(width))
+        self.height = max(1, int(height))
+        self.previous_gray = None
+        self.dx = 0.0
+        self.dy = 0.0
+        self.valid_frames = 0
+        self.failed_frames = 0
+        self.latest_status = "not_started"
+
+    def observe(self, frame: Any, frame_index: int) -> dict:
+        try:
+            import cv2
+            import numpy as np
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            small = cv2.resize(gray, (232, 416)).astype(np.float32)
+            if self.previous_gray is None:
+                self.previous_gray = small
+                self.latest_status = "reference"
+                self.valid_frames += 1
+                return self.metadata(frame_index, response=None)
+            (step_x, step_y), response = cv2.phaseCorrelate(small, self.previous_gray)
+            self.previous_gray = small
+            if response < VIDEO_CAMERA_MOTION_MIN_RESPONSE:
+                self.failed_frames += 1
+                self.latest_status = "weak_phase_correlation"
+                return self.metadata(frame_index, response=response)
+            self.dx += float(step_x) * (self.width / 232)
+            self.dy += float(step_y) * (self.height / 416)
+            self.valid_frames += 1
+            self.latest_status = "ok"
+            return self.metadata(frame_index, response=response)
+        except Exception:
+            self.failed_frames += 1
+            self.latest_status = "motion_estimate_failed"
+            return self.metadata(frame_index, response=None)
+
+    def metadata(self, frame_index: int, *, response: float | None) -> dict:
+        return {
+            "frame": frame_index,
+            "status": self.latest_status,
+            "valid": self.latest_status in {"reference", "ok"},
+            "dx": round(self.dx, 4),
+            "dy": round(self.dy, 4),
+            "response": round(response, 4) if response is not None else None,
+            "valid_frames": self.valid_frames,
+            "failed_frames": self.failed_frames,
+        }
+
+    def scene_center_for_bbox(self, box: list[float] | None) -> dict | None:
+        if self.latest_status not in {"reference", "ok"} or not box:
+            return None
+        cx, cy = _bbox_center(box)
+        return {
+            "x": round((cx * self.width + self.dx) / self.width, 6),
+            "y": round((cy * self.height + self.dy) / self.height, 6),
+        }
+
+    def summary(self) -> dict:
+        return {
+            "status": "ok" if self.valid_frames > 1 else self.latest_status,
+            "valid_frames": self.valid_frames,
+            "failed_frames": self.failed_frames,
+            "dx": round(self.dx, 4),
+            "dy": round(self.dy, 4),
+            "min_response": VIDEO_CAMERA_MOTION_MIN_RESPONSE,
+        }
+
+
+def attach_camera_motion_to_detections(detections: list[dict], motion: VideoCameraMotionState, motion_meta: dict) -> list[dict]:
+    output = []
+    for detection in detections:
+        enriched = dict(detection)
+        scene_center = motion.scene_center_for_bbox(enriched.get("bbox"))
+        if scene_center:
+            enriched["scene_center"] = scene_center
+            enriched["camera_motion_status"] = motion_meta.get("status")
+            enriched["camera_motion_response"] = motion_meta.get("response")
+            enriched["camera_motion_reliable"] = bool(motion_meta.get("valid"))
+        output.append(enriched)
+    return output
+
+
 @dataclass
 class VideoTrackState:
     key: str
@@ -364,8 +711,10 @@ class VideoTrackState:
     best_frame_bytes: bytes | None = None
     best_frame_dimensions: dict | None = None
     best_crop_bytes: bytes | None = None
+    appearance_fingerprints: list[dict] = field(default_factory=list)
     counted: bool = False
     last_center: tuple[float, float] | None = None
+    scene_path: list[dict] = field(default_factory=list)
 
 
 class VideoTrackAggregator:
@@ -458,6 +807,16 @@ class VideoTrackAggregator:
         state.confidences.append(confidence)
         center = _bbox_center(box)
         state.path.append({"frame": frame_index, "timestamp": round(timestamp, 3), "x": round(center[0], 4), "y": round(center[1], 4)})
+        scene_center = detection.get("scene_center") if isinstance(detection.get("scene_center"), dict) else None
+        if scene_center and scene_center.get("x") is not None and scene_center.get("y") is not None:
+            state.scene_path.append({
+                "frame": frame_index,
+                "timestamp": round(timestamp, 3),
+                "x": round(_coerce_float(scene_center.get("x")), 6),
+                "y": round(_coerce_float(scene_center.get("y")), 6),
+                "motion_status": detection.get("camera_motion_status"),
+                "motion_response": detection.get("camera_motion_response"),
+            })
         self._update_counting_line(state, center)
         observation = {
             "frame": frame_index,
@@ -468,6 +827,14 @@ class VideoTrackAggregator:
             "bbox": box,
             "bbox_percent": detection.get("bbox_percent"),
         }
+        if scene_center:
+            observation["scene_center"] = {
+                "x": round(_coerce_float(scene_center.get("x")), 6),
+                "y": round(_coerce_float(scene_center.get("y")), 6),
+            }
+            observation["camera_motion_status"] = detection.get("camera_motion_status")
+            observation["camera_motion_response"] = detection.get("camera_motion_response")
+            observation["camera_motion_reliable"] = bool(detection.get("camera_motion_reliable"))
         _video_debug(
             "track_observation",
             scan_id=self.upload_id,
@@ -478,6 +845,18 @@ class VideoTrackAggregator:
             bbox=box,
         )
         state.observations.append(observation)
+        fingerprint = appearance_fingerprint_from_bytes(detection.get("crop_bytes"), strip_top_ratio=0.0)
+        if fingerprint:
+            bbox_quality = _bbox_quality(box)
+            fingerprint = {
+                **fingerprint,
+                "frame": frame_index,
+                "confidence": round(confidence, 4),
+                "quality_score": bbox_quality.get("score"),
+                "bbox_quality": bbox_quality.get("reason"),
+            }
+            state.appearance_fingerprints.append(fingerprint)
+            state.appearance_fingerprints = _bounded_representative_fingerprints(state.appearance_fingerprints)
         if confidence >= _coerce_float(state.best_observation.get("confidence"), -1):
             state.best_observation = {
                 **observation,
@@ -560,6 +939,8 @@ class VideoTrackAggregator:
         best_norm_box = state.best_observation.get("bbox") or []
         start_center = state.path[0] if state.path else {"x": 0, "y": 0}
         end_center = state.path[-1] if state.path else {"x": 0, "y": 0}
+        start_scene_center = state.scene_path[0] if state.scene_path else None
+        end_scene_center = state.scene_path[-1] if state.scene_path else None
         widths, heights, aspects = [], [], []
         for observation in state.observations:
             width, height, aspect = _bbox_size(observation.get("bbox"))
@@ -588,6 +969,8 @@ class VideoTrackAggregator:
             "track_counted": True if not self.counting_line else state.counted,
             "track_start_center": {"x": start_center.get("x", 0), "y": start_center.get("y", 0)},
             "track_end_center": {"x": end_center.get("x", 0), "y": end_center.get("y", 0)},
+            **({"track_start_scene_center": {"x": start_scene_center.get("x"), "y": start_scene_center.get("y")}} if start_scene_center else {}),
+            **({"track_end_scene_center": {"x": end_scene_center.get("x"), "y": end_scene_center.get("y")}} if end_scene_center else {}),
             "track_avg_width": round(sum(widths) / len(widths), 6) if widths else 0,
             "track_avg_height": round(sum(heights) / len(heights), 6) if heights else 0,
             "track_avg_aspect_ratio": round(sum(aspects) / len(aspects), 6) if aspects else 0,
@@ -606,6 +989,8 @@ class VideoTrackAggregator:
                 "frame_observations": state.observations,
                 "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
                 "raw_track_ids": sorted(state.raw_track_ids),
+                "appearance_fingerprints": state.appearance_fingerprints,
+                "stabilized_track_path": state.scene_path,
                 "representative_frame_dimensions": state.best_frame_dimensions,
                 "representative_bbox_format": "normalized_original_frame_xyxy",
             },
@@ -3527,6 +3912,613 @@ def _track_temporal_gap(first: dict, second: dict) -> int:
     return max(0, int(_coerce_float(second.get("track_first_frame"))) - int(_coerce_float(first.get("track_last_frame"))))
 
 
+def _track_overlap_frames(first: dict, second: dict) -> int:
+    start = max(int(_coerce_float(first.get("track_first_frame"))), int(_coerce_float(second.get("track_first_frame"))))
+    end = min(int(_coerce_float(first.get("track_last_frame"))), int(_coerce_float(second.get("track_last_frame"))))
+    return max(0, end - start + 1)
+
+
+def _track_observations(track: dict) -> list[dict]:
+    debug = track.get("track_debug") or {}
+    return sorted(
+        [item for item in debug.get("frame_observations", []) if isinstance(item, dict)],
+        key=lambda item: int(_coerce_float(item.get("frame"))),
+    )
+
+
+def _observation_quality(observation: dict) -> dict:
+    bbox_quality = _bbox_quality(observation.get("bbox"))
+    confidence = _coerce_float(observation.get("confidence"))
+    valid = bool(bbox_quality.get("valid")) and confidence >= VIDEO_DUPLICATE_MIN_OBSERVATION_CONFIDENCE
+    return {
+        **bbox_quality,
+        "confidence": round(confidence, 4),
+        "reliable": valid,
+    }
+
+
+def _track_evidence_quality(track: dict) -> dict:
+    observations = _track_observations(track)
+    qualities = [_observation_quality(item) for item in observations]
+    reliable = [item for item in qualities if item.get("reliable")]
+    boxes = [item.get("bbox") for item in observations if _observation_quality(item).get("reliable")]
+    widths = [max(0.0, _coerce_float(box[2]) - _coerce_float(box[0])) for box in boxes if isinstance(box, list) and len(box) >= 4]
+    heights = [max(0.0, _coerce_float(box[3]) - _coerce_float(box[1])) for box in boxes if isinstance(box, list) and len(box) >= 4]
+    width_steps = [min(first, second) / max(first, second) for first, second in zip(widths, widths[1:]) if max(first, second) > 0]
+    height_steps = [min(first, second) / max(first, second) for first, second in zip(heights, heights[1:]) if max(first, second) > 0]
+    width_stability = _median(width_steps) if width_steps else (1.0 if widths else 0.0)
+    height_stability = _median(height_steps) if height_steps else (1.0 if heights else 0.0)
+    representative = _bbox_quality(track.get("best_bbox_norm"))
+    near_full = representative.get("reason") == "bbox near full frame"
+    edge_fraction = (
+        sum(bool(item.get("touches_edge")) for item in qualities) / len(qualities)
+        if qualities else 0.0
+    )
+    reliable_track = (
+        len(reliable) >= VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS
+        and min(width_stability, height_stability) >= 0.35
+    )
+    return {
+        "observation_count": len(observations),
+        "valid_observation_count": len(reliable),
+        "box_stability": round(min(width_stability, height_stability), 4),
+        "edge_fraction": round(edge_fraction, 4),
+        "near_full_frame": near_full,
+        "partial_or_broad": near_full or bool(representative.get("touches_edge")) or edge_fraction >= 0.5,
+        "reliable_track": reliable_track,
+        "representative": representative,
+    }
+
+
+def _track_class_votes(track: dict) -> dict[str, float]:
+    debug = track.get("track_debug") or {}
+    votes = {str(key): _coerce_float(value) for key, value in (debug.get("class_votes") or {}).items()}
+    if not votes and track.get("category"):
+        votes[str(track["category"])] = _coerce_float(track.get("track_max_confidence") or track.get("confidence"), 1.0)
+    return votes
+
+
+def _class_vote_similarity(first: dict, second: dict) -> float:
+    first_votes = _track_class_votes(first)
+    second_votes = _track_class_votes(second)
+    keys = set(first_votes) | set(second_votes)
+    if not keys:
+        return 0.0
+    dot = sum(first_votes.get(key, 0.0) * second_votes.get(key, 0.0) for key in keys)
+    first_norm = math.sqrt(sum(value * value for value in first_votes.values()))
+    second_norm = math.sqrt(sum(value * value for value in second_votes.values()))
+    return dot / (first_norm * second_norm) if first_norm and second_norm else 0.0
+
+
+def _track_endpoint_boxes(first: dict, second: dict) -> tuple[list[float] | None, list[float] | None]:
+    ordered = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    previous, current = ordered
+    previous_observations = _track_observations(previous)
+    current_observations = _track_observations(current)
+    previous_box = (previous_observations[-1].get("bbox") if previous_observations else previous.get("best_bbox_norm")) or []
+    current_box = (current_observations[0].get("bbox") if current_observations else current.get("best_bbox_norm")) or []
+    return previous_box, current_box
+
+
+def _trajectory_distance(previous: dict, current: dict) -> dict:
+    previous_raw = [item for item in previous.get("track_path") or [] if isinstance(item, dict)]
+    current_raw = [item for item in current.get("track_path") or [] if isinstance(item, dict)]
+    previous_scene = [
+        item for item in (previous.get("track_debug") or {}).get("stabilized_track_path") or []
+        if isinstance(item, dict) and str(item.get("motion_status") or "ok") in {"ok", "reference"}
+    ]
+    current_scene = [
+        item for item in (current.get("track_debug") or {}).get("stabilized_track_path") or []
+        if isinstance(item, dict) and str(item.get("motion_status") or "ok") in {"ok", "reference"}
+    ]
+
+    def window_distance(first_path: list[dict], second_path: list[dict]) -> float | None:
+        pairs = []
+        for first_item in first_path[-5:]:
+            for second_item in second_path[:5]:
+                if first_item.get("x") is None or first_item.get("y") is None or second_item.get("x") is None or second_item.get("y") is None:
+                    continue
+                pairs.append(math.hypot(
+                    _coerce_float(first_item.get("x")) - _coerce_float(second_item.get("x")),
+                    _coerce_float(first_item.get("y")) - _coerce_float(second_item.get("y")),
+                ))
+        return _median(sorted(pairs)[: min(5, len(pairs))]) if pairs else None
+
+    raw_distance = window_distance(previous_raw, current_raw)
+    if raw_distance is None:
+        previous_center = previous.get("track_end_center") or {}
+        current_center = current.get("track_start_center") or {}
+        raw_distance = math.hypot(
+            _coerce_float(previous_center.get("x")) - _coerce_float(current_center.get("x")),
+            _coerce_float(previous_center.get("y")) - _coerce_float(current_center.get("y")),
+        )
+    stabilized_distance = window_distance(previous_scene, current_scene)
+    if stabilized_distance is None:
+        previous_center = previous.get("track_end_scene_center") or {}
+        current_center = current.get("track_start_scene_center") or {}
+        if all(center.get("x") is not None and center.get("y") is not None for center in (previous_center, current_center)):
+            stabilized_distance = math.hypot(
+                _coerce_float(previous_center.get("x")) - _coerce_float(current_center.get("x")),
+                _coerce_float(previous_center.get("y")) - _coerce_float(current_center.get("y")),
+            )
+    return {
+        "raw": raw_distance,
+        "stabilized": stabilized_distance,
+        "selected": stabilized_distance if stabilized_distance is not None else raw_distance,
+        "stabilized_used": stabilized_distance is not None,
+        "raw_observations": [len(previous_raw), len(current_raw)],
+        "stabilized_observations": [len(previous_scene), len(current_scene)],
+    }
+
+
+def _track_overlap_iou(first: dict, second: dict) -> dict:
+    first_by_frame = {
+        int(_coerce_float(item.get("frame"))): item
+        for item in _track_observations(first)
+        if item.get("frame") is not None
+    }
+    second_by_frame = {
+        int(_coerce_float(item.get("frame"))): item
+        for item in _track_observations(second)
+        if item.get("frame") is not None
+    }
+    values = []
+    reliable_values = []
+    for frame in sorted(set(first_by_frame) & set(second_by_frame)):
+        first_item, second_item = first_by_frame[frame], second_by_frame[frame]
+        value = _bbox_iou(first_item.get("bbox"), second_item.get("bbox"))
+        values.append(value)
+        if _observation_quality(first_item).get("reliable") and _observation_quality(second_item).get("reliable"):
+            reliable_values.append(value)
+    if not values:
+        return {"max": None, "avg": None, "median": None, "reliable_pair_count": 0, "reliable_median": None}
+    return {
+        "max": round(max(values), 4),
+        "avg": round(sum(values) / len(values), 4),
+        "median": round(_median(values) or 0.0, 4),
+        "reliable_pair_count": len(reliable_values),
+        "reliable_median": round(_median(reliable_values), 4) if reliable_values else None,
+    }
+
+
+def _track_appearance_score(first: dict, second: dict) -> float | None:
+    compared = _best_appearance_similarity(first, second)
+    if compared.get("score") is not None:
+        return _coerce_float(compared.get("score"))
+    first_bytes = first.get("_best_crop_bytes")
+    second_bytes = second.get("_best_crop_bytes")
+    if first_bytes and second_bytes:
+        return 1.0 if hashlib.sha256(first_bytes).hexdigest() == hashlib.sha256(second_bytes).hexdigest() else 0.0
+    return None
+
+
+def _track_verified(track: dict) -> bool:
+    debug = track.get("track_debug") or {}
+    values = {
+        str(track.get("review_status") or "").lower(),
+        str(track.get("verification_status") or "").lower(),
+        str(track.get("overall_status") or "").lower(),
+        str(debug.get("review_status") or "").lower(),
+        str(debug.get("verification_status") or "").lower(),
+    }
+    return bool(debug.get("human_verified")) or bool(track.get("human_verified")) or "verified" in values or "confirmed" in values
+
+
+def _duplicate_canonical_sort_key(track: dict) -> tuple[int, int, float, float, int, float, str]:
+    preview_quality = _bbox_quality(track.get("best_bbox_norm"))
+    evidence_quality = _track_evidence_quality(track)
+    return (
+        1 if _track_verified(track) else 0,
+        1 if preview_quality.get("valid") else 0,
+        _coerce_float(preview_quality.get("score")),
+        _coerce_float(track.get("track_max_confidence") or track.get("confidence")),
+        int(_coerce_float(evidence_quality.get("valid_observation_count"))),
+        _coerce_float(track.get("track_avg_confidence")),
+        "".join(chr(255 - ord(ch)) for ch in str(track.get("stable_object_id") or track.get("object_uid") or track.get("track_id") or "")),
+    )
+
+
+def _duplicate_evidence(first: dict, second: dict) -> dict:
+    ordered = sorted(
+        [first, second],
+        key=lambda item: (int(_coerce_float(item.get("track_first_frame"))), _object_id(item)),
+    )
+    previous, current = ordered
+    gap = 0 if _track_time_overlap(previous, current) else _track_temporal_gap(previous, current)
+    overlap = _track_overlap_frames(previous, current)
+    trajectory = _trajectory_distance(previous, current)
+    raw_distance = _coerce_float(trajectory.get("raw"))
+    stabilized_distance = trajectory.get("stabilized")
+    distance = _coerce_float(trajectory.get("selected"))
+    previous_box, current_box = _track_endpoint_boxes(previous, current)
+    iou = _bbox_iou(previous_box, current_box)
+    overlap_iou = _track_overlap_iou(previous, current)
+    overlap_iou_max = _coerce_float(overlap_iou.get("max"), 0.0)
+    overlap_iou_reliable_median = _coerce_float(overlap_iou.get("reliable_median"), 0.0)
+    reliable_overlap_pairs = int(_coerce_float(overlap_iou.get("reliable_pair_count")))
+    simultaneously_visible = overlap > 0
+    width_ratio = min(_coerce_float(first.get("track_avg_width")), _coerce_float(second.get("track_avg_width"))) / max(_coerce_float(first.get("track_avg_width")), _coerce_float(second.get("track_avg_width")), 1e-9)
+    height_ratio = min(_coerce_float(first.get("track_avg_height")), _coerce_float(second.get("track_avg_height"))) / max(_coerce_float(first.get("track_avg_height")), _coerce_float(second.get("track_avg_height")), 1e-9)
+    aspect_ratio = min(_coerce_float(first.get("track_avg_aspect_ratio")), _coerce_float(second.get("track_avg_aspect_ratio"))) / max(_coerce_float(first.get("track_avg_aspect_ratio")), _coerce_float(second.get("track_avg_aspect_ratio")), 1e-9)
+    size_ratio = min(width_ratio, height_ratio)
+    area_ratio = min(
+        _coerce_float(first.get("track_avg_width")) * _coerce_float(first.get("track_avg_height")),
+        _coerce_float(second.get("track_avg_width")) * _coerce_float(second.get("track_avg_height")),
+    ) / max(
+        _coerce_float(first.get("track_avg_width")) * _coerce_float(first.get("track_avg_height")),
+        _coerce_float(second.get("track_avg_width")) * _coerce_float(second.get("track_avg_height")),
+        1e-9,
+    )
+    appearance_detail = _appearance_evidence(first, second)
+    appearance = _coerce_float(appearance_detail.get("score")) if appearance_detail.get("score") is not None else _track_appearance_score(first, second)
+    class_vote_similarity = _class_vote_similarity(first, second)
+    same_category = str(first.get("category")) == str(second.get("category"))
+    first_track_quality = _track_evidence_quality(first)
+    second_track_quality = _track_evidence_quality(second)
+    first_quality = first_track_quality["representative"]
+    second_quality = second_track_quality["representative"]
+    partial_pair = first_track_quality.get("partial_or_broad") or second_track_quality.get("partial_or_broad")
+    best_appearance = appearance_detail.get("best_valid_similarity")
+    appearance_strong = best_appearance is not None and _coerce_float(best_appearance) >= VIDEO_DUPLICATE_APPEARANCE_SIMILARITY
+    appearance_positive = appearance_strong and int(_coerce_float(appearance_detail.get("agreeing_pair_count"))) > 0
+    appearance_mismatch = best_appearance is not None and _coerce_float(best_appearance) < VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY
+    reliable_coexistence = (
+        first_track_quality.get("reliable_track")
+        and second_track_quality.get("reliable_track")
+        and reliable_overlap_pairs >= VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS
+    )
+    simultaneous_low_iou_separate = (
+        overlap >= VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES
+        and reliable_coexistence
+        and overlap_iou_reliable_median < VIDEO_DUPLICATE_OVERLAP_IOU
+    )
+    stable_tracks_coexist = (
+        overlap >= VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES
+        and reliable_coexistence
+        and int(_coerce_float(first_track_quality.get("valid_observation_count"))) >= VIDEO_DUPLICATE_STABLE_TRACK_FRAMES
+        and int(_coerce_float(second_track_quality.get("valid_observation_count"))) >= VIDEO_DUPLICATE_STABLE_TRACK_FRAMES
+    )
+    quality_handover = (
+        0 < overlap <= VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES
+        and reliable_overlap_pairs >= VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS
+        and overlap_iou_reliable_median >= VIDEO_DUPLICATE_HANDOVER_MEDIAN_IOU
+        and (same_category or class_vote_similarity >= 0.5 or appearance_positive)
+        and not appearance_mismatch
+    )
+    strong_overlap_switch = (
+        0 < overlap <= VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES
+        and (
+            quality_handover
+            or (
+                overlap_iou_max >= VIDEO_DUPLICATE_STRONG_OVERLAP_IOU
+                and min(size_ratio, aspect_ratio) >= VIDEO_DUPLICATE_STRONG_SIZE_RATIO
+                and (same_category or class_vote_similarity > 0 or appearance_positive)
+            )
+        )
+    )
+    near_full_bridge = (
+        not overlap
+        and gap <= min(15, VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP)
+        and (first_track_quality.get("near_full_frame") or second_track_quality.get("near_full_frame"))
+        and class_vote_similarity >= 0.55
+        and not appearance_mismatch
+    )
+    clipped_class_bridge = (
+        not overlap
+        and gap <= VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP
+        and partial_pair
+        and same_category
+        and class_vote_similarity >= 0.80
+        and not appearance_mismatch
+    )
+    clipped_appearance_bridge = (
+        not overlap
+        and gap <= VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP
+        and partial_pair
+        and appearance_positive
+        and class_vote_similarity >= 0.75
+        and not appearance_mismatch
+    )
+    partial_fragment_supported = near_full_bridge or clipped_class_bridge or clipped_appearance_bridge
+    reject_reason = None
+    if simultaneous_low_iou_separate:
+        reject_reason = f"simultaneous low-IoU boxes for {overlap} frames"
+    elif stable_tracks_coexist and not strong_overlap_switch:
+        reject_reason = f"two stable tracks coexist for {overlap} frames"
+    elif overlap >= VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES:
+        reject_reason = f"temporal overlap {overlap} is meaningful"
+    elif overlap > VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES and not strong_overlap_switch:
+        reject_reason = f"temporal overlap {overlap} exceeds {VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES}"
+    elif gap > VIDEO_DUPLICATE_MAX_GAP:
+        reject_reason = f"temporal gap {gap} exceeds {VIDEO_DUPLICATE_MAX_GAP}"
+    elif appearance_mismatch:
+        reject_reason = "appearance differs"
+    elif partial_pair and not partial_fragment_supported and not strong_overlap_switch:
+        reject_reason = "weak fragment lacks bridge evidence"
+    elif min(size_ratio, aspect_ratio) < VIDEO_DUPLICATE_SIZE_RATIO and not partial_fragment_supported and not strong_overlap_switch:
+        reject_reason = "size/aspect mismatch"
+    elif overlap and not strong_overlap_switch and (distance > VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE or max(iou, overlap_iou_max) < VIDEO_DUPLICATE_OVERLAP_IOU):
+        reject_reason = "overlap lacks strong spatial agreement"
+    elif not overlap and not partial_fragment_supported and distance > VIDEO_DUPLICATE_CENTER_DISTANCE and iou < VIDEO_DUPLICATE_IOU:
+        reject_reason = "trajectory discontinuity"
+    elif not same_category and class_vote_similarity <= 0 and not (
+        strong_overlap_switch
+        or (appearance_positive and distance <= VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE and min(size_ratio, aspect_ratio) >= VIDEO_DUPLICATE_STRONG_SIZE_RATIO)
+    ):
+        reject_reason = "class votes incompatible without strong tracking/appearance evidence"
+    accepted = reject_reason is None
+    acceptance_score = 0.0
+    if accepted:
+        acceptance_score += max(0.0, 1.0 - min(distance, 1.0)) * 0.35
+        acceptance_score += max(iou, overlap_iou_max) * 0.25
+        acceptance_score += (appearance or 0.0) * 0.25
+        acceptance_score += min(size_ratio, aspect_ratio, area_ratio) * 0.10
+        acceptance_score += class_vote_similarity * 0.05
+    return {
+        "object_ids": [str(first.get("stable_object_id") or first.get("object_uid")), str(second.get("stable_object_id") or second.get("object_uid"))],
+        "source_track_ids": [first.get("source_track_ids"), second.get("source_track_ids")],
+        "categories": [first.get("category"), second.get("category")],
+        "confidence_values": [first.get("track_max_confidence") or first.get("confidence"), second.get("track_max_confidence") or second.get("confidence")],
+        "category_compatible": same_category or class_vote_similarity > 0,
+        "class_vote_similarity": round(class_vote_similarity, 4),
+        "temporal_gap": gap,
+        "simultaneously_visible": simultaneously_visible,
+        "overlap_frames": overlap,
+        "trajectory_distance": round(distance, 4),
+        "centre_distance": round(distance, 4),
+        "raw_trajectory_distance": round(raw_distance, 4),
+        "stabilized_trajectory_distance": round(stabilized_distance, 4) if stabilized_distance is not None else None,
+        "stabilized_coordinates_used": bool(trajectory.get("stabilized_used")),
+        "trajectory_observation_counts": {
+            "raw": trajectory.get("raw_observations"),
+            "stabilized": trajectory.get("stabilized_observations"),
+        },
+        "iou": round(iou, 4),
+        "overlapping_frame_iou": overlap_iou,
+        "size_ratio": round(size_ratio, 4),
+        "area_ratio": round(area_ratio, 4),
+        "aspect_ratio": round(aspect_ratio, 4),
+        "width_ratio": round(width_ratio, 4),
+        "height_ratio": round(height_ratio, 4),
+        "preview_quality": [first_quality, second_quality],
+        "observation_quality": [first_track_quality, second_track_quality],
+        "appearance_status": appearance_detail.get("status", "appearance unavailable"),
+        "appearance_score": appearance,
+        "appearance_best_valid_similarity": appearance_detail.get("best_valid_similarity"),
+        "appearance_strongest_median_similarity": appearance_detail.get("strongest_median_similarity"),
+        "appearance_valid_pair_count": appearance_detail.get("valid_pair_count"),
+        "appearance_agreeing_pair_count": appearance_detail.get("agreeing_pair_count"),
+        "appearance_conflicting_pair_count": appearance_detail.get("conflicting_pair_count"),
+        "appearance_strong": appearance_strong,
+        "appearance_positive": appearance_positive,
+        "strong_overlap_switch": strong_overlap_switch,
+        "quality_handover": quality_handover,
+        "partial_fragment_supported": partial_fragment_supported,
+        "partial_fragment_bridge": {
+            "near_full": near_full_bridge,
+            "clipped_class": clipped_class_bridge,
+            "clipped_appearance": clipped_appearance_bridge,
+        },
+        "simultaneous_low_iou_separate": simultaneous_low_iou_separate,
+        "stable_tracks_coexist": stable_tracks_coexist,
+        "association_score": round(acceptance_score, 4),
+        "accepted": accepted,
+        "final_reason": "same physical object evidence accepted" if accepted else reject_reason,
+        "thresholds": {
+            "max_gap": VIDEO_DUPLICATE_MAX_GAP,
+            "max_overlap_frames": VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES,
+            "strong_overlap_max_frames": VIDEO_DUPLICATE_STRONG_OVERLAP_MAX_FRAMES,
+            "meaningful_overlap_frames": VIDEO_DUPLICATE_MEANINGFUL_OVERLAP_FRAMES,
+            "center_distance": VIDEO_DUPLICATE_CENTER_DISTANCE,
+            "strong_center_distance": VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE,
+            "iou": VIDEO_DUPLICATE_IOU,
+            "overlap_iou": VIDEO_DUPLICATE_OVERLAP_IOU,
+            "strong_overlap_iou": VIDEO_DUPLICATE_STRONG_OVERLAP_IOU,
+            "handover_median_iou": VIDEO_DUPLICATE_HANDOVER_MEDIAN_IOU,
+            "size_ratio": VIDEO_DUPLICATE_SIZE_RATIO,
+            "strong_size_ratio": VIDEO_DUPLICATE_STRONG_SIZE_RATIO,
+            "appearance_similarity": VIDEO_DUPLICATE_APPEARANCE_SIMILARITY,
+            "min_appearance_similarity": VIDEO_DUPLICATE_MIN_APPEARANCE_SIMILARITY,
+            "min_observation_confidence": VIDEO_DUPLICATE_MIN_OBSERVATION_CONFIDENCE,
+            "min_reliable_observations": VIDEO_DUPLICATE_MIN_RELIABLE_OBSERVATIONS,
+            "weak_fragment_max_gap": VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP,
+            "appearance_fragment_max_gap": VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP,
+        },
+    }
+
+
+def _merge_duplicate_group(group: list[dict], decisions: list[dict]) -> dict:
+    canonical = max(group, key=_duplicate_canonical_sort_key)
+    merged = canonical
+    for track in sorted(group, key=lambda item: str(item.get("stable_object_id") or item.get("object_uid") or item.get("track_id") or "")):
+        if track is canonical:
+            continue
+        merged = _merge_two_tracks(merged, track)
+    discarded_ids = sorted(str(item.get("stable_object_id") or item.get("object_uid")) for item in group if item is not canonical)
+    merged["stable_object_id"] = canonical.get("stable_object_id")
+    merged["object_uid"] = canonical.get("object_uid")
+    for key in ("persisted_scan_id", "persisted_material_id"):
+        if canonical.get(key):
+            merged[key] = canonical[key]
+    if _track_verified(canonical):
+        merged["review_status"] = canonical.get("review_status", "verified")
+    debug = merged.setdefault("track_debug", {})
+    debug["deduplicated_object_ids"] = discarded_ids
+    debug["duplicate_reconciliation"] = decisions
+    debug["physical_object_reconciliation"] = {
+        "cluster_object_ids": sorted(str(item.get("stable_object_id") or item.get("object_uid")) for item in group),
+        "accepted_edges": decisions,
+        "canonical_selection": "human_verified > valid_preview > preview_quality > track_max_confidence > valid_observation_count > track_avg_confidence > stable_id",
+    }
+    debug["canonical_object_id"] = canonical.get("stable_object_id") or canonical.get("object_uid")
+    return merged
+
+
+def _association_hard_blocker(evidence: dict) -> bool:
+    reason = str(evidence.get("final_reason") or "")
+    return bool(
+        evidence.get("simultaneous_low_iou_separate")
+        or evidence.get("stable_tracks_coexist")
+        or reason.startswith("two stable tracks coexist")
+        or reason.startswith("simultaneous low-IoU boxes")
+        or reason == "appearance differs"
+        or reason == "overlap lacks strong spatial agreement"
+    )
+
+
+def _edge_key(evidence: dict) -> tuple[float, str]:
+    return (
+        _coerce_float(evidence.get("association_score")),
+        "|".join(str(item) for item in evidence.get("object_ids") or []),
+    )
+
+
+def _object_id(track: dict) -> str:
+    return str(track.get("stable_object_id") or track.get("object_uid") or track.get("track_id") or "")
+
+
+def _validated_physical_components(objects: list[dict], evaluated: list[dict], batch_id: str) -> tuple[list[list[int]], list[dict]]:
+    index_by_id = {_object_id(item): index for index, item in enumerate(objects)}
+    blocker_pairs = {
+        frozenset(str(item) for item in evidence.get("object_ids") or [])
+        for evidence in evaluated
+        if not evidence.get("accepted") and _association_hard_blocker(evidence)
+    }
+    accepted_edges = sorted(
+        [item for item in evaluated if item.get("accepted")],
+        key=_edge_key,
+        reverse=True,
+    )
+    parent = list(range(len(objects)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def members_after_union(first: int, second: int) -> list[int]:
+        roots = {find(first), find(second)}
+        return [index for index in range(len(objects)) if find(index) in roots]
+
+    def has_cluster_blocker(indices: list[int]) -> bool:
+        ids = [_object_id(objects[index]) for index in indices]
+        for i, first_id in enumerate(ids):
+            for second_id in ids[i + 1:]:
+                if frozenset({first_id, second_id}) in blocker_pairs:
+                    return True
+        return False
+
+    split_events = []
+    for edge in accepted_edges:
+        ids = [str(item) for item in edge.get("object_ids") or []]
+        if len(ids) != 2 or ids[0] not in index_by_id or ids[1] not in index_by_id:
+            continue
+        first, second = index_by_id[ids[0]], index_by_id[ids[1]]
+        if find(first) == find(second):
+            continue
+        candidate_members = members_after_union(first, second)
+        if has_cluster_blocker(candidate_members):
+            event = {
+                "object_ids": ids,
+                "reason": "accepted edge skipped because connected component would contain hard separation evidence",
+                "association_score": edge.get("association_score"),
+            }
+            split_events.append(event)
+            _video_processing_log("physical_cluster_split", batch_id=batch_id, **event)
+            continue
+        root_first, root_second = find(first), find(second)
+        parent[max(root_first, root_second)] = min(root_first, root_second)
+        _video_processing_log("physical_association_accepted", batch_id=batch_id, **edge)
+
+    groups_by_root: dict[int, list[int]] = {}
+    for index in range(len(objects)):
+        groups_by_root.setdefault(find(index), []).append(index)
+    components = [sorted(indices, key=lambda idx: _object_id(objects[idx])) for indices in groups_by_root.values()]
+    components.sort(key=lambda indices: min(_object_id(objects[index]) for index in indices))
+    for indices in components:
+        _video_processing_log(
+            "physical_cluster_validated",
+            batch_id=batch_id,
+            object_ids=[_object_id(objects[index]) for index in indices],
+            member_count=len(indices),
+        )
+    return components, split_events
+
+
+def reconcile_duplicate_tracked_objects(logical_objects: list[dict], batch_id: str, *, dry_run: bool = False) -> tuple[list[dict], dict]:
+    objects = sorted(logical_objects, key=lambda item: str(item.get("stable_object_id") or item.get("object_uid") or item.get("track_id") or ""))
+    evaluated = []
+    for i, first in enumerate(objects):
+        for j in range(i + 1, len(objects)):
+            evidence = _duplicate_evidence(first, objects[j])
+            evaluated.append(evidence)
+            _video_processing_log("physical_association_candidate", batch_id=batch_id, **evidence)
+            if not evidence["accepted"]:
+                _video_processing_log("physical_association_rejected", batch_id=batch_id, **evidence)
+
+    components, split_events = _validated_physical_components(objects, evaluated, batch_id)
+    output = []
+    confirmed_groups = []
+    rejected = [item for item in evaluated if not item["accepted"]]
+    for indices in components:
+        group = [objects[index] for index in indices]
+        if len(group) == 1:
+            output.append(group[0])
+            continue
+        group_object_ids = [str(item.get("stable_object_id") or item.get("object_uid")) for item in group]
+        group_decisions = [item for item in evaluated if item["accepted"] and set(item["object_ids"]).issubset(set(group_object_ids))]
+        merged = _merge_duplicate_group(group, group_decisions)
+        confirmed_groups.append({
+            "object_ids": group_object_ids,
+            "source_track_ids": [item.get("source_track_ids") for item in group],
+            "categories": [item.get("category") for item in group],
+            "selected_canonical_object": merged.get("stable_object_id") or merged.get("object_uid"),
+            "evidence": group_decisions,
+        })
+        _video_processing_log(
+            "physical_canonical_selected",
+            batch_id=batch_id,
+            logical_object_ids=group_object_ids,
+            selected_canonical_object=merged.get("stable_object_id") or merged.get("object_uid"),
+            representative_quality=_bbox_quality(merged.get("best_bbox_norm")),
+            confidence=merged.get("track_max_confidence") or merged.get("confidence"),
+        )
+        output.append(merged)
+
+    output.sort(key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
+    for index, item in enumerate(output, start=1):
+        item.setdefault("track_debug", {})["duplicate_reconciliation_completed"] = True
+        item.setdefault("track_debug", {})["physical_reconciliation_completed"] = True
+        item.setdefault("track_debug", {}).setdefault("physical_object_reconciliation", {
+            "cluster_object_ids": [_object_id(item)],
+            "accepted_edges": [],
+            "canonical_selection": "singleton final physical cluster",
+        })
+        item["object_uid"] = item.get("object_uid") or f"{batch_id}-object-{index:04d}"
+        item["stable_object_id"] = item.get("stable_object_id") or item["object_uid"]
+    report = {
+        "batch_id": batch_id,
+        "input_count": len(logical_objects),
+        "output_count": len(output),
+        "evaluated_candidates": evaluated,
+        "confirmed_groups": confirmed_groups,
+        "rejected_candidates": rejected,
+        "cluster_split_events": split_events,
+        "dry_run": dry_run,
+    }
+    _video_processing_log(
+        "physical_reconciliation_completed",
+        batch_id=batch_id,
+        input_count=len(logical_objects),
+        output_count=len(output),
+        final_cluster_count=len(output),
+        groups_confirmed=len(confirmed_groups),
+        dry_run=dry_run,
+    )
+    return output, report
+
+
 def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
     if first.get("category") != second.get("category"):
         return False, "class mismatch"
@@ -3558,9 +4550,21 @@ def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
 
 def _merge_two_tracks(first: dict, second: dict) -> dict:
     tracks = sorted([first, second], key=lambda item: int(_coerce_float(item.get("track_first_frame"))))
-    primary = max(tracks, key=lambda item: _coerce_float(item.get("track_max_confidence") or item.get("confidence")))
+    primary = max(tracks, key=_duplicate_canonical_sort_key)
+    representative = max(
+        tracks,
+        key=lambda item: (
+            1 if _bbox_quality(item.get("best_bbox_norm")).get("valid") else 0,
+            _coerce_float(_bbox_quality(item.get("best_bbox_norm")).get("score")),
+            _coerce_float(item.get("track_max_confidence") or item.get("confidence")),
+            int(_coerce_float(item.get("track_frame_count"))),
+            "".join(chr(255 - ord(ch)) for ch in str(item.get("stable_object_id") or item.get("object_uid") or "")),
+        ),
+    )
     merged_observations = []
     merged_path = []
+    merged_scene_path = []
+    appearance_fingerprints = []
     class_votes: dict[str, float] = {}
     source_track_ids = []
     for track in tracks:
@@ -3568,6 +4572,8 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         debug = track.get("track_debug") or {}
         merged_observations.extend(pl for pl in debug.get("frame_observations", []) if isinstance(pl, dict))
         merged_path.extend(pl for pl in track.get("track_path", []) if isinstance(pl, dict))
+        merged_scene_path.extend(pl for pl in debug.get("stabilized_track_path", []) if isinstance(pl, dict))
+        appearance_fingerprints.extend(pl for pl in debug.get("appearance_fingerprints", []) if isinstance(pl, dict))
         for category, value in (debug.get("class_votes") or {}).items():
             class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
     source_track_ids = sorted(set(source_track_ids), key=str)
@@ -3575,17 +4581,34 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     last_frame = max(int(_coerce_float(track.get("track_last_frame"))) for track in tracks)
     first_timestamp = min(_coerce_float(track.get("track_first_timestamp")) for track in tracks)
     last_timestamp = max(_coerce_float(track.get("track_last_timestamp")) for track in tracks)
-    frame_count = sum(int(_coerce_float(track.get("track_frame_count"))) for track in tracks)
+    deduplicated_observations = {
+        (
+            int(_coerce_float(item.get("frame"))),
+            tuple(round(_coerce_float(value), 6) for value in (item.get("bbox") or [])[:4]),
+        ): item
+        for item in merged_observations
+    }
+    frame_count = len(deduplicated_observations)
     max_confidence = max(_coerce_float(track.get("track_max_confidence") or track.get("confidence")) for track in tracks)
     weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
+    observation_confidences = [_coerce_float(item.get("confidence")) for item in deduplicated_observations.values()]
     avg_confidence = (
-        sum(_coerce_float(track.get("track_avg_confidence")) * int(_coerce_float(track.get("track_frame_count"))) for track in tracks) / frame_count
-        if frame_count else _coerce_float(primary.get("track_avg_confidence"))
+        sum(observation_confidences) / len(observation_confidences)
+        if observation_confidences else _coerce_float(primary.get("track_avg_confidence"))
     )
     recyclable_status, contaminant_status = material_status(weighted_category)
     hazard_status = "hazard" if any(track.get("track_hazard_status") == "hazard" for track in tracks) or CATEGORY_CLASS_MAP.get(weighted_category) == "contaminant" else "clear"
+    sorted_path = sorted(merged_path, key=lambda point: int(_coerce_float(point.get("frame"))))
+    sorted_scene_path = sorted(merged_scene_path, key=lambda point: int(_coerce_float(point.get("frame"))))
     merged = {
         **primary,
+        "best_box": representative.get("best_box"),
+        "best_bbox_norm": representative.get("best_bbox_norm"),
+        "bbox_x": representative.get("bbox_x"),
+        "bbox_y": representative.get("bbox_y"),
+        "bbox_width": representative.get("bbox_width"),
+        "bbox_height": representative.get("bbox_height"),
+        "segmentation_mask": representative.get("segmentation_mask"),
         "source_track_ids": source_track_ids,
         "track_id": ",".join(source_track_ids),
         "category": weighted_category,
@@ -3602,11 +4625,18 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         "track_hazard_status": hazard_status,
         "recyclable_status": recyclable_status,
         "contaminant_status": contaminant_status,
-        "track_path": sorted(merged_path, key=lambda point: int(_coerce_float(point.get("frame")))),
+        "track_path": sorted_path,
+        **({"track_start_center": {"x": sorted_path[0].get("x"), "y": sorted_path[0].get("y")}} if sorted_path else {}),
+        **({"track_end_center": {"x": sorted_path[-1].get("x"), "y": sorted_path[-1].get("y")}} if sorted_path else {}),
+        **({"track_start_scene_center": {"x": sorted_scene_path[0].get("x"), "y": sorted_scene_path[0].get("y")}} if sorted_scene_path else {}),
+        **({"track_end_scene_center": {"x": sorted_scene_path[-1].get("x"), "y": sorted_scene_path[-1].get("y")}} if sorted_scene_path else {}),
         "track_debug": {
-            "frame_observations": sorted(merged_observations, key=lambda item: int(_coerce_float(item.get("frame")))),
+            "frame_observations": sorted(deduplicated_observations.values(), key=lambda item: int(_coerce_float(item.get("frame")))),
             "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
             "raw_track_ids": source_track_ids,
+            "stabilized_track_path": sorted_scene_path,
+            "representative_quality": _bbox_quality(representative.get("best_bbox_norm")),
+            "appearance_fingerprints": _bounded_representative_fingerprints(appearance_fingerprints),
         },
         **evaluate_material(weighted_category, max_confidence),
     }
@@ -3672,6 +4702,22 @@ def _persist_tracked_video_objects(
     annotated_observations_by_track: dict[str, list[dict]] | None = None,
 ) -> list[str]:
     scan_ids: list[str] = []
+    object_ids = [str(item.get("stable_object_id") or item.get("object_uid") or "") for item in tracked_objects]
+    if len(object_ids) != len(set(object_ids)):
+        raise RuntimeError("Tracked video persistence received duplicate final physical-object IDs.")
+    unfinished = [
+        object_id
+        for object_id, item in zip(object_ids, tracked_objects)
+        if not (item.get("track_debug") or {}).get("physical_reconciliation_completed")
+    ]
+    if unfinished:
+        raise RuntimeError(f"Tracked video persistence received non-final physical-object clusters: {unfinished[:5]}")
+    _video_processing_log(
+        "physical_persistence_invariant_verified",
+        job_id=str(job["id"]),
+        final_cluster_count=len(tracked_objects),
+        logical_object_ids=object_ids,
+    )
     namespace = UUID(str(job["id"]))
     for item in tracked_objects:
         stable_object_id = str(item["stable_object_id"])
@@ -3754,7 +4800,7 @@ def _persist_tracked_video_objects(
                 preview_source=preview_metadata.get("format"),
                 worker_build_revision=_worker_build_revision(),
             )
-            continue
+            raise RuntimeError(f"Tracked-object preview unavailable for final physical cluster {stable_object_id}.")
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
         public_material["track_debug"]["annotated_frame_observation"] = selected_observation
@@ -3816,6 +4862,10 @@ def _persist_tracked_video_objects(
             model_version=os.getenv("MODEL_VERSION", "yolov8m-seg-bytetrack"),
         )
         scan_ids.append(str(result["scan_result_id"]))
+    if len(scan_ids) != len(tracked_objects):
+        raise RuntimeError(
+            f"Tracked video persistence count mismatch: {len(scan_ids)} rows for {len(tracked_objects)} final physical clusters."
+        )
     return scan_ids
 
 
@@ -3899,6 +4949,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         width, height = _even_video_dimensions(frame_width, frame_height)
         if width <= 0 or height <= 0:
             raise VideoDecodeError(f"Invalid decoded video dimensions: {frame_width}x{frame_height}")
+        camera_motion = VideoCameraMotionState(width, height)
         annotated_tmp_path = job_dir / "annotated-intermediate.mp4"
         encoded_tmp_path = job_dir / "result.mp4"
         video_model = get_model()
@@ -3919,9 +4970,11 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 pending_frame = None
             frame = _normalize_video_frame(frame, width, height)
             timestamp = frame_index / fps if fps else 0.0
+            motion_meta = camera_motion.observe(frame, frame_index)
             results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False, device=MODEL_DEVICE)
             result = results[0] if results else None
             detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
+            detections = attach_camera_motion_to_detections(detections, camera_motion, motion_meta)
             aggregator.observe(frame_index, timestamp, detections)
             if annotated_video_metadata.get("annotated_video_status") != "failed":
                 try:
@@ -4012,8 +5065,12 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         aggregator.finish(frame_index)
         raw_tracks = aggregator.finalized
         logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
+        canonical_objects, duplicate_report = reconcile_duplicate_tracked_objects(logical_objects, str(job["id"]))
+        summary = _video_tracking_summary(canonical_objects)
+        if summary["total_unique_objects"] != len(canonical_objects):
+            raise RuntimeError("Final video summary count does not match physical cluster count.")
         scan_ids = _persist_tracked_video_objects(
-            tracked_objects=logical_objects,
+            tracked_objects=canonical_objects,
             source_name=name,
             file_id=file_id,
             job=job,
@@ -4024,14 +5081,19 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             annotated_video_path=encoded_tmp_path if encoded_tmp_path.exists() else annotated_tmp_path,
             annotated_observations_by_track=annotated_observations_by_track,
         )
-        summary = _video_tracking_summary(logical_objects)
+        if len(scan_ids) != summary["total_unique_objects"]:
+            raise RuntimeError("Persisted tracked-object row count does not match final physical cluster count.")
         summary.update({
             "scan_id": str(job["id"]),
             "result_type": "video_tracking",
             "frame_total": frame_total,
             "frame_detections": sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in raw_tracks),
             "raw_track_count": len(raw_tracks),
-            "filtered_tracks": max(0, len(raw_tracks) - len(logical_objects)),
+            "logical_track_count": len(logical_objects),
+            "duplicate_groups_confirmed": len(duplicate_report.get("confirmed_groups") or []),
+            "physical_reconciliation": duplicate_report,
+            "camera_motion": camera_motion.summary(),
+            "filtered_tracks": max(0, len(raw_tracks) - len(canonical_objects)),
             "database_rows_written": len(scan_ids),
             **annotated_video_metadata,
         })
@@ -4041,7 +5103,7 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             frame_total=frame_total,
             frame_detections=summary["frame_detections"],
             raw_track_count=len(raw_tracks),
-            final_logical_objects=len(logical_objects),
+            final_logical_objects=len(canonical_objects),
             database_rows_written=len(scan_ids),
         )
         _update_job(job["id"], database, processed_count=len(scan_ids), total_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)

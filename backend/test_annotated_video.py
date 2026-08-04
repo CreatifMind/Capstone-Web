@@ -334,6 +334,7 @@ def test_tracked_object_persistence_persists_annotated_video_extract(monkeypatch
         "bbox_height": 25,
         "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
         "segmentation_mask": [[0.25, 0.25], [0.5, 0.25], [0.5, 0.5], [0.25, 0.5]],
+        "track_debug": {"physical_reconciliation_completed": True},
         "_best_crop_bytes": frame_bytes,
     }
     captured = {}
@@ -427,6 +428,7 @@ def test_tracked_object_persistence_does_not_persist_raw_bytes_when_extraction_f
         "bbox_width": 25,
         "bbox_height": 25,
         "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
+        "track_debug": {"physical_reconciliation_completed": True},
         "_best_crop_bytes": frame_bytes,
     }
 
@@ -436,19 +438,18 @@ def test_tracked_object_persistence_does_not_persist_raw_bytes_when_extraction_f
     monkeypatch.setattr(main, "_extract_annotated_video_object_preview", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(main, "persist_scan", fake_persist)
 
-    scan_ids = main._persist_tracked_video_objects(
-        tracked_objects=[item],
-        source_name="video.mp4",
-        file_id="drive-1",
-        job={"id": "55555555-5555-4555-8555-555555555555"},
-        principal=None,
-        database=NoopDatabase(),
-        existing_drive_metadata={},
-        annotated_video_metadata={"annotated_video_status": "ready"},
-        annotated_video_path="/tmp/missing-annotated.mp4",
-    )
-
-    assert scan_ids == []
+    with pytest.raises(RuntimeError, match="Tracked-object preview unavailable for final physical cluster"):
+        main._persist_tracked_video_objects(
+            tracked_objects=[item],
+            source_name="video.mp4",
+            file_id="drive-1",
+            job={"id": "55555555-5555-4555-8555-555555555555"},
+            principal=None,
+            database=NoopDatabase(),
+            existing_drive_metadata={},
+            annotated_video_metadata={"annotated_video_status": "ready"},
+            annotated_video_path="/tmp/missing-annotated.mp4",
+        )
 
 
 def test_tracked_object_preview_uses_annotated_video_frame_fallback(tmp_path):
