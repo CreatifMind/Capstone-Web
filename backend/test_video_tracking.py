@@ -3,6 +3,9 @@ import os
 import sys
 import importlib.util
 import json
+import inspect
+from io import BytesIO
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 
@@ -118,7 +121,10 @@ def install_backend_dependency_shims():
 install_backend_dependency_shims()
 os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
-from backend.main import VideoTrackAggregator, _video_tracking_summary, merge_track_fragments
+from PIL import Image
+
+from backend.main import VideoTrackAggregator, _duplicate_evidence, _process_video_drive_file, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
+from backend.deduplicate_tracked_video_results import build_report
 
 
 def detection(track_id, category="plastic", confidence=0.8, x1=0.1, y1=0.1, x2=0.2, y2=0.2):
@@ -291,6 +297,508 @@ class VideoTrackAggregationTests(unittest.TestCase):
         loop_start = body.index("while True:")
         loop_end = body.index("capture.release()", loop_start)
         self.assertNotIn("_persist_tracked_video_objects", body[loop_start:loop_end])
+
+    def _track(self, object_id, track_id, category="plastic", confidence=0.8, first=0, last=2, x=0.1, y=0.1, appearance="same", verified=False):
+        frame_count = last - first + 1
+        observations = []
+        path = []
+        for offset, frame in enumerate(range(first, last + 1)):
+            step_x = x + offset * 0.01
+            bbox = [step_x, y, step_x + 0.1, y + 0.1]
+            observations.append({"frame": frame, "timestamp": frame / 10, "track_id": str(track_id), "category": category, "confidence": confidence, "bbox": bbox})
+            path.append({"frame": frame, "timestamp": frame / 10, "x": round(step_x + 0.05, 4), "y": round(y + 0.05, 4)})
+        return {
+            "stable_object_id": object_id,
+            "object_uid": object_id,
+            "source_track_ids": [str(track_id)],
+            "track_id": str(track_id),
+            "category": category,
+            "material_name": category,
+            "confidence": confidence,
+            "track_max_confidence": confidence,
+            "track_avg_confidence": confidence,
+            "track_first_frame": first,
+            "track_last_frame": last,
+            "track_first_timestamp": first / 10,
+            "track_last_timestamp": last / 10,
+            "track_frame_count": frame_count,
+            "track_start_center": {"x": path[0]["x"], "y": path[0]["y"]},
+            "track_end_center": {"x": path[-1]["x"], "y": path[-1]["y"]},
+            "track_avg_width": 0.1,
+            "track_avg_height": 0.1,
+            "track_avg_aspect_ratio": 1.0,
+            "track_hazard_status": "clear",
+            "recyclable_status": "recyclable",
+            "contaminant_status": "clean",
+            "review_required": False,
+            "track_path": path,
+            "best_bbox_norm": observations[-1]["bbox"],
+            "track_debug": {
+                "frame_observations": observations,
+                "class_votes": {category: round(confidence * frame_count, 4)},
+                "raw_track_ids": [str(track_id)],
+                "appearance_hash": appearance,
+                **({"human_verified": True} if verified else {}),
+            },
+        }
+
+    def _fingerprint(self, color):
+        image = Image.new("RGB", (40, 40), color)
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return appearance_fingerprint_from_bytes(buffer.getvalue(), bbox=[0, 0, 1, 1])
+
+    def _opposite_fingerprints(self):
+        return (
+            {"average_hash": "0" * 16, "edge_hash": "0" * 16, "color_histogram": [1.0] + [0.0] * 23},
+            {"average_hash": "f" * 16, "edge_hash": "f" * 16, "color_histogram": [0.0, 1.0] + [0.0] * 22},
+        )
+
+    def test_duplicate_reconciliation_keeps_stable_track(self):
+        track = self._track("upload-object-0001", 1)
+        canonical, report = reconcile_duplicate_tracked_objects([track], "upload")
+
+        self.assertEqual(canonical, [track])
+        self.assertEqual(report["output_count"], 1)
+
+    def test_duplicate_reconciliation_merges_occluded_track_id_change(self):
+        first = self._track("upload-object-0001", 1, first=0, last=2, x=0.10)
+        second = self._track("upload-object-0002", 7, first=5, last=7, x=0.13)
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0]["source_track_ids"], ["1", "7"])
+        self.assertEqual(report["output_count"], 1)
+
+    def test_duplicate_reconciliation_merges_class_change_when_tracking_and_appearance_agree(self):
+        first = self._track("upload-object-0001", 1, "plastic", first=0, last=2, x=0.10, appearance="item-a")
+        second = self._track("upload-object-0002", 2, "cardboard", first=4, last=6, x=0.12, appearance="item-a")
+        fingerprint = self._fingerprint((230, 80, 20))
+        first["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        second["track_debug"]["appearance_fingerprints"] = [fingerprint]
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0]["source_track_ids"], ["1", "2"])
+
+    def test_duplicate_reconciliation_merges_short_overlap_with_spatial_agreement(self):
+        first = self._track("upload-object-0001", 1, first=0, last=5, x=0.10, appearance="item-a")
+        second = self._track("upload-object-0002", 2, first=4, last=8, x=0.14, appearance="item-a")
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+
+    def test_duplicate_reconciliation_allows_strong_short_overlap_switch(self):
+        first = self._track("upload-object-0001", 1, first=0, last=12, x=0.10, appearance="item-a")
+        second = self._track("upload-object-0002", 2, first=5, last=14, x=0.15, appearance="item-a")
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertTrue(report["confirmed_groups"][0]["evidence"][0]["strong_overlap_switch"])
+
+    def test_duplicate_reconciliation_three_fragments_keep_highest_confidence(self):
+        tracks = [
+            self._track("upload-object-0001", 1, confidence=0.7, first=0, last=2, x=0.10),
+            self._track("upload-object-0002", 2, confidence=0.9, first=4, last=6, x=0.13),
+            self._track("upload-object-0003", 3, confidence=0.8, first=8, last=10, x=0.16),
+        ]
+
+        canonical, _ = reconcile_duplicate_tracked_objects(tracks, "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0]["stable_object_id"], "upload-object-0002")
+        self.assertEqual(canonical[0]["track_debug"]["deduplicated_object_ids"], ["upload-object-0001", "upload-object-0003"])
+
+    def test_duplicate_reconciliation_merges_metadata(self):
+        first = self._track("upload-object-0001", 1, first=0, last=2, x=0.10)
+        second = self._track("upload-object-0002", 2, first=5, last=7, x=0.13)
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(canonical[0]["track_first_frame"], 0)
+        self.assertEqual(canonical[0]["track_last_frame"], 7)
+        self.assertEqual(canonical[0]["track_frame_count"], 6)
+        self.assertEqual(canonical[0]["track_debug"]["class_votes"]["plastic"], 4.8)
+
+    def test_duplicate_reconciliation_verified_record_beats_confidence(self):
+        verified = self._track("upload-object-0001", 1, confidence=0.7, first=0, last=2, x=0.10, verified=True)
+        high = self._track("upload-object-0002", 2, confidence=0.95, first=5, last=7, x=0.13)
+
+        canonical, _ = reconcile_duplicate_tracked_objects([verified, high], "upload")
+
+        self.assertEqual(canonical[0]["stable_object_id"], "upload-object-0001")
+
+    def test_duplicate_reconciliation_keeps_simultaneous_same_category_objects(self):
+        first = self._track("upload-object-0001", 1, first=0, last=20, x=0.10)
+        second = self._track("upload-object-0002", 2, first=0, last=20, x=0.12)
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertIn("coexist", report["rejected_candidates"][0]["final_reason"])
+
+    def test_duplicate_reconciliation_keeps_five_distinct_stationary_objects(self):
+        tracks = [
+            self._track(f"upload-object-{index:04d}", index, first=0, last=30, x=0.08 + (index * 0.14), appearance="same-frame")
+            for index in range(1, 6)
+        ]
+
+        canonical, report = reconcile_duplicate_tracked_objects(tracks, "upload")
+
+        self.assertEqual(len(canonical), 5)
+        self.assertTrue(all("simultaneous low-IoU boxes" in item["final_reason"] for item in report["rejected_candidates"]))
+
+    def test_duplicate_reconciliation_merges_one_stationary_object_with_multiple_track_ids(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.10)
+        second = self._track("upload-object-0002", 2, first=9, last=16, x=0.10)
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0]["source_track_ids"], ["1", "2"])
+
+    def test_duplicate_reconciliation_keeps_nearby_same_category_objects_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.10)
+        second = self._track("upload-object-0002", 2, first=0, last=30, x=0.24)
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "simultaneous low-IoU boxes for 31 frames")
+
+    def test_duplicate_reconciliation_ignores_full_frame_similarity_for_separate_boxes(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.10, appearance="same-full-frame")
+        second = self._track("upload-object-0002", 2, first=0, last=30, x=0.36, appearance="same-full-frame")
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+
+    def test_duplicate_reconciliation_uses_object_crop_similarity_for_fragments(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.10)
+        second = self._track("upload-object-0002", 2, first=10, last=18, x=0.11)
+        fingerprint = self._fingerprint((220, 20, 20))
+        first["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        second["track_debug"]["appearance_fingerprints"] = [fingerprint]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(report["confirmed_groups"][0]["evidence"][0]["appearance_status"], "appearance compared successfully")
+
+    def test_duplicate_reconciliation_uses_stabilized_trajectory_when_available(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.10)
+        second = self._track("upload-object-0002", 2, first=10, last=18, x=0.60)
+        fingerprint = self._fingerprint((220, 20, 20))
+        first["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        second["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        first["track_end_scene_center"] = {"x": 0.25, "y": 0.25}
+        second["track_start_scene_center"] = {"x": 0.27, "y": 0.25}
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        evidence = report["confirmed_groups"][0]["evidence"][0]
+        self.assertTrue(evidence["stabilized_coordinates_used"])
+        self.assertGreater(evidence["raw_trajectory_distance"], evidence["stabilized_trajectory_distance"])
+
+    def test_duplicate_reconciliation_fails_safe_without_stabilized_trajectory(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.10)
+        second = self._track("upload-object-0002", 2, first=10, last=18, x=0.60)
+        fingerprint = self._fingerprint((220, 20, 20))
+        first["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        second["track_debug"]["appearance_fingerprints"] = [fingerprint]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertFalse(report["rejected_candidates"][0]["stabilized_coordinates_used"])
+        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "trajectory discontinuity")
+
+    def test_duplicate_reconciliation_keeps_stabilized_simultaneous_low_iou_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.10)
+        second = self._track("upload-object-0002", 2, first=0, last=30, x=0.40)
+        first["track_end_scene_center"] = {"x": 0.25, "y": 0.25}
+        second["track_start_scene_center"] = {"x": 0.26, "y": 0.25}
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertTrue(report["rejected_candidates"][0]["simultaneous_low_iou_separate"])
+
+    def test_duplicate_reconciliation_keeps_simultaneous_low_iou_boxes_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.10)
+        second = self._track("upload-object-0002", 2, first=0, last=30, x=0.40)
+        fingerprint = self._fingerprint((40, 80, 200))
+        first["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        second["track_debug"]["appearance_fingerprints"] = [fingerprint]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertTrue(report["rejected_candidates"][0]["simultaneous_low_iou_separate"])
+
+    def test_duplicate_reconciliation_keeps_different_locations_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=2, x=0.10)
+        second = self._track("upload-object-0002", 2, first=5, last=7, x=0.70)
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+
+    def test_duplicate_reconciliation_keeps_different_appearance_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=2, x=0.10, appearance="a")
+        second = self._track("upload-object-0002", 2, first=5, last=7, x=0.13, appearance="b")
+        first_fp, second_fp = self._opposite_fingerprints()
+        first["track_debug"]["appearance_fingerprints"] = [first_fp]
+        second["track_debug"]["appearance_fingerprints"] = [second_fp]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "appearance differs")
+
+    def test_duplicate_reconciliation_tie_break_is_deterministic(self):
+        tracks = [
+            self._track("upload-object-0002", 2, first=5, last=7, x=0.13),
+            self._track("upload-object-0001", 1, first=0, last=2, x=0.10),
+        ]
+
+        first_run, _ = reconcile_duplicate_tracked_objects(tracks, "upload")
+        second_run, _ = reconcile_duplicate_tracked_objects(list(reversed(tracks)), "upload")
+
+        self.assertEqual(first_run[0]["stable_object_id"], "upload-object-0001")
+        self.assertEqual(second_run[0]["stable_object_id"], "upload-object-0001")
+
+    def test_physical_reconciliation_stationary_object_under_camera_pan_merges_fragments(self):
+        tracks = []
+        fingerprint = self._fingerprint((20, 180, 90))
+        for index, raw_x in enumerate([0.10, 0.38, 0.66], start=1):
+            track = self._track(f"upload-object-{index:04d}", index, first=index * 10, last=index * 10 + 5, x=raw_x)
+            track["track_debug"]["appearance_fingerprints"] = [fingerprint]
+            track["track_end_scene_center"] = {"x": 0.30 + index * 0.005, "y": 0.30}
+            track["track_start_scene_center"] = {"x": 0.30 + index * 0.005, "y": 0.30}
+            tracks.append(track)
+
+        canonical, report = reconcile_duplicate_tracked_objects(list(reversed(tracks)), "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(report["output_count"], 1)
+
+    def test_physical_reconciliation_five_stationary_objects_under_camera_movement_remain_five(self):
+        tracks = []
+        for index in range(5):
+            track = self._track(f"upload-object-{index + 1:04d}", index + 1, first=0, last=40, x=0.08 + index * 0.16)
+            track["track_start_scene_center"] = {"x": 0.12 + index * 0.16, "y": 0.18}
+            track["track_end_scene_center"] = {"x": 0.12 + index * 0.16, "y": 0.18}
+            tracks.append(track)
+
+        canonical, report = reconcile_duplicate_tracked_objects(tracks, "upload")
+
+        self.assertEqual(len(canonical), 5)
+        self.assertTrue(any(item["simultaneous_low_iou_separate"] for item in report["rejected_candidates"]))
+
+    def test_physical_reconciliation_keeps_crossing_paths_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.10)
+        second = self._track("upload-object-0002", 2, first=0, last=30, x=0.60)
+        first["track_path"] = [{"frame": frame, "x": 0.10 + frame * 0.012, "y": 0.2} for frame in range(31)]
+        second["track_path"] = [{"frame": frame, "x": 0.60 - frame * 0.012, "y": 0.2} for frame in range(31)]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertTrue(report["rejected_candidates"][0]["simultaneous_low_iou_separate"])
+
+    def test_physical_reconciliation_keeps_brief_visual_overlap_without_handover_evidence_separate(self):
+        first = self._track("upload-object-0001", 1, first=0, last=12, x=0.10)
+        second = self._track("upload-object-0002", 2, first=8, last=20, x=0.30)
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "overlap lacks strong spatial agreement")
+
+    def test_physical_reconciliation_selects_strong_preview_over_bad_full_frame(self):
+        bad = self._track("upload-object-0001", 1, confidence=0.95, first=0, last=8, x=0.10)
+        good = self._track("upload-object-0002", 2, confidence=0.80, first=10, last=18, x=0.11)
+        bad["best_bbox_norm"] = [0.0, 0.0, 1.0, 1.0]
+        bad["best_box"] = {"xyxy": [0.0, 0.0, 1.0, 1.0], "frame": 0}
+        good["best_bbox_norm"] = [0.11, 0.1, 0.21, 0.2]
+        good["best_box"] = {"xyxy": [0.11, 0.1, 0.21, 0.2], "frame": 10}
+
+        canonical, _ = reconcile_duplicate_tracked_objects([bad, good], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(canonical[0]["stable_object_id"], "upload-object-0002")
+        self.assertEqual(canonical[0]["best_bbox_norm"], [0.11, 0.1, 0.21, 0.2])
+
+    def test_physical_reconciliation_merges_partial_edge_detection_when_evidence_agrees(self):
+        partial = self._track("upload-object-0001", 1, first=0, last=8, x=0.02)
+        full = self._track("upload-object-0002", 2, first=10, last=18, x=0.08)
+        fingerprint = self._fingerprint((40, 170, 220))
+        partial["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        full["track_debug"]["appearance_fingerprints"] = [fingerprint]
+        partial.update({"track_avg_width": 0.04, "track_avg_height": 0.08, "track_avg_aspect_ratio": 0.5, "best_bbox_norm": [0.0, 0.1, 0.04, 0.18]})
+        full.update({"track_avg_width": 0.10, "track_avg_height": 0.10, "track_avg_aspect_ratio": 1.0, "best_bbox_norm": [0.08, 0.1, 0.18, 0.2]})
+
+        canonical, report = reconcile_duplicate_tracked_objects([partial, full], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertTrue(report["confirmed_groups"][0]["evidence"][0]["partial_fragment_supported"])
+
+    def test_known_video_fixture_returns_exact_five_physical_groups(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "video_reconciliation" / "aa894e58_tracks.json"
+        tracks = json.loads(fixture_path.read_text(encoding="utf-8"))["tracks"]
+        expected = sorted([
+            ["object-0001", "object-0003", "object-0005"],
+            ["object-0002"],
+            ["object-0004", "object-0006", "object-0009"],
+            ["object-0008", "object-0010"],
+            ["object-0007", "object-0011"],
+        ])
+
+        def groups(items):
+            return sorted([
+                sorted(f"object-{value.rsplit('-', 1)[-1]}" for value in (item.get("track_debug") or {})["physical_object_reconciliation"]["cluster_object_ids"])
+                for item in items
+            ])
+
+        canonical, report = reconcile_duplicate_tracked_objects(tracks, "fixture", dry_run=True)
+        reversed_canonical, _ = reconcile_duplicate_tracked_objects(list(reversed(tracks)), "fixture", dry_run=True)
+
+        self.assertEqual(report["input_count"], 11)
+        self.assertEqual(report["output_count"], 5)
+        self.assertEqual(groups(canonical), expected)
+        self.assertEqual(groups(reversed_canonical), expected)
+
+    def test_weak_simultaneous_low_iou_observation_is_not_hard_separation(self):
+        weak = self._track("upload-object-0001", 1, first=0, last=30, x=0.0)
+        strong = self._track("upload-object-0002", 2, first=0, last=30, x=0.5)
+        weak["best_bbox_norm"] = [0.0, 0.0, 1.0, 1.0]
+        for item in weak["track_debug"]["frame_observations"]:
+            item["bbox"] = [0.0, 0.0, 1.0, 1.0]
+
+        evidence = _duplicate_evidence(weak, strong)
+
+        self.assertFalse(evidence["simultaneous_low_iou_separate"])
+        self.assertFalse(evidence["stable_tracks_coexist"])
+
+    def test_bridge_fragment_connects_component_without_all_pair_matches(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.1)
+        bridge = self._track("upload-object-0002", 2, first=11, last=27, x=0.1)
+        last = self._track("upload-object-0003", 3, first=30, last=38, x=0.1)
+        first["best_bbox_norm"] = [0.0, 0.0, 1.0, 1.0]
+        bridge["best_bbox_norm"] = [0.0, 0.1, 0.08, 0.2]
+
+        canonical, report = reconcile_duplicate_tracked_objects([last, first, bridge], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        self.assertEqual(len(canonical[0]["track_debug"]["physical_object_reconciliation"]["cluster_object_ids"]), 3)
+
+    def test_reliable_transitive_contradiction_splits_component(self):
+        first = self._track("upload-object-0001", 1, first=0, last=30, x=0.1)
+        separate = self._track("upload-object-0002", 2, first=0, last=30, x=0.55)
+        bridge = self._track("upload-object-0003", 3, first=32, last=38, x=0.3)
+        bridge["best_bbox_norm"] = [0.0, 0.0, 1.0, 1.0]
+
+        canonical, report = reconcile_duplicate_tracked_objects([bridge, separate, first], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertTrue(report["cluster_split_events"])
+
+    def test_one_bad_crop_does_not_override_multiple_strong_matches(self):
+        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.1)
+        second = self._track("upload-object-0002", 2, first=10, last=18, x=0.11)
+        strong = self._fingerprint((220, 40, 40))
+        bad, _ = self._opposite_fingerprints()
+        first["track_debug"]["appearance_fingerprints"] = [{**strong, "frame": 0}, {**strong, "frame": 4}, {**bad, "frame": 8}]
+        second["track_debug"]["appearance_fingerprints"] = [{**strong, "frame": 10}, {**strong, "frame": 14}, {**strong, "frame": 18}]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
+        evidence = report["confirmed_groups"][0]["evidence"][0]
+        self.assertGreater(evidence["appearance_agreeing_pair_count"], 1)
+        self.assertGreater(evidence["appearance_conflicting_pair_count"], 0)
+
+    def test_video_pipeline_persists_only_after_reconciliation(self):
+        source = inspect.getsource(_process_video_drive_file)
+        self.assertGreater(source.index("_persist_tracked_video_objects("), source.index("reconcile_duplicate_tracked_objects("))
+        self.assertEqual(source.count("_persist_tracked_video_objects("), 1)
+
+    def test_duplicate_reconciliation_recalculates_summary_counts(self):
+        duplicate_a = self._track("upload-object-0001", 1, "plastic", first=0, last=2, x=0.10)
+        duplicate_b = self._track("upload-object-0002", 2, "plastic", first=5, last=7, x=0.13)
+        separate = self._track("upload-object-0003", 3, "metal", first=0, last=2, x=0.70, appearance="metal")
+
+        canonical, _ = reconcile_duplicate_tracked_objects([duplicate_a, duplicate_b, separate], "upload")
+        summary = _video_tracking_summary(canonical)
+
+        self.assertEqual(summary["total_unique_objects"], 2)
+        self.assertEqual(summary["counts_by_class"], {"plastic": 1, "metal": 1})
+
+    def test_cleanup_dry_run_report_performs_no_writes(self):
+        scan_1 = {"id": "scan-1", "batch_id": "batch-1", "overall_confidence": 0.7}
+        scan_2 = {"id": "scan-2", "batch_id": "batch-1", "overall_confidence": 0.9}
+        track_1 = self._track("batch-1-object-0001", 1, confidence=0.7, first=0, last=2, x=0.10)
+        track_2 = self._track("batch-1-object-0002", 2, confidence=0.9, first=5, last=7, x=0.13)
+        material_1 = {"id": "material-1", "scan_result_id": "scan-1", **track_1}
+        material_2 = {"id": "material-2", "scan_result_id": "scan-2", **track_2}
+
+        report, _, _ = build_report("batch-1", [scan_1, scan_2], [material_1, material_2], [], None, dry_run=True)
+
+        self.assertTrue(report["dry_run"])
+        self.assertEqual(len(report["duplicate_groups"]), 1)
+        self.assertEqual(report["duplicate_groups"][0]["selected_canonical_scan_id"], "scan-2")
+
+    def test_persistence_receives_only_final_physical_clusters(self):
+        tracks = [
+            self._track("upload-object-0001", 1, "plastic", first=0, last=2, x=0.10),
+            self._track("upload-object-0002", 2, "metal", first=0, last=2, x=0.70),
+        ]
+        for track in tracks:
+            track["best_box"] = {"xyxy": track["best_bbox_norm"], "frame": track["track_first_frame"]}
+        captured = []
+
+        def fake_persist(_file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
+            captured.append(materials[0]["stable_object_id"])
+            return {"scan_result_id": f"scan-{len(captured)}"}
+
+        import backend.main as main_module
+        original_extract = main_module._extract_annotated_video_object_preview
+        original_persist = main_module.persist_scan
+        original_select = main_module._select_annotated_preview_observation
+        try:
+            main_module._select_annotated_preview_observation = lambda *_args, **_kwargs: {"track_id": "1", "box_xyxy": [1, 1, 5, 5]}
+            main_module._extract_annotated_video_object_preview = lambda *_args, **_kwargs: (b"preview", {"format": "annotated_video_frame"})
+            main_module.persist_scan = fake_persist
+            canonical, _ = reconcile_duplicate_tracked_objects(tracks, "upload")
+            scan_ids = main_module._persist_tracked_video_objects(
+                tracked_objects=canonical,
+                source_name="video.mp4",
+                file_id="drive-1",
+                job={"id": "66666666-6666-4666-8666-666666666666"},
+                principal=None,
+                database=None,
+                existing_drive_metadata={},
+                annotated_video_metadata={"annotated_video_status": "ready"},
+                annotated_video_path="/tmp/annotated.mp4",
+                annotated_observations_by_track={
+                    "1": [{"track_id": "1", "box_xyxy": [1, 1, 5, 5], "confidence": 0.8}],
+                    "2": [{"track_id": "2", "box_xyxy": [10, 10, 15, 15], "confidence": 0.8}],
+                },
+            )
+        finally:
+            main_module._select_annotated_preview_observation = original_select
+            main_module._extract_annotated_video_object_preview = original_extract
+            main_module.persist_scan = original_persist
+
+        self.assertEqual(len(scan_ids), len(canonical))
+        self.assertEqual(len(captured), len(canonical))
 
 
 if __name__ == "__main__":
