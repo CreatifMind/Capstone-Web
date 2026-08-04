@@ -1,3 +1,6 @@
+export const MODEL_CANDIDATE_THRESHOLD = 0.10;
+export const DECISION_CONFIDENCE_THRESHOLD = 0.32;
+
 export const MODEL_CONFIG = {
   modelPath: "/models/purityloop/best.onnx",
   inputName: "images",
@@ -5,7 +8,7 @@ export const MODEL_CONFIG = {
   inputShape: [1, 3, 640, 640] as const,
   inputSize: 640,
   paddingValue: 114,
-  confidenceThreshold: 0.32,
+  confidenceThreshold: MODEL_CANDIDATE_THRESHOLD,
   nmsIouThreshold: 0.7,
   executionProvider: "wasm",
   classes: [

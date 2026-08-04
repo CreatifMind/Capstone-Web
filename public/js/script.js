@@ -186,10 +186,11 @@ function plNormalizeStatus(value) {
   return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-const PL_CONFIRMATION_THRESHOLD = 85;
+const PL_DECISION_CONFIDENCE_THRESHOLD = 0.32;
+const PL_CONFIRMATION_THRESHOLD = PL_DECISION_CONFIDENCE_THRESHOLD * 100;
 const PL_BROWSER_MODEL_CLASSES = ["plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash"];
 const PL_BROWSER_MODEL_VERSION = "v3_ffremask_9cls";
-const PL_BROWSER_CONFIDENCE_THRESHOLD = 0.32;
+const PL_BROWSER_CONFIDENCE_THRESHOLD = 0.10;
 const PL_BROWSER_NMS_IOU_THRESHOLD = 0.70;
 const PL_CATEGORY_CLASS_MAP = {
   general_trash: "contaminant", food_organics: "contaminant", textile: "contaminant", battery: "contaminant",
@@ -2765,8 +2766,22 @@ function initResultPage() {
   const reviewVerifyButton = document.getElementById("reviewVerifyButton");
   const reviewRejectButton = document.getElementById("reviewRejectButton");
   const reviewFeedback = document.getElementById("reviewActionFeedback");
+  const reportFalsePositiveButton = document.getElementById("reportFalsePositiveButton");
+  const reprocessFalsePositiveButton = document.getElementById("reprocessFalsePositiveButton");
+  const falsePositiveModal = document.getElementById("falsePositiveModal");
+  const falsePositivePrediction = document.getElementById("falsePositivePrediction");
+  const falsePositiveConfidence = document.getElementById("falsePositiveConfidence");
+  const falsePositiveStatus = document.getElementById("falsePositiveStatus");
+  const falsePositiveExpectedCategory = document.getElementById("falsePositiveExpectedCategory");
+  const falsePositiveReason = document.getElementById("falsePositiveReason");
+  const falsePositiveNote = document.getElementById("falsePositiveNote");
+  const falsePositiveFeedback = document.getElementById("falsePositiveFeedback");
+  const submitFalsePositiveReport = document.getElementById("submitFalsePositiveReport");
   let activeReviewMaterial = null;
+  let activeFalsePositiveMaterial = null;
+  let activeFalsePositiveReport = null;
   let isReviewSaving = false;
+  let isFalsePositiveSaving = false;
   let reviewMediaMode = "detected";
   let isReviewNavigating = false;
   let reviewNavigationState = null;
@@ -3168,6 +3183,10 @@ function initResultPage() {
     }
     if (reviewVerifyButton) reviewVerifyButton.disabled = true;
     if (reviewRejectButton) reviewRejectButton.disabled = true;
+    if (reportFalsePositiveButton) reportFalsePositiveButton.disabled = true;
+    if (reprocessFalsePositiveButton) reprocessFalsePositiveButton.hidden = true;
+    activeFalsePositiveMaterial = null;
+    activeFalsePositiveReport = null;
     if (reviewFeedback) reviewFeedback.textContent = "";
     ["reviewMetaSource", "reviewMetaTime", "reviewMetaStatus"].forEach(id => {
       const element = document.getElementById(id);
@@ -3250,6 +3269,7 @@ function initResultPage() {
     const primaryDecision = plEvaluateMaterial(primaryMaterial, activeScan);
     const unresolved = materials.find(material => plEvaluateMaterial(material, activeScan).reviewRequired) || null;
     activeReviewMaterial = unresolved;
+    activeFalsePositiveMaterial = primaryMaterial || null;
     const selectedCategory = plCategoryKey((unresolved || primaryMaterial)?.category);
 
     reviewCategorySelect.value = Object.keys(PL_CATEGORY_CLASS_MAP).includes(selectedCategory) ? selectedCategory : "";
@@ -3257,6 +3277,11 @@ function initResultPage() {
     reviewVerifyButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
     reviewRejectButton.disabled = !unresolved || !reviewCategorySelect.value || isReviewSaving;
     if (reviewFeedback && !isReviewSaving) reviewFeedback.textContent = "";
+    if (reportFalsePositiveButton) reportFalsePositiveButton.disabled = !activeScan || !activeFalsePositiveMaterial || isFalsePositiveSaving;
+    if (reprocessFalsePositiveButton) {
+      reprocessFalsePositiveButton.hidden = !activeFalsePositiveReport?.id;
+      reprocessFalsePositiveButton.disabled = isFalsePositiveSaving || !activeFalsePositiveReport?.id || ["queued", "reprocessing", "resolved", "dismissed"].includes(plNormalizeStatus(activeFalsePositiveReport.status));
+    }
 
     const source = document.getElementById("reviewMetaSource");
     const uploaded = document.getElementById("reviewMetaTime");
@@ -3295,10 +3320,112 @@ function initResultPage() {
     if (reviewVerifyButton) reviewVerifyButton.disabled = !enabled;
     if (reviewRejectButton) reviewRejectButton.disabled = !enabled;
   });
+  function closeFalsePositiveModal() {
+    if (!falsePositiveModal || isFalsePositiveSaving) return;
+    falsePositiveModal.classList.remove("active");
+    falsePositiveModal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("audit-review-modal-open");
+    if (falsePositiveFeedback) falsePositiveFeedback.textContent = "";
+  }
+
+  function openFalsePositiveModal() {
+    if (!activeScan || !activeFalsePositiveMaterial || !falsePositiveModal) return;
+    const decision = plEvaluateMaterial(activeFalsePositiveMaterial, activeScan);
+    if (falsePositivePrediction) falsePositivePrediction.textContent = plNormalizeCategory(activeFalsePositiveMaterial.category || activeFalsePositiveMaterial.material_name);
+    if (falsePositiveConfidence) falsePositiveConfidence.textContent = `${Math.round(plConfidencePercent(activeFalsePositiveMaterial.confidence || activeScan.overall_confidence))}%`;
+    if (falsePositiveStatus) falsePositiveStatus.textContent = decision.displayStatus;
+    if (falsePositiveExpectedCategory) {
+      falsePositiveExpectedCategory.value = "";
+      [...falsePositiveExpectedCategory.options].forEach(option => {
+        option.disabled = option.value && option.value === plCategoryKey(activeFalsePositiveMaterial.category || activeFalsePositiveMaterial.material_name);
+      });
+    }
+    if (falsePositiveReason) falsePositiveReason.value = "wrong_class";
+    if (falsePositiveNote) falsePositiveNote.value = "";
+    if (falsePositiveFeedback) falsePositiveFeedback.textContent = "";
+    falsePositiveModal.classList.add("active");
+    falsePositiveModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("audit-review-modal-open");
+    requestAnimationFrame(() => falsePositiveModal.querySelector("[role=dialog]")?.focus());
+  }
+
+  async function submitFalsePositive() {
+    if (!activeScan || !activeFalsePositiveMaterial || !falsePositiveExpectedCategory?.value || isFalsePositiveSaving) return;
+    const expected = falsePositiveExpectedCategory.value;
+    const predicted = plCategoryKey(activeFalsePositiveMaterial.category || activeFalsePositiveMaterial.material_name);
+    if (expected === predicted) {
+      if (falsePositiveFeedback) falsePositiveFeedback.textContent = "Expected category must differ from the original prediction.";
+      return;
+    }
+    isFalsePositiveSaving = true;
+    if (submitFalsePositiveReport) submitFalsePositiveReport.disabled = true;
+    if (reportFalsePositiveButton) reportFalsePositiveButton.disabled = true;
+    if (falsePositiveFeedback) falsePositiveFeedback.textContent = "Submitting report...";
+    try {
+      const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans/${encodeURIComponent(activeScan.id)}/false-positive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          detected_material_id: activeFalsePositiveMaterial.id || null,
+          expected_category: expected,
+          reason: falsePositiveReason?.value || "wrong_class",
+          note: falsePositiveNote?.value || ""
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 409 && payload.report) {
+          activeFalsePositiveReport = payload.report;
+          throw new Error("An active false-positive report already exists for this result.");
+        }
+        throw new Error(plApiErrorMessage(payload, "Unable to report false positive."));
+      }
+      activeFalsePositiveReport = { id: payload.report_id, status: payload.status };
+      if (falsePositiveFeedback) {
+        falsePositiveFeedback.textContent = `False positive reported. Original prediction: ${plNormalizeCategory(payload.predicted_category)} — ${Math.round(plConfidencePercent(payload.predicted_confidence))}%. Expected category: ${plNormalizeCategory(payload.expected_category)}. Status: ${plNormalizeCategory(payload.status)}.`;
+      }
+      showToast("False positive reported.", "success");
+      if (reprocessFalsePositiveButton) {
+        reprocessFalsePositiveButton.hidden = false;
+        reprocessFalsePositiveButton.disabled = false;
+      }
+    } catch (error) {
+      if (falsePositiveFeedback) falsePositiveFeedback.textContent = error.message || "Unable to report false positive.";
+      showToast(error.message || "Unable to report false positive.", "error");
+    } finally {
+      isFalsePositiveSaving = false;
+      if (submitFalsePositiveReport) submitFalsePositiveReport.disabled = false;
+      if (activeScan?.detected_materials) setReviewWorkspaceControls(activeScan.detected_materials);
+    }
+  }
+
+  async function reprocessFalsePositive() {
+    if (!activeFalsePositiveReport?.id || isFalsePositiveSaving) return;
+    isFalsePositiveSaving = true;
+    if (reprocessFalsePositiveButton) reprocessFalsePositiveButton.disabled = true;
+    try {
+      const response = await plBackendFetch(`${plApiBaseUrl()}/api/false-positives/${encodeURIComponent(activeFalsePositiveReport.id)}/reprocess`, { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(plApiErrorMessage(payload, "Unable to queue reprocessing."));
+      activeFalsePositiveReport = payload.report || activeFalsePositiveReport;
+      showToast(`Re-run Detection queued. Job ${payload.job_id || ""}`.trim(), "success");
+    } catch (error) {
+      showToast(error.message || "Unable to queue reprocessing.", "error");
+    } finally {
+      isFalsePositiveSaving = false;
+      if (activeScan?.detected_materials) setReviewWorkspaceControls(activeScan.detected_materials);
+    }
+  }
+
   reviewDetectedObjectsTab?.addEventListener("click", () => setReviewMediaMode("detected"));
   reviewAnnotatedVideoTab?.addEventListener("click", () => setReviewMediaMode("annotated"));
   reviewVerifyButton?.addEventListener("click", () => saveReviewFromWorkspace("confirmed"));
   reviewRejectButton?.addEventListener("click", () => saveReviewFromWorkspace("rejected"));
+  reportFalsePositiveButton?.addEventListener("click", openFalsePositiveModal);
+  reprocessFalsePositiveButton?.addEventListener("click", reprocessFalsePositive);
+  submitFalsePositiveReport?.addEventListener("click", submitFalsePositive);
+  falsePositiveModal?.querySelectorAll("[data-false-positive-close]").forEach(button => button.addEventListener("click", closeFalsePositiveModal));
+  falsePositiveModal?.addEventListener("click", event => { if (event.target === falsePositiveModal) closeFalsePositiveModal(); });
 
   function drawEmptyScanCanvas(label) {
     if (!canvas || !ctx2d) return;

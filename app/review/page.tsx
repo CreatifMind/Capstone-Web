@@ -144,6 +144,10 @@ export default function ReviewPage() {
                   <button id="nextScanBtn" className="secondary-btn" type="button" disabled><i className="fa-solid fa-forward" aria-hidden="true" />Next Scan</button>
                   <span id="finderNavigationStatus" className="sr-only">No uploads</span>
                 </div>
+                <div className="review-action-bar review-secondary-action-bar">
+                  <button id="reportFalsePositiveButton" className="secondary-btn" type="button" disabled><i className="fa-solid fa-flag" aria-hidden="true" />Report False Positive</button>
+                  <button id="reprocessFalsePositiveButton" className="secondary-btn" type="button" hidden><i className="fa-solid fa-rotate" aria-hidden="true" />Re-run Detection</button>
+                </div>
               </section>
             </section>
 
@@ -179,6 +183,21 @@ export default function ReviewPage() {
                 <p id="auditReviewFeedback" className="audit-review-feedback" role="status" aria-live="polite" />
               </div>
               <div className="modal-actions"><button id="auditReviewVerify" type="button" className="primary-btn">Verify Result</button><button id="auditReviewReject" type="button" className="danger-btn">Reject Result</button></div>
+            </section>
+          </div>
+          <div id="falsePositiveModal" className="modal-overlay audit-review-modal" aria-hidden="true">
+            <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="falsePositiveTitle" tabIndex={-1}>
+              <button type="button" className="modal-close" data-false-positive-close aria-label="Close false-positive report">×</button>
+              <h2 id="falsePositiveTitle">Report False Positive</h2>
+              <p>The original result will remain preserved. This creates a model-quality incident for review and optional reprocessing.</p>
+              <div className="audit-review-body">
+                <section className="audit-review-snapshot"><strong>ORIGINAL AI RESULT</strong><div className="audit-review-summary"><div><p><strong>Prediction:</strong> <span id="falsePositivePrediction">-</span></p><p><strong>Confidence:</strong> <span id="falsePositiveConfidence">-</span></p><p><strong>Status:</strong> <span id="falsePositiveStatus">-</span></p></div></div></section>
+                <label className="audit-review-category">Expected category<select id="falsePositiveExpectedCategory" aria-label="Expected category"><option value="">Select category</option>{categories.map(category => <option key={category} value={category.toLowerCase().replace(/ /g, "_")}>{category}</option>)}</select></label>
+                <label className="audit-review-category">Reason<select id="falsePositiveReason" aria-label="False-positive reason"><option value="wrong_class">Wrong class</option><option value="incorrect_object">Incorrect object</option><option value="background_false_detection">Background false detection</option><option value="duplicate_detection">Duplicate detection</option><option value="low_quality_prediction">Low-quality prediction</option><option value="other">Other</option></select></label>
+                <label className="audit-review-category">Note<textarea id="falsePositiveNote" rows={3} maxLength={1000} placeholder="Optional note" /></label>
+                <p id="falsePositiveFeedback" className="audit-review-feedback" role="status" aria-live="polite" />
+              </div>
+              <div className="modal-actions"><button id="submitFalsePositiveReport" type="button" className="primary-btn">Submit Report</button><button type="button" className="secondary-btn" data-false-positive-close>Cancel</button></div>
             </section>
           </div>
         </main>
