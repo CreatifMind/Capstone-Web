@@ -175,18 +175,22 @@ class ScanHistoryContractTests(unittest.TestCase):
         with self.fake_backend(fake):
             payload = main.get_scan_history(limit=10, offset=0, principal=fake_principal())
 
-        self.assertEqual(payload["total"], 4312)
+        self.assertEqual(payload["total"], 25)
         self.assertEqual(payload["limit"], 10)
         self.assertEqual(payload["offset"], 0)
         self.assertEqual(len(payload["items"]), 10)
-        self.assertEqual(fake.queries[0].range_args, (0, 9))
+        self.assertEqual(fake.queries[0].range_args, (0, 499))
         self.assertEqual(fake.queries[0].columns, ("*",))
         self.assertIsNone(fake.queries[0].count)
-        self.assertEqual(fake.queries[1].columns, ("id",))
-        self.assertEqual(fake.queries[1].count, "exact")
-        self.assertIs(fake.queries[1].head, True)
-        self.assertIsNone(fake.queries[1].range_args)
-        self.assertEqual(payload["summary"], {"confirmed": 4195, "needs_review": 107, "rejected": 10})
+        self.assertEqual(payload["summary"], {
+            "confirmed": 25,
+            "needs_review": 0,
+            "rejected": 0,
+            "total_objects": 25,
+            "confirmed_objects": 25,
+            "needs_review_objects": 0,
+            "rejected_objects": 0,
+        })
         self.assertNotIn("scans", payload)
 
     def test_scan_history_review_page_uses_ten_row_ranges(self):
@@ -194,11 +198,11 @@ class ScanHistoryContractTests(unittest.TestCase):
         with self.fake_backend(fake):
             payload = main.get_scan_history(limit=10, offset=10, principal=fake_principal())
 
-        self.assertEqual(payload["total"], 4312)
+        self.assertEqual(payload["total"], 25)
         self.assertEqual(payload["limit"], 10)
         self.assertEqual(payload["offset"], 10)
         self.assertEqual(len(payload["items"]), 10)
-        self.assertEqual(fake.queries[0].range_args, (10, 19))
+        self.assertEqual(fake.queries[0].range_args, (0, 499))
 
     def test_scan_history_accepts_review_filters_and_confidence_sort(self):
         fake = FakeSupabase()
@@ -213,11 +217,11 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["sort"], "confidence")
         self.assertEqual(payload["direction"], "asc")
         self.assertEqual(fake.queries[0].filters["source_name"], "%bottle%")
-        self.assertIs(fake.queries[0].filters["human_review_required"], True)
-        self.assertEqual(fake.queries[1].filters["source_name"], "%bottle%")
-        self.assertIs(fake.queries[1].filters["human_review_required"], True)
+        self.assertNotIn("human_review_required", fake.queries[0].filters)
+        self.assertEqual(payload["total"], 0)
+        self.assertEqual(payload["items"], [])
         self.assertEqual(fake.queries[0].order_args[0], ("overall_confidence",))
-        self.assertEqual(fake.queries[0].range_args, (10, 19))
+        self.assertEqual(fake.queries[0].range_args, (0, 499))
 
     def test_final_category_filter_prefers_verified_then_reviewed_category(self):
         scans = [
@@ -242,21 +246,16 @@ class ScanHistoryContractTests(unittest.TestCase):
             payload = main.get_scan_history(limit=10, offset=0, category="plastic", principal=fake_principal())
 
         self.assertEqual(payload["category"], "plastic")
-        self.assertEqual(payload["total"], 548)
+        self.assertEqual(payload["total"], 25)
         self.assertEqual(len(payload["items"]), 10)
-        self.assertEqual(fake.rpc_calls[0][0], "scan_history_page")
-        self.assertEqual(fake.rpc_calls[0][1]["p_limit"], 10)
-        self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 0)
-        self.assertEqual(fake.rpc_calls[0][1]["p_category_key"], "plastic")
+        self.assertEqual(fake.rpc_calls, [])
 
     def test_scan_history_search_filter_applies_to_summary_counts(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
             main.get_scan_history(limit=10, offset=0, search="missing", principal=fake_principal())
 
-        self.assertEqual(fake.queries[1].filters["source_name"], "%missing%")
-        self.assertEqual(fake.queries[2].filters["source_name"], "%missing%")
-        self.assertEqual(fake.queries[3].filters["source_name"], "%missing%")
+        self.assertEqual(fake.queries[0].filters["source_name"], "%missing%")
 
     def test_scan_lookup_rejects_invalid_uuid_safely(self):
         fake = FakeSupabase()

@@ -212,7 +212,7 @@ const PL_CATEGORY_CLASS_MAP = {
 };
 
 function plBrowserClassLabel(value) {
-  if (value === "general_trash") return "Unsorted / Needs Review";
+  if (value === "general_trash") return "General Trash";
   if (value === "food_organic") return "Food Organic";
   return plNormalizeCategory(value);
 }
@@ -248,7 +248,7 @@ function plEvaluateMaterial(material, scan = {}) {
   const scanReviewStatus = plNormalizeStatus(scan?.review_status || scan?.overall_status);
   const verified = scanReviewStatus === "verified";
   const rejected = scanReviewStatus === "rejected" || (Boolean(decision) && reviewOutcome === "rejected");
-  const reviewRequired = !verified && !rejected && !decision && (category === "general_trash" || confidence < PL_CONFIRMATION_THRESHOLD || materialClass === "unknown");
+  const reviewRequired = !verified && !rejected && !decision && confidence < PL_CONFIRMATION_THRESHOLD;
   return {
     category,
     materialClass,
@@ -4006,10 +4006,10 @@ function initReviewWorkspace() {
   };
   const updateSummary = () => {
     const summary = plScanHistoryMeta.summary || {};
-    const total = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total;
+    const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
     const pageRows = currentRows();
-    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed ?? pageRows.filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review ?? pageRows.filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected ?? pageRows.filter(row => row.decisionStatus === "rejected").length);
+    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed_objects ?? summary.confirmed ?? pageRows.filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review_objects ?? summary.needs_review ?? pageRows.filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected_objects ?? summary.rejected ?? pageRows.filter(row => row.decisionStatus === "rejected").length);
   };
   const render = () => {
     updateSummary();
@@ -4287,11 +4287,11 @@ function initReviewModal() {
     const confirmedCount = statuses.filter(status => status === "confirmed").length;
     const reviewScanCount = statuses.filter(status => status === "review_needed").length;
     const rejectedCount = statuses.filter(status => status === "rejected").length;
-    const totalUploads = Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : scans.length;
-    const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review)) ? Number(exactSummary.needs_review) : reviewScanCount;
-    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed)) ? exactSummary.confirmed : confirmedCount);
+    const totalUploads = Number.isFinite(Number(exactSummary.total_objects)) ? Number(exactSummary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : scans.length);
+    const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review_objects ?? exactSummary.needs_review)) ? (exactSummary.needs_review_objects ?? exactSummary.needs_review) : reviewScanCount;
+    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed_objects ?? exactSummary.confirmed)) ? (exactSummary.confirmed_objects ?? exactSummary.confirmed) : confirmedCount);
     setText("historyReviewCount", resolvedReviewCount);
-    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected)) ? exactSummary.rejected : rejectedCount);
+    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected_objects ?? exactSummary.rejected)) ? (exactSummary.rejected_objects ?? exactSummary.rejected) : rejectedCount);
     setText("historyProcessedToday", totalUploads);
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
@@ -4547,10 +4547,10 @@ function plAnalyticsSummaryForActiveScope() {
     contaminatedRows: plSafeArray(payload.contaminated_rows),
     recyclableCount: plSafeArray(payload.recyclable_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
     contaminationCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
-    reviewCount: Number(payload.review_count) || 0,
+    reviewCount: Number(payload.needs_review_objects ?? payload.object_metrics?.needs_review_objects ?? payload.review_count) || 0,
     allLowConfidenceCount: 0,
     avgConfidence: Number(payload.average_detection_confidence) || 0,
-    confirmedScanCount: Number(payload.confirmed_count) || 0,
+    confirmedScanCount: Number(payload.confirmed_objects ?? payload.object_metrics?.confirmed_objects ?? payload.confirmed_count) || 0,
     recyclableTop: payload.top_recyclable_material ? [payload.top_recyclable_material.label, Number(payload.top_recyclable_material.count) || 0] : null,
     contaminantTop: payload.top_contamination_source ? [payload.top_contamination_source.label, Number(payload.top_contamination_source.count) || 0] : null,
     highestValue: payload.highest_value_category || null,
@@ -4561,9 +4561,13 @@ function plAnalyticsSummaryForActiveScope() {
     highRiskCount: Number(payload.high_risk_count) || 0,
     recoveryOpportunityCount: Number(payload.recovery_opportunity_count) || 0,
     recentEvents: plSafeArray(payload.recent_events),
-    clearedCount: Number(payload.confirmed_count) || 0,
-    quarantinedCount: Number(payload.rejected_count) || 0,
-    nonRecyclableCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0)
+    clearedCount: Number(payload.confirmed_objects ?? payload.object_metrics?.confirmed_objects ?? payload.confirmed_count) || 0,
+    quarantinedCount: Number(payload.rejected_objects ?? payload.object_metrics?.rejected_objects ?? payload.rejected_count) || 0,
+    nonRecyclableCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
+    reviewerActivity: plSafeArray(payload.reviewer_activity),
+    uploadPipelineHealth: payload.upload_pipeline_health || null,
+    riskSeverityBreakdown: plSafeArray(payload.risk_severity_breakdown),
+    aiAccuracyByCategory: plSafeArray(payload.ai_accuracy_by_category)
   };
 }
 
@@ -4613,10 +4617,10 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   }
 
   plOverviewSet("needs-review", String(exactReviewCount));
-  plOverviewSet("needs-review-note", exactReviewCount ? "Scans require attention" : "All scans are up to date");
+  plOverviewSet("needs-review-note", exactReviewCount ? "Objects require attention" : "All objects are up to date");
   plOverviewSet("confirmed-today", String(exactConfirmedCount));
   const confirmedLabel = document.getElementById("analyticsConfirmedLabel");
-  if (confirmedLabel) confirmedLabel.textContent = dateValue ? "Confirmed on Selected Date" : "Confirmed Scans";
+  if (confirmedLabel) confirmedLabel.textContent = "Confirmed Objects";
   plOverviewSet("recoverable-value", plFormatRm(summary.totalEstimatedResaleValueRm));
   plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No data");
 

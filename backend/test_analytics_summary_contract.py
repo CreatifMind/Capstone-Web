@@ -153,6 +153,19 @@ class AnalyticsSummaryContractTests(unittest.TestCase):
         self.assertEqual(payload["total_scans"], 3)
         self.assertEqual(payload["detected_materials_count"], 3)
 
+    def test_object_metrics_use_canonical_material_status(self):
+        payload = self.call_summary()
+
+        self.assertEqual(payload["object_metrics"], {
+            "total_objects": 3,
+            "confirmed_objects": 2,
+            "needs_review_objects": 0,
+            "rejected_objects": 1,
+        })
+        self.assertEqual(payload["confirmed_count"], 2)
+        self.assertEqual(payload["review_count"], 0)
+        self.assertEqual(payload["rejected_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

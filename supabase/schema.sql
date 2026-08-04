@@ -135,15 +135,30 @@ update scan_results as scan
 set
   human_review_required = exists (
     select 1 from detected_materials material
-    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+    where material.scan_result_id = scan.id
+      and (
+        material.confidence is null
+        or material.confidence < 0
+        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+      )
   ),
   overall_status = case when exists (
     select 1 from detected_materials material
-    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+    where material.scan_result_id = scan.id
+      and (
+        material.confidence is null
+        or material.confidence < 0
+        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+      )
   ) then 'review_required' else 'accepted' end,
   recommended_action = case when exists (
     select 1 from detected_materials material
-    where material.scan_result_id = scan.id and coalesce(material.confidence, 0) < 0.85
+    where material.scan_result_id = scan.id
+      and (
+        material.confidence is null
+        or material.confidence < 0
+        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+      )
   ) then 'Human review required before sorting.' else 'Confirmed sorting routes applied.' end
 where lower(coalesce(scan.overall_status, '')) not in ('rejected', 'quarantined')
   and exists (select 1 from detected_materials material where material.scan_result_id = scan.id)

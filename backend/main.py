@@ -1480,23 +1480,22 @@ def export_final_category(scan: dict) -> str:
 def export_display_status(scan: dict, material: dict, decision: dict | None) -> tuple[str, str, str]:
     category = export_final_category(scan)
     material_class = (decision or {}).get("disposition") or material.get("material_class") or CATEGORY_CLASS_MAP.get(category, "unknown")
-    confidence = confidence_percent(material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"))
-    review_outcome = str((decision or {}).get("outcome") or (decision or {}).get("review_outcome") or "confirmed").strip().lower().replace("-", "_").replace(" ", "_")
-    scan_status = str(scan.get("review_status") or scan.get("overall_status") or "").strip().lower().replace("-", "_").replace(" ", "_")
-    rejected = scan_status in {"rejected", "quarantined"} or (decision is not None and review_outcome == "rejected")
-    verified = scan_status == "verified"
-    review_required = not verified and not rejected and decision is None and (confidence < CONFIRMATION_THRESHOLD * 100 or material_class == "unknown")
-    if rejected:
+    final_status = derive_final_status(
+        confidence=material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"),
+        decision=decision,
+        scan=scan,
+    )
+    if final_status == "rejected":
         return "Rejected", "rejected", material_class
-    if verified:
+    if normalize_status(scan.get("review_status") or scan.get("overall_status")) == "verified":
         return "Verified", "verified", material_class
-    if review_required:
+    if final_status == "needs_review":
         return "Review Needed", "review_needed", material_class
     if material_class == "recyclable":
         return "Confirmed Recyclable", "confirmed", material_class
     if material_class == "contaminant":
         return "Confirmed Contaminant", "confirmed", material_class
-    return "Review Needed", "review_needed", material_class
+    return "Confirmed", "confirmed", material_class
 
 
 def export_weight(scan: dict, material: dict) -> str:
@@ -2139,6 +2138,56 @@ def normalized_confidence(value: Any) -> float:
     return max(0.0, min(1.0, confidence))
 
 
+def normalize_status(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def derive_final_status(*, confidence: Any, decision: dict | None = None, scan: dict | None = None) -> str:
+    """Canonical object status. Human decisions win; auto confidence threshold is inclusive."""
+    decision_status = normalize_status((decision or {}).get("outcome") or (decision or {}).get("review_outcome"))
+    scan_status = normalize_status((scan or {}).get("review_status") or (scan or {}).get("overall_status"))
+    if decision_status == "rejected" or scan_status in {"rejected", "quarantined"}:
+        return "rejected"
+    if decision_status == "confirmed" or scan_status in {"verified", "corrected"}:
+        return "confirmed"
+    try:
+        numeric = float(confidence)
+    except (TypeError, ValueError):
+        return "needs_review"
+    if not math.isfinite(numeric):
+        return "needs_review"
+    return "confirmed" if normalized_confidence(numeric) >= DECISION_CONFIDENCE_THRESHOLD else "needs_review"
+
+
+def object_identity(scan: dict, material: dict) -> str:
+    scan_id = str(scan.get("id") or material.get("scan_result_id") or "")
+    if str(scan.get("source_type") or scan.get("result_kind") or material.get("result_type") or "") in {"tracked_video", "video_track_object", "tracked_video_object"}:
+        stable = material.get("stable_object_id") or material.get("object_uid")
+        if stable:
+            return f"{scan_id}:{stable}"
+        track = material.get("track_id")
+        if track:
+            return f"{scan_id}:{track}"
+    return str(material.get("id") or f"{scan_id}:{material.get('detection_key') or material.get('created_at') or len(str(material))}")
+
+
+def object_metrics_from_rows(scans: list[dict], materials: list[dict], decisions: list[dict]) -> dict[str, int]:
+    latest = latest_decisions_by_material(decisions)
+    scan_by_id = {str(scan.get("id")): scan for scan in scans if scan.get("id")}
+    seen: set[str] = set()
+    counts = {"total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}
+    for material in materials:
+        scan = scan_by_id.get(str(material.get("scan_result_id") or ""), {})
+        identity = object_identity(scan, material)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        status = derive_final_status(confidence=material.get("confidence"), decision=latest.get(str(material.get("id") or "")), scan=scan)
+        counts["total_objects"] += 1
+        counts[f"{status}_objects"] += 1
+    return counts
+
+
 def _looks_like_uuid(value: Any) -> bool:
     try:
         UUID(str(value))
@@ -2148,12 +2197,7 @@ def _looks_like_uuid(value: Any) -> bool:
 
 
 def determine_detection_status(confidence: float, is_contaminant: bool, category: str = "unknown") -> dict[str, str]:
-    if material_category(category) == GENERAL_TRASH_CATEGORY:
-        return {
-            "review_status": "needs_review",
-            "ai_status": "manual_review_required",
-        }
-    if normalized_confidence(confidence) < DECISION_CONFIDENCE_THRESHOLD:
+    if derive_final_status(confidence=confidence) == "needs_review":
         return {
             "review_status": "needs_review",
             "ai_status": "low_confidence_detection",
@@ -2168,7 +2212,7 @@ def evaluate_material(category: str, confidence: float) -> dict:
     material_class = CATEGORY_CLASS_MAP.get(category, "unknown")
     confidence = normalized_confidence(confidence)
     status = determine_detection_status(confidence, material_class == "contaminant", category)
-    review_required = status["review_status"] == "needs_review" or material_class == "unknown"
+    review_required = status["review_status"] == "needs_review"
     decision_status = "review_needed" if review_required else "confirmed"
     if review_required:
         display_status = "Review Needed"
@@ -2180,10 +2224,8 @@ def evaluate_material(category: str, confidence: float) -> dict:
         display_status = "Confirmed Contaminant"
         disposal_route = CATEGORY_ROUTES[category]
     else:
-        display_status = "Review Needed"
+        display_status = "Confirmed"
         disposal_route = "Manual Audit Queue"
-        review_required = True
-        decision_status = "review_needed"
     return {
         "material_class": material_class,
         "review_required": review_required,
@@ -6154,9 +6196,10 @@ def analytics_summary(
             latest_decisions[str(decision.get("detected_material_id") or "")] = decision
 
         scan_by_id = {str(scan["id"]): scan for scan in scans if scan.get("id")}
-        rejected_count = sum(str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} for scan in scans)
-        review_count = sum(bool(scan.get("human_review_required")) for scan in scans)
-        confirmed_count = max(0, len(scans) - rejected_count - review_count)
+        object_metrics = object_metrics_from_rows(scans, materials, decisions)
+        rejected_count = object_metrics["rejected_objects"]
+        review_count = object_metrics["needs_review_objects"]
+        confirmed_count = object_metrics["confirmed_objects"]
         category_data: dict[str, dict] = {}
         recyclable_counts: dict[str, int] = {}
         contaminant_counts: dict[str, int] = {}
@@ -6181,18 +6224,19 @@ def analytics_summary(
                 row["confidence_total"] += confidence
                 row["confidence_count"] += 1
             decision = latest_decisions.get(str(material.get("id") or ""))
+            scan = scan_by_id.get(str(material.get("scan_result_id") or ""))
+            final_status = derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
             material_class = str((decision or {}).get("disposition") or material.get("material_class") or estimate["material_class"]).lower()
-            if material_class == "recyclable":
+            if final_status == "confirmed" and material_class == "recyclable":
                 recyclable_counts[estimate["label"]] = recyclable_counts.get(estimate["label"], 0) + 1
                 row["recyclable_count"] += 1
                 if estimate["price_per_kg_rm"] > 0:
                     recovery_opportunity_count += 1
-            elif material_class == "contaminant":
+            elif final_status == "confirmed" and material_class == "contaminant":
                 contaminant_counts[estimate["label"]] = contaminant_counts.get(estimate["label"], 0) + 1
                 row["contaminant_count"] += 1
                 if category == "battery":
                     high_risk_count += 1
-            scan = scan_by_id.get(str(material.get("scan_result_id") or ""))
             if decision and scan:
                 created_at, reviewed_at = analytics_timestamp(scan.get("created_at")), analytics_timestamp(decision.get("created_at"))
                 if created_at and reviewed_at and reviewed_at >= created_at:
@@ -6254,6 +6298,8 @@ def analytics_summary(
             "confirmed_count": confirmed_count,
             "review_count": review_count,
             "rejected_count": rejected_count,
+            "object_metrics": object_metrics,
+            **object_metrics,
             "detected_materials_count": len(materials),
             "average_detection_confidence": sum(confidence_values) / len(confidence_values) if confidence_values else 0,
             "estimated_recovery_value": sum(row["estimatedResaleValueRm"] for row in resale_rows),
@@ -6528,76 +6574,55 @@ def get_scan_history(
         descending = str(direction).lower() != "asc"
         category_key = canonical_category_key(category) if category else ""
         if category and category_key == "unknown":
-            return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0}}
+            return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0, "total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}}
 
-        if category_key:
-            def category_rpc(status_value: str | None, rpc_limit: int = limit, rpc_offset: int = offset):
-                return execute_scan_read(f"category {status_value or 'page'} query", lambda client: scoped_query(client.rpc("scan_history_page", {
-                    "p_limit": rpc_limit,
-                    "p_offset": rpc_offset,
-                    "p_start_date": filters["start_date"],
-                    "p_end_date": filters["end_date"],
-                    "p_search": filters["search"],
-                    "p_category_key": category_key,
-                    "p_status": status_value,
-                    "p_sort": "confidence" if sort == "confidence" else "timestamp",
-                    "p_direction": "asc" if not descending else "desc",
-                }), principal).execute())
+        base_filters = {**filters, "status": None}
 
-            def category_count(status_value: str | None) -> int:
-                rows = category_rpc(status_value, 1, 0).data or []
-                return int(rows[0].get("total_count") or 0) if rows else 0
+        def build_scans(client):
+            query = client.table(SCAN_RESULTS_TABLE).select("*")
+            query = apply_scan_history_filters(query, base_filters)
+            return query.order(order_column, desc=descending)
 
-            rpc_response = category_rpc(normalized_status or None)
-            rpc_rows = rpc_response.data or []
-            scans = [row.get("scan") for row in rpc_rows if isinstance(row, dict) and row.get("scan")]
-            total = int(rpc_rows[0].get("total_count") or 0) if rpc_rows else 0
-            if normalized_status:
-                rejected = total if normalized_status == "rejected" else 0
-                needs_review = total if normalized_status == "review_needed" else 0
-                confirmed = total if normalized_status == "confirmed" else 0
-            else:
-                rejected = category_count("rejected")
-                needs_review = category_count("review_needed")
-                confirmed = max(0, total - rejected - needs_review)
+        all_scans = analytics_page_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+        all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
+        if all_scan_ids:
+            all_materials = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), DETECTED_MATERIALS_TABLE, all_scan_ids, principal)
+            all_decisions = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), REVIEW_DECISIONS_TABLE, all_scan_ids, principal)
         else:
-            def build_page_query(client):
-                query = client.table(SCAN_RESULTS_TABLE).select("*")
-                query = apply_scan_history_filters(query, filters)
-                return scoped_query(query.order(order_column, desc=descending).range(offset, offset + limit - 1), principal).execute()
+            all_materials = []
+            all_decisions = []
+        if category_key:
+            all_scans = filter_scans_by_final_category(all_scans, all_materials, all_decisions, category_key)
+            all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
+            all_materials = [material for material in all_materials if str(material.get("scan_result_id") or "") in set(all_scan_ids)]
+            all_decisions = [decision for decision in all_decisions if str(decision.get("scan_result_id") or "") in set(all_scan_ids)]
+        latest_all_decisions = latest_decisions_by_material(all_decisions)
+        materials_by_scan_all: dict[str, list[dict]] = {}
+        for material in all_materials:
+            materials_by_scan_all.setdefault(str(material.get("scan_result_id", "")), []).append(material)
 
-            def build_count_query(client):
-                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-                query = apply_scan_history_filters(query, filters)
-                return scoped_query(query, principal).execute()
+        def scan_matches_status(scan: dict, status_value: str) -> bool:
+            material_rows = materials_by_scan_all.get(str(scan.get("id") or ""), [])
+            statuses = [
+                derive_final_status(confidence=material.get("confidence"), decision=latest_all_decisions.get(str(material.get("id") or "")), scan=scan)
+                for material in material_rows
+            ]
+            if status_value == "confirmed":
+                return bool(statuses) and all(item == "confirmed" for item in statuses)
+            if status_value == "review_needed":
+                return "needs_review" in statuses
+            if status_value == "rejected":
+                return "rejected" in statuses or normalize_status(scan.get("overall_status")) in {"rejected", "quarantined"}
+            return True
 
-            scan_response = execute_scan_read("page data query", build_page_query)
-            scans = scan_response.data or []
-            count_response = execute_scan_read("count query", build_count_query)
-            count_value = getattr(count_response, "count", None)
-            if count_value is None:
-                raise RuntimeError("Supabase did not return an exact scan count")
-            total = int(count_value)
-
-        def exact_count(status_value: str) -> int:
-            def run(client):
-                query = client.table(SCAN_RESULTS_TABLE).select("id", count="exact", head=True)
-                query = apply_scan_history_filters(query, filters, status_value)
-                return scoped_query(query, principal).execute()
-            response = execute_scan_read(f"{status_value} count query", run)
-            value = getattr(response, "count", None)
-            return int(value) if value is not None else 0
-
-        if not category_key:
-            if normalized_status:
-                rejected = total if normalized_status == "rejected" else 0
-                needs_review = total if normalized_status == "review_needed" else 0
-                confirmed = total if normalized_status == "confirmed" else 0
-            else:
-                rejected = exact_count("rejected")
-                needs_review = exact_count("review_needed")
-                confirmed = max(0, total - rejected - needs_review)
+        summary_metrics = object_metrics_from_rows(all_scans, all_materials, all_decisions)
+        filtered_scans = [scan for scan in all_scans if not normalized_status or scan_matches_status(scan, normalized_status)]
+        total = len(filtered_scans)
+        scans = filtered_scans[offset:offset + limit]
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
+        confirmed = summary_metrics["confirmed_objects"]
+        needs_review = summary_metrics["needs_review_objects"]
+        rejected = summary_metrics["rejected_objects"]
         if scan_ids:
             materials = execute_scan_read("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
             decisions = execute_scan_read("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
@@ -6633,6 +6658,7 @@ def get_scan_history(
                 "confirmed": confirmed,
                 "needs_review": needs_review,
                 "rejected": rejected,
+                **summary_metrics,
             },
         }
     except Exception as exc:

@@ -57,9 +57,9 @@ assert.equal(plEvaluateMaterial({ category: "Cardboard", confidence: 0.32 }).dis
 assert.equal(plEvaluateMaterial({ category: "Cardboard", confidence: 0.3199 }).displayStatus, "Review Needed");
 for (const confidence of [0.10, 0.31, 0.32, 0.75, 0.99]) {
   const trash = plEvaluateMaterial({ category: "General Trash", confidence });
-  assert.equal(trash.reviewRequired, true);
-  assert.equal(trash.displayStatus, "Review Needed");
-  assert.equal(trash.disposalRoute, "Manual Audit Queue");
+  assert.equal(trash.reviewRequired, confidence < 0.32);
+  assert.equal(trash.displayStatus, confidence < 0.32 ? "Review Needed" : "Confirmed Contaminant");
+  assert.equal(trash.disposalRoute, confidence < 0.32 ? "Manual Audit Queue" : "General-Waste Disposal");
 }
 assert.equal(plEvaluateMaterial({ category: "Food Organics", confidence: 0.88 }).displayStatus, "Confirmed Contaminant");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.72, review_decision: { chosen_category: "Battery", disposition: "contaminant" } }).displayStatus, "Confirmed Contaminant");
@@ -84,9 +84,9 @@ const overviewScans = [
   { id: "missing-optional", created_at: "2026-07-14T11:00:00.000Z", detected_materials: [] },
 ];
 const overview = plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-14T12:00:00.000Z" });
-assert.equal(overview.reviewCount, 3, "low confidence and General Trash need review");
+assert.equal(overview.reviewCount, 2, "only low-confidence objects need review");
 assert.equal(overview.allLowConfidenceCount, 2, "resolved low-confidence detections remain visible to the overview");
-assert.equal(overview.confirmedTodayCount, 5, "confirmed contaminants and completed reviews count as confirmed, not review");
+assert.equal(overview.confirmedTodayCount, 6, "confirmed contaminants and completed reviews count as confirmed, not review");
 assert.equal(overview.highRiskCount, 1, "confirmed battery is high risk");
 assert.equal(overview.recoveryOpportunityCount, 3, "only confirmed recyclables with value are recovery opportunities");
 assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 9, "trend includes scans without optional preview/source fields");

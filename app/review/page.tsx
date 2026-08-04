@@ -71,10 +71,10 @@ export default function ReviewPage() {
 
           <div className="page-body review-page-body">
             <section className="review-summary-grid" aria-label="Scan verification summary">
-              <SummaryCard label="Unique objects detected" valueId="historyProcessedToday" detail="Tracked-video objects and images" tone="total" icon="fa-file-lines" kpiFilter="total" />
-              <SummaryCard label="Confirmed" valueId="historyConfirmed" detail="Scans confirmed" tone="confirmed" icon="fa-circle-check" kpiFilter="confirmed" />
-              <SummaryCard label="Needs Review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" kpiFilter="review_needed" />
-              <SummaryCard label="Rejected" valueId="historyRejected" detail="Rejected scans" tone="rejected" icon="fa-circle-xmark" kpiFilter="rejected" />
+              <SummaryCard label="Unique Objects Detected" valueId="historyProcessedToday" detail="Tracked-video objects and images" tone="total" icon="fa-file-lines" kpiFilter="total" />
+              <SummaryCard label="Confirmed Objects" valueId="historyConfirmed" detail="Confirmed objects" tone="confirmed" icon="fa-circle-check" kpiFilter="confirmed" />
+              <SummaryCard label="Objects Needing Review" valueId="historyReviewCount" detail="Requires attention" tone="review" icon="fa-triangle-exclamation" kpiFilter="review_needed" />
+              <SummaryCard label="Rejected Objects" valueId="historyRejected" detail="Rejected objects" tone="rejected" icon="fa-circle-xmark" kpiFilter="rejected" />
             </section>
 
             <section className="review-filter-toolbar" aria-label="Review filters">
