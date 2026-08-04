@@ -107,6 +107,19 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "Correctness of retained predictions",
     "Share of target objects detected",
     "Held-out validation data",
+    "Detection Considerations",
+    "Strongest performance",
+    "Large, clearly visible objects",
+    "More challenging",
+    "Small, overlapping, or partially obscured objects",
+    "Human review",
+    "Low-confidence and General Trash results",
+    "Model Selection &amp; Web Deployment",
+    "Validated checkpoint",
+    "The deployed model was selected from the best validated YOLOv8m-seg checkpoint.",
+    "best.onnx enables browser-compatible inference through ONNX Runtime Web",
+    "best.pt remains the PyTorch model format used mainly for training and Python-based backend workflows.",
+    "9 waste categories",
   ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 
   [
@@ -114,6 +127,16 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "0.606",
     "0.579",
     "0.918",
+    "Detection Performance by Scene Complexity",
+    "~85% detected",
+    "~56% detected",
+    "~42% detected",
+    "Why This Model Was Shipped",
+    "0.552",
+    "0.595",
+    "312",
+    "0/30",
+    "ONNX parity",
   ].forEach((text) => assert.doesNotMatch(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 });
 
@@ -146,7 +169,12 @@ test("white DL framework infographic asset remains available at expected dimensi
 });
 
 test("landing nav scroll spy observes only sections represented by nav links", () => {
+  assert.match(theme, /function initLandingNav\(\)/);
+  assert.match(theme, /const setActiveSection = sectionId =>/);
+  assert.match(theme, /const updateActiveFromViewport = \(\) =>/);
   assert.match(theme, /const navTargets = \[\.\.\.new Set/);
   assert.match(theme, /document\.getElementById\(href\.slice\(1\)\)/);
+  assert.match(theme, /link\.setAttribute\('aria-current', 'page'\)/);
   assert.doesNotMatch(theme, /const sections = document\.querySelectorAll\('section\\[id\\]'\)/);
+  assert.doesNotMatch(theme, /new IntersectionObserver/);
 });

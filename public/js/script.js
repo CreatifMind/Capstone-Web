@@ -274,9 +274,17 @@ function plIsContaminatedMaterial(material, scan = {}) {
 }
 
 function plConfidencePercent(value) {
-  const numeric = Number(value || 0);
+  const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 0;
   return numeric <= 1 ? numeric * 100 : numeric;
+}
+
+function plValidConfidencePercent(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const percent = numeric <= 1 ? numeric * 100 : numeric;
+  return Number.isFinite(percent) && percent >= 0 ? Math.min(100, percent) : null;
 }
 
 function plScanNeedsReview(scan) {
@@ -759,7 +767,7 @@ function plGetAnalyticsSummary(options = {}) {
     const createdAt = new Date(scan?.created_at || 0);
     return Number.isFinite(createdAt.getTime()) && createdAt >= rangeStart && createdAt < rangeEnd;
   });
-  const materialRows = scans.flatMap(scan => plSafeArray(scan.detected_materials).map(material => ({ scan, material, decision: plEvaluateMaterial(material) })));
+  const materialRows = scans.flatMap(scan => plSafeArray(scan.detected_materials).map(material => ({ scan, material, decision: plEvaluateMaterial(material, scan) })));
   const materials = materialRows.map(row => row.material);
   const categoryCounts = materials.reduce((acc, material) => {
     const category = plMaterialEstimate(material).label;
@@ -789,24 +797,22 @@ function plGetAnalyticsSummary(options = {}) {
     .sort((a, b) => b.estimatedWeightKg - a.estimatedWeightKg || b.count - a.count);
   const totalEstimatedWeightKg = materialMixRows.reduce((sum, row) => sum + row.estimatedWeightKg, 0);
   const confirmedRows = materialRows.filter(({ decision }) => decision.decisionStatus === "confirmed" && decision.materialClass !== "unknown");
+  const reviewRows = materialRows.filter(({ decision }) => decision.decisionStatus === "review_needed");
+  const rejectedRows = materialRows.filter(({ decision }) => decision.decisionStatus === "rejected");
   const confirmedMaterials = confirmedRows.map(row => row.material);
   const recyclableCount = confirmedRows.filter(({ decision }) => decision.materialClass === "recyclable").length;
   const contaminationCount = materialRows.filter(({ decision }) => decision.decisionStatus === "confirmed" && decision.materialClass === "contaminant").length;
-  const reviewCount = materialRows.filter(({ decision }) => decision.reviewRequired).length;
+  const reviewCount = reviewRows.length;
   const allLowConfidenceCount = materialRows.filter(({ material }) => {
     const confidence = plConfidencePercent(material?.confidence);
     return Number.isFinite(confidence) && confidence < PL_CONFIRMATION_THRESHOLD;
   }).length;
   const materialConfidences = materialRows
-    .filter(({ material, decision }) => decision.materialClass !== "unknown" && Number.isFinite(Number(material?.confidence)))
-    .map(({ decision }) => decision.confidence)
-    .filter(value => value >= 0);
-  const scanConfidences = scans.map(scan => plConfidencePercent(scan.overall_confidence)).filter(value => value > 0);
+    .map(({ material }) => plValidConfidencePercent(material?.confidence))
+    .filter(value => value !== null);
   const avgConfidence = materialConfidences.length
     ? materialConfidences.reduce((sum, value) => sum + value, 0) / materialConfidences.length
-    : scanConfidences.length
-      ? scanConfidences.reduce((sum, value) => sum + value, 0) / scanConfidences.length
-      : 0;
+    : null;
   const categoryRows = Object.entries(categoryCounts)
     .map(([label, value]) => [label, Number(value) || 0])
     .sort((a, b) => b[1] - a[1]);
@@ -823,7 +829,7 @@ function plGetAnalyticsSummary(options = {}) {
     const createdAt = new Date(scan.created_at || 0);
     return createdAt >= todayStart && createdAt < tomorrowStart;
   }).length;
-  const confirmedScanCount = scans.filter(scan => !plScanNeedsReview(scan) && !["rejected", "quarantined"].includes(plNormalizeStatus(scan.overall_status))).length;
+  const confirmedScanCount = confirmedRows.length;
   const topBy = rows => rows.length ? rows.reduce((top, row) => row[1] > top[1] ? row : top) : null;
   const recyclableTop = topBy(recyclableRows);
   const contaminantTop = topBy(contaminatedRows);
@@ -909,6 +915,7 @@ function plGetAnalyticsSummary(options = {}) {
     nonRecyclableCount: confirmedMaterials.filter(plIsContaminatedMaterial).length,
     contaminationCount,
     reviewCount,
+    rejectedCount: rejectedRows.length,
     lowConfidenceCount: reviewCount,
     allLowConfidenceCount,
     hazardCount: highRiskCount,
@@ -4549,7 +4556,7 @@ function plAnalyticsSummaryForActiveScope() {
     contaminationCount: plSafeArray(payload.contaminated_rows).reduce((total, [, count]) => total + (Number(count) || 0), 0),
     reviewCount: Number(payload.needs_review_objects ?? payload.object_metrics?.needs_review_objects ?? payload.review_count) || 0,
     allLowConfidenceCount: 0,
-    avgConfidence: Number(payload.average_detection_confidence) || 0,
+    avgConfidence: payload.average_detection_confidence === null || payload.average_detection_confidence === undefined ? null : Number(payload.average_detection_confidence),
     confirmedScanCount: Number(payload.confirmed_objects ?? payload.object_metrics?.confirmed_objects ?? payload.confirmed_count) || 0,
     recyclableTop: payload.top_recyclable_material ? [payload.top_recyclable_material.label, Number(payload.top_recyclable_material.count) || 0] : null,
     contaminantTop: payload.top_contamination_source ? [payload.top_contamination_source.label, Number(payload.top_contamination_source.count) || 0] : null,
@@ -4609,6 +4616,7 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   const summary = plAnalyticsSummaryForActiveScope();
   const exactReviewCount = summary.reviewCount;
   const exactConfirmedCount = summary.confirmedScanCount;
+  const hasAverageConfidence = Number.isFinite(Number(summary.avgConfidence));
   const updated = document.getElementById("analyticsLastUpdated");
   if (updated) {
     const now = new Date();
@@ -4620,14 +4628,14 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   plOverviewSet("needs-review-note", exactReviewCount ? "Objects require attention" : "All objects are up to date");
   plOverviewSet("confirmed-today", String(exactConfirmedCount));
   const confirmedLabel = document.getElementById("analyticsConfirmedLabel");
-  if (confirmedLabel) confirmedLabel.textContent = "Confirmed Objects";
+  if (confirmedLabel) confirmedLabel.textContent = dateValue ? "Confirmed Objects on Selected Date" : "Confirmed Objects";
   plOverviewSet("recoverable-value", plFormatRm(summary.totalEstimatedResaleValueRm));
-  plOverviewSet("average-confidence", summary.materials.length ? `${summary.avgConfidence.toFixed(1)}%` : "No data");
+  plOverviewSet("average-confidence", hasAverageConfidence ? `${Number(summary.avgConfidence).toFixed(1)}%` : "N/A");
 
   const banner = overview.querySelector("[data-overview='attention-banner']");
   const hasReviews = exactReviewCount > 0;
   banner?.classList.toggle("is-clear", !hasReviews);
-  plOverviewSet("attention-title", hasReviews ? `${exactReviewCount} item${exactReviewCount === 1 ? "" : "s"} need attention ${dateValue ? "on this date" : "in all history"}` : "All scans are up to date");
+  plOverviewSet("attention-title", hasReviews ? `${exactReviewCount} object${exactReviewCount === 1 ? "" : "s"} need attention ${dateValue ? "on this date" : "in all history"}` : "All objects are up to date");
   plOverviewSet("attention-copy", hasReviews ? "Review low-confidence items to keep reporting accurate and reduce contamination." : "No unresolved classifications require attention.");
   const reviewLink = overview.querySelector("[data-overview='review-link']");
   if (reviewLink) reviewLink.textContent = hasReviews ? "Open Review Queue" : "View History";
@@ -4683,7 +4691,7 @@ function renderAnalyticsOverview(dateValue = "", state = "ready") {
   } else if (plOverviewCharts.overviewDailyTrend) { plOverviewCharts.overviewDailyTrend.destroy(); delete plOverviewCharts.overviewDailyTrend; }
 
   const actions = [
-    hasReviews && { icon: "fa-triangle-exclamation", title: "Pending Reviews", text: "Unresolved low-confidence items", value: summary.reviewCount, tone: "warning" },
+    hasReviews && { icon: "fa-triangle-exclamation", title: "Pending Reviews", text: "Unresolved low-confidence objects", value: summary.reviewCount, tone: "warning" },
     summary.highRiskCount > 0 && { icon: "fa-battery-half", title: "High-Risk Items", text: "Confirmed battery items", value: summary.highRiskCount, tone: "danger" },
     summary.allLowConfidenceCount > 0 && summary.allLowConfidenceCount !== summary.reviewCount && { icon: "fa-circle-exclamation", title: "Low-Confidence Scans", text: "Includes resolved low-confidence detections", value: summary.allLowConfidenceCount, tone: "warning" },
     summary.recoveryOpportunityCount > 0 && { icon: "fa-tag", title: "Recovery Opportunities", text: "Confirmed items with recoverable value", value: summary.recoveryOpportunityCount, tone: "success" }
@@ -4804,16 +4812,33 @@ async function initSettingsPage() {
 /******************************************
  * 5. SIDEBAR DRILL-DOWN INTERACTIONS     *
  ******************************************/
-function activateDetailPanel(targetId) {
+function activateDetailPanel(targetId, options = {}) {
   const panel = document.getElementById(targetId);
   if (!panel) return;
 
   const dock = panel.closest(".detail-dock");
   if (dock) {
     dock.querySelectorAll(".detail-panel").forEach(item => item.classList.remove("active"));
+    dock.dataset.drillActive = options.drilled === false ? "false" : "true";
+    dock.querySelectorAll("[data-analytics-return]").forEach(button => { button.hidden = dock.dataset.drillActive !== "true"; });
+    const hint = dock.querySelector(".detail-hint");
+    if (hint) hint.hidden = dock.dataset.drillActive === "true";
   }
   panel.classList.add("active");
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function returnToAnalyticsOverview() {
+  const dock = document.getElementById("analyticsDrillDetails");
+  const defaultPanel = document.getElementById("detail-yield");
+  if (!dock || !defaultPanel) return;
+  dock.querySelectorAll(".detail-panel").forEach(item => item.classList.remove("active"));
+  defaultPanel.classList.add("active");
+  dock.dataset.drillActive = "false";
+  dock.querySelectorAll("[data-analytics-return]").forEach(button => { button.hidden = true; });
+  const hint = dock.querySelector(".detail-hint");
+  if (hint) hint.hidden = false;
+  document.querySelector(".analytics-overview")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderSparkBars(container, values, color) {
@@ -4857,29 +4882,41 @@ function renderBarRows(container, rows, color, suffix = "") {
 }
 
 function updateAnalyticsDetailPanels(summary) {
+  const materialOrder = ["glass", "food organic", "general trash", "cardboard", "textile", "plastic", "metal", "battery", "paper"];
+  const materialIcons = {
+    "glass": "fa-wine-bottle",
+    "food organic": "fa-seedling",
+    "general trash": "fa-trash",
+    "cardboard": "fa-box",
+    "textile": "fa-shirt",
+    "plastic": "fa-bottle-water",
+    "metal": "fa-can-food",
+    "battery": "fa-battery-half",
+    "paper": "fa-file-lines"
+  };
+  const categoryCountMap = new Map(summary.categoryRows.map(([label, count]) => [normalizeMaterialCategory(label), Number(count) || 0]));
   const yieldPanel = document.getElementById("detail-yield");
   if (yieldPanel) {
     const yieldGrid = yieldPanel.querySelector(".detail-grid.five");
     if (yieldGrid) {
-      yieldGrid.innerHTML = summary.materials.length
-        ? summary.categoryRows.map(([label, count]) => `
-            <button type="button" class="metric-tile static" data-material-detail="${label}">
+      yieldGrid.innerHTML = materialOrder.map(category => {
+        const label = MATERIAL_ESTIMATES[category]?.label || plNormalizeCategory(category);
+        const count = categoryCountMap.get(category) || 0;
+        const icon = materialIcons[category] || "fa-circle";
+        return `
+            <button type="button" class="metric-tile static" data-material-detail="${label}" aria-label="View ${label} details">
+              <i class="fa-solid ${icon}" aria-hidden="true"></i>
               <span>${label}</span>
               <strong>${count}</strong>
               <small>Detected material records</small>
+              <small>View details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></small>
             </button>
-          `).join("")
-        : `<div class="feed-empty">No material data yet.</div>`;
+          `;
+      }).join("");
     }
     const monthTable = yieldPanel.querySelector(".month-table");
     if (monthTable) {
-      monthTable.innerHTML = summary.materials.length
-        ? `
-          <div><span>Saved scans</span><strong>${summary.savedScansCount}</strong></div>
-          <div><span>Detected materials</span><strong>${summary.detectedMaterialsCount}</strong></div>
-          <div><span>Avg confidence</span><strong>${summary.avgConfidence.toFixed(1)}%</strong></div>
-        `
-        : `<div><span>No saved scans</span><strong>0</strong></div>`;
+      monthTable.innerHTML = "";
     }
   }
 
@@ -4902,7 +4939,7 @@ function updateAnalyticsDetailPanels(summary) {
   if (purityPanel) {
     renderBarRows(
       purityPanel.querySelector(".bar-list"),
-      summary.materials.length ? [["Average confidence", Number(summary.avgConfidence.toFixed(1))], ["Clean recyclable", summary.recyclableCount], ["Pending review", summary.reviewCount]] : [],
+      summary.materials.length ? [[Number.isFinite(Number(summary.avgConfidence)) ? "Average confidence" : "Average confidence", Number.isFinite(Number(summary.avgConfidence)) ? Number(summary.avgConfidence.toFixed(1)) : 0], ["Clean recyclable", summary.recyclableCount], ["Pending review", summary.reviewCount]] : [],
       "#00F08A",
       ""
     );
@@ -4971,7 +5008,12 @@ function renderMaterialDetail(materialName, options = {}) {
   const pricePerKgRm = plMaterialEstimate(normName).pricePerKgRm;
   const contaminated = aggregateRow ? Number(aggregateRow.contaminant_count) || 0 : materials.filter(plIsContaminatedMaterial).length;
   const recyclable = aggregateRow ? Number(aggregateRow.recyclable_count) || 0 : materials.filter(plIsRecyclable).length;
-  const avgConfidence = aggregateRow ? Number(aggregateRow.averageConfidence) || 0 : count ? materials.reduce((sum, material) => sum + plConfidencePercent(material.confidence), 0) / count : 0;
+  const confidenceValues = materials.map(material => plValidConfidencePercent(material.confidence)).filter(value => value !== null);
+  const avgConfidence = aggregateRow
+    ? Number(aggregateRow.averageConfidence) || 0
+    : confidenceValues.length
+      ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
+      : null;
   const isContaminant = contaminated > 0 && recyclable === 0;
   const color = "#00F08A";
   const subtitle = count ? `${count} saved detection(s) from scan results.` : "No saved detections for this material yet.";
@@ -4982,7 +5024,7 @@ function renderMaterialDetail(materialName, options = {}) {
   panel.querySelectorAll("[data-material-tonnage]").forEach(el => { el.textContent = plFormatKg(estimatedWeightKg); el.style.color = color; });
   panel.querySelectorAll("[data-material-value]").forEach(el => { el.textContent = plFormatRm(estimatedResaleValueRm); el.style.color = color; });
   panel.querySelectorAll("[data-material-rate]").forEach(el => { el.textContent = `RM ${pricePerKgRm.toFixed(2)}/kg`; });
-  panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = `${avgConfidence.toFixed(1)}%`; el.style.color = color; });
+  panel.querySelectorAll("[data-material-purity]").forEach(el => { el.textContent = Number.isFinite(Number(avgConfidence)) ? `${Number(avgConfidence).toFixed(1)}%` : "N/A"; el.style.color = color; });
   panel.querySelectorAll("[data-material-status]").forEach(el => { el.textContent = count ? `${contaminated} contaminated` : "No data"; });
   panel.querySelectorAll("[data-material-kpi-one]").forEach(el => { el.textContent = "Estimated Weight"; });
   panel.querySelectorAll("[data-material-kpi-two]").forEach(el => { el.textContent = "Resale Value"; });
@@ -4992,7 +5034,7 @@ function renderMaterialDetail(materialName, options = {}) {
   panel.querySelectorAll("[data-material-trend]").forEach(el => {
     if (!count) { el.innerHTML = `<div class="feed-empty">No saved detections yet.</div>`; return; }
     if (aggregateRow) { el.innerHTML = `<div class="feed-empty">Per-detection trend isn't available in this summary view (see Avg Confidence above).</div>`; return; }
-    renderSparkBars(el, materials.map(material => plConfidencePercent(material.confidence)), color);
+    renderSparkBars(el, confidenceValues, color);
   });
   panel.querySelectorAll("[data-material-zones]").forEach(el => renderBarRows(el, zones, color, ""));
 
@@ -5058,6 +5100,17 @@ function renderStationDetail(stationId, options = {}) {
 }
 
 function initDrillThrough() {
+  const dock = document.getElementById("analyticsDrillDetails");
+  if (dock && !dock.querySelector("[data-analytics-return]")) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "analytics-detail-return";
+    button.dataset.analyticsReturn = "true";
+    button.hidden = true;
+    button.innerHTML = '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span>Back to Analytics Overview</span>';
+    button.addEventListener("click", returnToAnalyticsOverview);
+    dock.insertBefore(button, dock.firstElementChild);
+  }
   document.querySelectorAll("[data-drill-target]").forEach(trigger => {
     trigger.addEventListener("click", function (event) {
       if (event.target.closest("[data-material-detail], [data-belt-detail]")) return;
@@ -5097,6 +5150,7 @@ function initDrillThrough() {
   if (document.querySelector(".belt-detail-output")) {
     const defaultBelt = document.querySelector("[data-belt-id]")?.textContent?.trim() || "UPLOAD-HUB";
     renderStationDetail(defaultBelt, { activate: false });
+    returnToAnalyticsOverview();
   }
 }
 

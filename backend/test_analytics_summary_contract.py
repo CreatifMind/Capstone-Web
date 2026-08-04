@@ -165,6 +165,8 @@ class AnalyticsSummaryContractTests(unittest.TestCase):
         self.assertEqual(payload["confirmed_count"], 2)
         self.assertEqual(payload["review_count"], 0)
         self.assertEqual(payload["rejected_count"], 1)
+        self.assertEqual(payload["confirmed_count"] + payload["review_count"] + payload["rejected_count"], payload["detected_materials_count"])
+        self.assertEqual(payload["average_detection_confidence"], 85.0)
 
 
 if __name__ == "__main__":

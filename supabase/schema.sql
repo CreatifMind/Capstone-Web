@@ -137,27 +137,36 @@ set
     select 1 from detected_materials material
     where material.scan_result_id = scan.id
       and (
-        material.confidence is null
-        or material.confidence < 0
-        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+        lower(coalesce(material.category, material.material_name, '')) like '%general%trash%'
+        or case
+          when material.confidence is null then true
+          when material.confidence > 1 then material.confidence / 100 < 0.32
+          else material.confidence < 0.32
+        end
       )
   ),
   overall_status = case when exists (
     select 1 from detected_materials material
     where material.scan_result_id = scan.id
       and (
-        material.confidence is null
-        or material.confidence < 0
-        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+        lower(coalesce(material.category, material.material_name, '')) like '%general%trash%'
+        or case
+          when material.confidence is null then true
+          when material.confidence > 1 then material.confidence / 100 < 0.32
+          else material.confidence < 0.32
+        end
       )
   ) then 'review_required' else 'accepted' end,
   recommended_action = case when exists (
     select 1 from detected_materials material
     where material.scan_result_id = scan.id
       and (
-        material.confidence is null
-        or material.confidence < 0
-        or (case when material.confidence > 1 then material.confidence / 100 else material.confidence end) < 0.32
+        lower(coalesce(material.category, material.material_name, '')) like '%general%trash%'
+        or case
+          when material.confidence is null then true
+          when material.confidence > 1 then material.confidence / 100 < 0.32
+          else material.confidence < 0.32
+        end
       )
   ) then 'Human review required before sorting.' else 'Confirmed sorting routes applied.' end
 where lower(coalesce(scan.overall_status, '')) not in ('rejected', 'quarantined')

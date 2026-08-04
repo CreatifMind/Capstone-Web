@@ -2182,7 +2182,7 @@ def object_metrics_from_rows(scans: list[dict], materials: list[dict], decisions
         if identity in seen:
             continue
         seen.add(identity)
-        status = derive_final_status(confidence=material.get("confidence"), decision=latest.get(str(material.get("id") or "")), scan=scan)
+        status = analytics_material_final_status(material, latest.get(str(material.get("id") or "")), scan)
         counts["total_objects"] += 1
         counts[f"{status}_objects"] += 1
     return counts
@@ -6140,6 +6140,26 @@ def analytics_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def analytics_material_final_status(material: dict, decision: dict | None, scan: dict | None = None) -> str:
+    scan_status = str((scan or {}).get("review_status") or (scan or {}).get("overall_status") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if scan_status in {"rejected", "quarantined"}:
+        return "rejected"
+    if decision:
+        outcome = str(decision.get("outcome") or decision.get("review_outcome") or "confirmed").strip().lower().replace("-", "_").replace(" ", "_")
+        if outcome == "rejected":
+            return "rejected"
+        if outcome == "confirmed":
+            return "confirmed"
+    category = analytics_category(material.get("category") or material.get("material_name"))
+    if category == "general trash":
+        return "needs_review"
+    estimate = ANALYTICS_MATERIAL_ESTIMATES.get(category, ANALYTICS_MATERIAL_ESTIMATES["general trash"])
+    if estimate["material_class"] not in {"recyclable", "contaminant"}:
+        return "needs_review"
+    confidence = normalized_confidence(material.get("confidence"))
+    return "confirmed" if confidence >= DECISION_CONFIDENCE_THRESHOLD else "needs_review"
+
+
 def analytics_page_rows(database: SupabaseExecutor, table: str, principal: Principal, build_query: Callable[[Any], Any], page_size: int) -> list[dict]:
     rows: list[dict] = []
     offset = 0
@@ -6213,29 +6233,36 @@ def analytics_summary(
         for material in materials:
             category = analytics_category(material.get("category") or material.get("material_name"))
             estimate = ANALYTICS_MATERIAL_ESTIMATES[category]
+            decision = latest_decisions.get(str(material.get("id") or ""))
+            scan = scan_by_id.get(str(material.get("scan_result_id") or ""))
+            final_status = analytics_material_final_status(material, decision, scan)
             row = category_data.setdefault(category, {"category": category, "label": estimate["label"], "count": 0, "estimatedWeightKg": 0.0, "pricePerKg": estimate["price_per_kg_rm"], "estimatedResaleValueRm": 0.0, "confidence_total": 0.0, "confidence_count": 0, "recyclable_count": 0, "contaminant_count": 0})
             row["count"] += 1
             row["estimatedWeightKg"] += estimate["average_weight_kg"]
             row["estimatedResaleValueRm"] += estimate["average_weight_kg"] * estimate["price_per_kg_rm"]
-            confidence = float(material.get("confidence") or 0)
-            confidence = confidence * 100 if confidence <= 1 else confidence
-            if confidence > 0:
+            raw_confidence = material.get("confidence")
+            confidence = None
+            if raw_confidence not in (None, ""):
+                try:
+                    numeric_confidence = float(raw_confidence)
+                    if math.isfinite(numeric_confidence):
+                        confidence = max(0.0, min(100.0, numeric_confidence * 100 if numeric_confidence <= 1 else numeric_confidence))
+                except (TypeError, ValueError):
+                    confidence = None
+            if confidence is not None:
                 confidence_values.append(confidence)
                 row["confidence_total"] += confidence
                 row["confidence_count"] += 1
-            decision = latest_decisions.get(str(material.get("id") or ""))
-            scan = scan_by_id.get(str(material.get("scan_result_id") or ""))
-            final_status = derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
             material_class = str((decision or {}).get("disposition") or material.get("material_class") or estimate["material_class"]).lower()
             if final_status == "confirmed" and material_class == "recyclable":
                 recyclable_counts[estimate["label"]] = recyclable_counts.get(estimate["label"], 0) + 1
                 row["recyclable_count"] += 1
-                if estimate["price_per_kg_rm"] > 0:
+                if final_status == "confirmed" and estimate["price_per_kg_rm"] > 0:
                     recovery_opportunity_count += 1
             elif final_status == "confirmed" and material_class == "contaminant":
                 contaminant_counts[estimate["label"]] = contaminant_counts.get(estimate["label"], 0) + 1
                 row["contaminant_count"] += 1
-                if category == "battery":
+                if final_status == "confirmed" and category == "battery":
                     high_risk_count += 1
             if decision and scan:
                 created_at, reviewed_at = analytics_timestamp(scan.get("created_at")), analytics_timestamp(decision.get("created_at"))
@@ -6301,7 +6328,7 @@ def analytics_summary(
             "object_metrics": object_metrics,
             **object_metrics,
             "detected_materials_count": len(materials),
-            "average_detection_confidence": sum(confidence_values) / len(confidence_values) if confidence_values else 0,
+            "average_detection_confidence": sum(confidence_values) / len(confidence_values) if confidence_values else None,
             "estimated_recovery_value": sum(row["estimatedResaleValueRm"] for row in resale_rows),
             "total_estimated_weight_kg": sum(row["estimatedWeightKg"] for row in material_mix),
             "material_mix": material_mix,

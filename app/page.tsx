@@ -257,7 +257,7 @@ const html = `
           </button>
           <button id="methodology-tab-5" class="methodology-tab" type="button" role="tab" aria-selected="false" aria-controls="methodology-panel-5" tabindex="-1" data-methodology-tab="4">
             <span>05 — Model Performance</span>
-            <small>Measured validation results, model limitations, deployment evidence and ONNX parity.</small>
+            <small>Measured validation results, model limitations, and browser deployment context.</small>
           </button>
         </div>
 
@@ -326,32 +326,31 @@ const html = `
                 </div>
                 <dl class="measured-model-facts">
                   <div><dt>Model</dt><dd>YOLOv8m-seg</dd></div>
+                  <div><dt>Classes</dt><dd>9 waste categories</dd></div>
                   <div><dt>Deployment</dt><dd>best.onnx</dd></div>
                 </dl>
                 <div class="measured-insight-grid">
-                  <div class="measured-reliability-chart" aria-label="Detection reliability by scene complexity">
-                    <h5>Detection Performance by Scene Complexity</h5>
-                    <div class="measured-bar-row">
-                      <span>One close-up object</span>
-                      <div><i style="width: 85%"></i></div>
-                      <strong>~85% detected</strong>
+                  <div class="measured-reliability-chart" aria-label="Detection considerations">
+                    <h5>Detection Considerations</h5>
+                    <div class="measured-guidance-row">
+                      <span>Strongest performance</span>
+                      <strong>Large, clearly visible objects</strong>
                     </div>
-                    <div class="measured-bar-row">
-                      <span>2-5 objects</span>
-                      <div><i style="width: 56%"></i></div>
-                      <strong>~56% detected</strong>
+                    <div class="measured-guidance-row">
+                      <span>More challenging</span>
+                      <strong>Small, overlapping, or partially obscured objects</strong>
                     </div>
-                    <div class="measured-bar-row">
-                      <span>6+ cluttered objects</span>
-                      <div><i style="width: 42%"></i></div>
-                      <strong>~42% detected</strong>
+                    <div class="measured-guidance-row">
+                      <span>Human review</span>
+                      <strong>Low-confidence and General Trash results</strong>
                     </div>
-                    <small>Small objects and cluttered scenes remain the hardest cases.</small>
                   </div>
                   <div class="measured-selection-card">
-                    <h5>Why This Model Was Shipped</h5>
-                    <p>Validation-label correction improved mAP@0.5 from <strong>0.552 &rarr; 0.595</strong>.</p>
-                    <p>ONNX parity testing produced <strong>312 &rarr; 312</strong> detections, with <strong>0/30 differences</strong> in detection count.</p>
+                    <h5>Model Selection &amp; Web Deployment</h5>
+                    <p><strong>Validated checkpoint</strong></p>
+                    <p>The deployed model was selected from the best validated YOLOv8m-seg checkpoint.</p>
+                    <p><strong>Why best.onnx is used on the web</strong></p>
+                    <p>best.onnx enables browser-compatible inference through ONNX Runtime Web, while best.pt remains the PyTorch model format used mainly for training and Python-based backend workflows.</p>
                   </div>
                 </div>
               </div>

@@ -89,6 +89,8 @@ assert.equal(overview.allLowConfidenceCount, 2, "resolved low-confidence detecti
 assert.equal(overview.confirmedTodayCount, 6, "confirmed contaminants and completed reviews count as confirmed, not review");
 assert.equal(overview.highRiskCount, 1, "confirmed battery is high risk");
 assert.equal(overview.recoveryOpportunityCount, 3, "only confirmed recyclables with value are recovery opportunities");
+assert.equal(Number(overview.avgConfidence.toFixed(1)), 66.2, "average confidence uses stored material confidences");
+assert.equal(overview.confirmedScanCount, 5, "confirmed object count is material-based");
 assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 9, "trend includes scans without optional preview/source fields");
 assert.equal(overview.lastUpload.id, "missing-optional");
 assert.equal(overview.lastUploadBatchCount, 1, "single uploads have a safe batch fallback");
@@ -101,7 +103,10 @@ const batchSummary = plGetAnalyticsSummary({ scans: [
 assert.equal(batchSummary.lastUploadBatchCount, 2, "batch-aware upload detail counts matching upload ids");
 const zeroValue = plGetAnalyticsSummary({ scans: [{ id: "zero", created_at: "2026-07-14T01:00:00.000Z", detected_materials: [{ category: "General Trash", confidence: 0.95 }] }], days: 7, now: "2026-07-14T12:00:00.000Z" });
 assert.equal(zeroValue.totalEstimatedResaleValueRm, 0, "RM0.00 remains a valid numeric value");
+const mixedConfidence = plGetAnalyticsSummary({ scans: [{ id: "mixed", created_at: "2026-07-14T01:00:00.000Z", detected_materials: [{ category: "Plastic", confidence: 0.91 }, { category: "Metal", confidence: 75 }, { category: "Glass", confidence: "bad" }] }], days: 7, now: "2026-07-14T12:00:00.000Z" });
+assert.equal(Number(mixedConfidence.avgConfidence.toFixed(1)), 83.0, "mixed decimal/percentage confidence values normalize once and invalid values are excluded");
 assert.equal(plGetAnalyticsSummary({ scans: [], days: 7, now: "2026-07-14T12:00:00.000Z" }).scans.length, 0, "empty overview stays empty");
+assert.equal(plGetAnalyticsSummary({ scans: [], days: 7, now: "2026-07-14T12:00:00.000Z" }).avgConfidence, null, "empty confidence set uses N/A state");
 assert.equal(plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-30T12:00:00.000Z" }).scans.length, 0, "selected ranges can be empty without falling back to all scans");
 const unfilteredOverview = plGetAnalyticsSummary({ scans: overviewScans, now: "2026-07-14T12:00:00.000Z" });
 assert.equal(unfilteredOverview.scans.length, overviewScans.length, "unfiltered summaries retain all saved scans");

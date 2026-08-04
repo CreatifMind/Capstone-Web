@@ -198,33 +198,70 @@ function initLandingNav() {
   };
   window.addEventListener('scroll', onScroll, { passive: true });
 
+  const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+  const navTargets = [...new Set([...navLinks].map(link => link.getAttribute('href')).filter(Boolean))];
+  const sections = navTargets
+    .map(href => document.getElementById(href.slice(1)))
+    .filter(Boolean);
+  const normalizeSectionId = value => String(value || '').replace(/^#/, '');
+  const headerOffset = () => Math.ceil(nav.getBoundingClientRect().height || 0) + 18;
+  const setActiveSection = sectionId => {
+    const activeId = normalizeSectionId(sectionId) || (sections[0]?.id || 'hero');
+    navLinks.forEach(link => {
+      const isActive = normalizeSectionId(link.getAttribute('href')) === activeId;
+      link.classList.toggle('active', isActive);
+      if (isActive) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+  };
+  const updateActiveFromViewport = () => {
+    if (!sections.length) return;
+    const activationLine = headerOffset();
+    let winner = sections[0];
+    let bestScore = Number.POSITIVE_INFINITY;
+    sections.forEach(section => {
+      const rect = section.getBoundingClientRect();
+      const sectionVisible = rect.bottom > activationLine && rect.top < window.innerHeight;
+      if (!sectionVisible) return;
+      const topDistance = rect.top - activationLine;
+      const score = topDistance <= 0 ? Math.abs(topDistance) : topDistance + window.innerHeight;
+      if (score < bestScore) {
+        winner = section;
+        bestScore = score;
+      }
+    });
+    setActiveSection(winner.id);
+  };
+
   // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', e => {
       const target = document.querySelector(anchor.getAttribute('href'));
       if (!target) return;
       e.preventDefault();
+      setActiveSection(target.id);
+      window.history.pushState(null, '', `#${target.id}`);
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setMenuState(false);
     });
   });
 
   // Active section highlight while scrolling
-  const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
-  const navTargets = [...new Set([...navLinks].map(link => link.getAttribute('href')).filter(Boolean))];
-  const sections = navTargets
-    .map(href => document.getElementById(href.slice(1)))
-    .filter(Boolean);
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        navLinks.forEach(link => {
-          link.classList.toggle('active', link.getAttribute('href') === `#${entry.target.id}`);
-        });
-      }
-    });
-  }, { threshold: 0.45 });
-  sections.forEach(s => observer.observe(s));
+  const onActiveScroll = () => window.requestAnimationFrame(updateActiveFromViewport);
+  window.addEventListener('scroll', onActiveScroll, { passive: true });
+  window.addEventListener('resize', onActiveScroll);
+  const onLocationChange = () => {
+    const target = document.getElementById(normalizeSectionId(window.location.hash));
+    if (target) setActiveSection(target.id);
+    else updateActiveFromViewport();
+  };
+  window.addEventListener('hashchange', onLocationChange);
+  window.addEventListener('popstate', onLocationChange);
+  if (window.location.hash && document.getElementById(normalizeSectionId(window.location.hash))) {
+    setActiveSection(window.location.hash);
+  } else {
+    updateActiveFromViewport();
+  }
 
   // Mobile burger menu
   if (burger && menu) {
@@ -252,8 +289,11 @@ function initLandingNav() {
   }
 
   window.addEventListener('purityloop:page-cleanup', () => {
-    observer.disconnect();
     window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('scroll', onActiveScroll);
+    window.removeEventListener('resize', onActiveScroll);
+    window.removeEventListener('hashchange', onLocationChange);
+    window.removeEventListener('popstate', onLocationChange);
   }, { once: true });
 }
 
