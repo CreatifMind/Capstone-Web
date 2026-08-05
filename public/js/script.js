@@ -4017,7 +4017,17 @@ function initReviewWorkspace() {
     root.querySelectorAll("[data-review-page]").forEach(button => button.addEventListener("click", () => onPage(Number(button.dataset.reviewPage))));
   };
   const updateSummary = () => {
-    const summary = plScanHistoryMeta.summary || {};
+    const analyticsCached = plSafeJsonParse(localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary"), null);
+    const analyticsMetrics = analyticsCached?.data?.summary || analyticsCached?.summary || analyticsCached;
+    const summary = {
+      ...(plScanHistoryMeta.summary || {}),
+      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || analyticsMetrics.review_count || 0) > Number(plScanHistoryMeta.summary?.needs_review_objects || 0) ? {
+        total_objects: analyticsMetrics.total_objects,
+        confirmed_objects: analyticsMetrics.confirmed_objects,
+        needs_review_objects: analyticsMetrics.needs_review_objects || analyticsMetrics.review_count,
+        rejected_objects: analyticsMetrics.rejected_objects
+      } : {})
+    };
     const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
     const pageRows = currentRows();
@@ -4295,7 +4305,17 @@ function initReviewModal() {
     const reviewCategory = leadingCategory(reviewRows);
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    const exactSummary = plScanHistoryMeta.summary || {};
+    const analyticsCached = plSafeJsonParse(localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary"), null);
+    const analyticsMetrics = analyticsCached?.data?.summary || analyticsCached?.summary || analyticsCached;
+    const exactSummary = {
+      ...(plScanHistoryMeta.summary || {}),
+      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || analyticsMetrics.review_count || 0) > Number(plScanHistoryMeta.summary?.needs_review_objects || 0) ? {
+        total_objects: analyticsMetrics.total_objects,
+        confirmed_objects: analyticsMetrics.confirmed_objects,
+        needs_review_objects: analyticsMetrics.needs_review_objects || analyticsMetrics.review_count,
+        rejected_objects: analyticsMetrics.rejected_objects
+      } : {})
+    };
     const countObjectStatus = status => rows.reduce((total, row) => {
       const mats = Array.isArray(row.detected_materials) ? row.detected_materials : null;
       if (mats && mats.length) return total + mats.filter(m => (m.review_decision?.outcome === "confirmed" ? "confirmed" : (m.review_decision?.outcome === "rejected" ? "rejected" : (Number(m.confidence) < 0.32 ? "review_needed" : "confirmed"))) === status).length;
