@@ -4715,10 +4715,10 @@ function initAnalyticsOverview() {
     const cacheKey = `pl_analytics_cache_${date || "all"}`;
     let hasCached = false;
     try {
-      const cachedRaw = window.sessionStorage?.getItem(cacheKey);
+      const cachedRaw = window.sessionStorage?.getItem(cacheKey) || window.localStorage?.getItem(cacheKey);
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw);
-        if (cached && cached.payload && Date.now() - (cached.timestamp || 0) < 300000) {
+        if (cached && cached.payload && Date.now() - (cached.timestamp || 0) < 86400000) {
           plAnalyticsDateData = { summary: cached.payload };
           render();
           updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
@@ -4761,7 +4761,9 @@ function initAnalyticsOverview() {
       if (requestId !== plAnalyticsRequestId) return;
       plAnalyticsDateData = { summary: payload };
       try {
-        window.sessionStorage?.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), payload }));
+        const entry = JSON.stringify({ timestamp: Date.now(), payload });
+        window.sessionStorage?.setItem(cacheKey, entry);
+        window.localStorage?.setItem(cacheKey, entry);
       } catch {}
       render();
       updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
