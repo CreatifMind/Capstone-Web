@@ -766,6 +766,25 @@ function initLandingPresentation() {
 
   const activeTitle = () => tabs[activeIndex]?.querySelector('span')?.textContent?.trim() || 'Methodology diagram';
 
+  const fitLightboxContent = () => {
+    if (!lightbox?.classList.contains('open')) return;
+    const shell = lightbox.querySelector('[data-lightbox-scale-shell]');
+    const canvas = lightbox.querySelector('[data-lightbox-scale-canvas]');
+    if (!shell || !canvas) return;
+    canvas.style.setProperty('--methodology-lightbox-scale', '1');
+    canvas.style.width = '';
+    canvas.style.height = '';
+    const shellWidth = shell.clientWidth;
+    const shellHeight = shell.clientHeight;
+    const canvasWidth = canvas.scrollWidth;
+    const canvasHeight = canvas.scrollHeight;
+    if (!shellWidth || !shellHeight || !canvasWidth || !canvasHeight) return;
+    const scale = Math.min(1, shellWidth / canvasWidth, shellHeight / canvasHeight);
+    canvas.style.setProperty('--methodology-lightbox-scale', String(scale));
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
+  };
+
   const syncLightbox = () => {
     if (!lightbox) return;
     const image = ensureImage(activeIndex);
@@ -786,12 +805,21 @@ function initLandingPresentation() {
         activePanel.classList.add('active');
         activePanel.removeAttribute('id');
         activePanel.removeAttribute('aria-labelledby');
-        lightboxContent.replaceChildren(activePanel);
+        const shell = document.createElement('div');
+        shell.className = 'methodology-lightbox-scale-shell';
+        shell.setAttribute('data-lightbox-scale-shell', '');
+        const canvas = document.createElement('div');
+        canvas.className = 'methodology-lightbox-scale-canvas';
+        canvas.setAttribute('data-lightbox-scale-canvas', '');
+        canvas.appendChild(activePanel);
+        shell.appendChild(canvas);
+        lightboxContent.replaceChildren(shell);
       }
       lightboxFigure.hidden = true;
       lightboxContent.hidden = false;
     }
     if (title) title.textContent = activeTitle();
+    requestAnimationFrame(fitLightboxContent);
   };
 
   const closeLightbox = () => {
@@ -800,6 +828,9 @@ function initLandingPresentation() {
     lightbox.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('methodology-dialog-open');
     document.removeEventListener('keydown', onLightboxKeydown);
+    window.removeEventListener('resize', fitLightboxContent);
+    window.removeEventListener('orientationchange', fitLightboxContent);
+    document.removeEventListener('fullscreenchange', fitLightboxContent);
     if (lastFocus instanceof HTMLElement) lastFocus.focus({ preventScroll: true });
   };
 
@@ -840,6 +871,9 @@ function initLandingPresentation() {
     lightbox.setAttribute('aria-hidden', 'false');
     document.body.classList.add('methodology-dialog-open');
     document.addEventListener('keydown', onLightboxKeydown);
+    window.addEventListener('resize', fitLightboxContent);
+    window.addEventListener('orientationchange', fitLightboxContent);
+    document.addEventListener('fullscreenchange', fitLightboxContent);
     lightbox.querySelector('[data-lightbox-close]')?.focus({ preventScroll: true });
   };
 
