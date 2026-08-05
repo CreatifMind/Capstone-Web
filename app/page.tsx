@@ -170,7 +170,7 @@ const html = `
 
       <div class="business-video-shell" data-aos="fade-up" data-aos-delay="100">
         <video class="business-video" controls loop playsinline preload="metadata" poster="/assets/capstone-project-poster.jpg">
-          <source src="/assets/Capstone Project.mp4" type="video/mp4" />
+          <source src="/assets/capstone-project.mp4" type="video/mp4" />
           Your browser does not support the video tag.
         </video>
         <button class="business-video-play" type="button" aria-label="Play business challenge video">

@@ -55,6 +55,7 @@ supabase/reconciliation/
 *.bak
 *.rtf
 *.mp4
+!public/assets/*.mp4
 *.mov
 *.avi
 *.zip
