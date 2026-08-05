@@ -6636,6 +6636,56 @@ def get_scan_history(
         list_filters = {**filters, "status": None}
         summary_filters = {**filters, "search": None, "status": None}
 
+        if not normalized_status and not category_key and not filters["search"] and not filters["start_date"] and not filters["end_date"]:
+            exec_inst = SupabaseExecutor(client_factory=_new_supabase_client, attempts=2)
+            page_res = exec_inst.execute("fast scan history page query", lambda client: client.table(SCAN_RESULTS_TABLE).select("*", count="exact").order(order_column, desc=descending).range(offset, offset + limit - 1).execute())
+            scans = page_res.data or []
+            total = page_res.count if page_res.count is not None else len(scans)
+            summary_data = get_analytics_summary()
+            summary_metrics = {
+                "confirmed": summary_data.get("confirmed_scans", 0),
+                "needs_review": summary_data.get("needs_review_scans", 0),
+                "rejected": summary_data.get("rejected_scans", 0),
+                "total_objects": summary_data.get("total_objects", 0),
+                "confirmed_objects": summary_data.get("confirmed_objects", 0),
+                "needs_review_objects": summary_data.get("needs_review_objects", 0),
+                "rejected_objects": summary_data.get("rejected_objects", 0)
+            }
+            scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
+            if scan_ids:
+                materials = exec_inst.execute("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+                decisions = exec_inst.execute("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+            else:
+                materials = []
+                decisions = []
+            latest_decisions = {}
+            for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
+                latest_decisions[str(decision.get("detected_material_id", ""))] = decision
+            materials_by_scan = {}
+            for material in materials:
+                materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
+                    **material,
+                    "review_decision": latest_decisions.get(str(material.get("id", ""))),
+                })
+            items = [
+                {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
+                for scan in scans
+            ]
+            return {
+                "items": items,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "start_date": start_date,
+                "end_date": end_date,
+                "search": search,
+                "category": category,
+                "status": status,
+                "sort": "confidence" if sort == "confidence" else "timestamp",
+                "direction": "desc" if descending else "asc",
+                "summary": summary_metrics,
+            }
+
         def fetch_scans(scope_filters: dict[str, str | None], select_columns: str = "*") -> list[dict]:
             def build_scans(client):
                 query = client.table(SCAN_RESULTS_TABLE).select(select_columns)

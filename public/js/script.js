@@ -4079,7 +4079,20 @@ function initReviewWorkspace() {
   const fetchReviewPage = async (page = state.page, options = {}) => {
     const requestId = ++state.requestId;
     state.page = Math.max(1, page);
-    state.loading = true;
+    const cachedScans = plGetScanResults();
+    if (!state.items.length && cachedScans.length) {
+      const startIdx = (state.page - 1) * pageSize;
+      const cachedPage = cachedScans.slice(startIdx, startIdx + pageSize);
+      if (cachedPage.length) {
+        state.items = cachedPage;
+        state.total = plScanHistoryMeta.total || cachedScans.length;
+        state.loading = false;
+      } else {
+        state.loading = true;
+      }
+    } else {
+      state.loading = true;
+    }
     render();
     try {
       const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans?${reviewHistoryParams(pageSize, (state.page - 1) * pageSize)}`);
