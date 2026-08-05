@@ -4235,9 +4235,26 @@ function initReviewWorkspace() {
   };
   const fetchFullHistory = async () => {
     const params = fullHistoryParams(pageSize, (modalState.page - 1) * pageSize);
-    fullRange.textContent = "Loading scans";
+    const hasFilters = Boolean(fullSearch?.value.trim() || fullCategory?.value || fullStatus?.value || fullDate?.value);
+    const cachedScans = plGetScanResults();
+    if (!hasFilters && cachedScans.length) {
+      const offset = (modalState.page - 1) * pageSize;
+      const cachedPage = cachedScans.slice(offset, offset + pageSize);
+      if (cachedPage.length) {
+        remote = { items: cachedPage.map(plNormalizeScan), total: plScanHistoryMeta.total || cachedScans.length };
+        const historyRows = remote.items.map(scanRow);
+        fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>${escape(row.weight)}</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-action="${escape(row.id)}" data-full-history-material="${escape(row.materialId)}" data-full-history-mode="${row.decisionStatus === "review_needed" ? "review" : "view"}">${row.decisionStatus === "review_needed" ? "Review" : "View"}</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
+        fullBody.querySelectorAll("[data-full-history-action]").forEach(button => button.addEventListener("click", () => openAuditDetails(button.dataset.fullHistoryAction, button.dataset.fullHistoryMaterial, button.dataset.fullHistoryMode, button)));
+        const pages = Math.max(1, Math.ceil(remote.total / pageSize)); if (fullRange) fullRange.textContent = `Showing ${remote.items.length ? (modalState.page - 1) * pageSize + 1 : 0} to ${Math.min(modalState.page * pageSize, remote.total)} of ${remote.total} total`;
+        renderPager(fullPager, modalState.page, pages, page => { modalState.page = page; fetchFullHistory(); });
+      } else {
+        if (fullRange) fullRange.textContent = "Loading scans";
+      }
+    } else {
+      if (fullRange) fullRange.textContent = "Loading scans";
+    }
     try { const response = await plBackendFetch(`${plApiBaseUrl()}/api/scans?${params}`); const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Unable to load history."); remote = { items: (payload.items || []).map(plNormalizeScan), total: Number(payload.total) || 0 }; }
-    catch (error) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); }
+    catch (error) { if (!remote.items.length) { remote = { items: [], total: 0 }; showToast(error.message || "Unable to load history.", "error"); } }
     const historyRows = remote.items.map(scanRow);
     fullBody.innerHTML = historyRows.length ? historyRows.map(row => `<tr><td>${escape(row.time)}</td><td>${row.preview ? `<img class="history-thumb" src="${escape(row.preview)}" alt="" />` : "-"}</td><td>${escape(row.category)}</td><td>${escape(row.materialClass)}</td><td>${escape(row.weight)}</td><td>${row.confidence}%</td><td><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span></td><td><button type="button" class="secondary-btn" data-full-history-action="${escape(row.id)}" data-full-history-material="${escape(row.materialId)}" data-full-history-mode="${row.decisionStatus === "review_needed" ? "review" : "view"}">${row.decisionStatus === "review_needed" ? "Review" : "View"}</button></td></tr>`).join("") : '<tr><td colspan="8">No scan history matches these filters.</td></tr>';
     fullBody.querySelectorAll("[data-full-history-action]").forEach(button => button.addEventListener("click", () => openAuditDetails(button.dataset.fullHistoryAction, button.dataset.fullHistoryMaterial, button.dataset.fullHistoryMode, button)));
