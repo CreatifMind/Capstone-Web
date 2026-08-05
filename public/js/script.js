@@ -4291,14 +4291,18 @@ function initReviewModal() {
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
     const exactSummary = plScanHistoryMeta.summary || {};
-    const confirmedCount = statuses.filter(status => status === "confirmed").length;
-    const reviewScanCount = statuses.filter(status => status === "review_needed").length;
-    const rejectedCount = statuses.filter(status => status === "rejected").length;
-    const totalUploads = Number.isFinite(Number(exactSummary.total_objects)) ? Number(exactSummary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : scans.length);
-    const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review_objects ?? exactSummary.needs_review)) ? (exactSummary.needs_review_objects ?? exactSummary.needs_review) : reviewScanCount;
-    setText("historyConfirmed", Number.isFinite(Number(exactSummary.confirmed_objects ?? exactSummary.confirmed)) ? (exactSummary.confirmed_objects ?? exactSummary.confirmed) : confirmedCount);
+    const countObjectStatus = status => rows.reduce((total, row) => {
+      const mats = Array.isArray(row.detected_materials) ? row.detected_materials : null;
+      if (mats && mats.length) return total + mats.filter(m => (m.review_decision?.outcome === "confirmed" ? "confirmed" : (m.review_decision?.outcome === "rejected" ? "rejected" : (Number(m.confidence) < 0.32 ? "review_needed" : "confirmed"))) === status).length;
+      return total + (row.decisionStatus === status ? 1 : 0);
+    }, 0);
+    const confirmedCount = Number.isFinite(Number(exactSummary.confirmed_objects ?? exactSummary.confirmed)) ? Number(exactSummary.confirmed_objects ?? exactSummary.confirmed) : countObjectStatus("confirmed");
+    const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review_objects ?? exactSummary.needs_review)) ? Number(exactSummary.needs_review_objects ?? exactSummary.needs_review) : countObjectStatus("review_needed");
+    const rejectedCount = Number.isFinite(Number(exactSummary.rejected_objects ?? exactSummary.rejected)) ? Number(exactSummary.rejected_objects ?? exactSummary.rejected) : countObjectStatus("rejected");
+    const totalUploads = Number.isFinite(Number(exactSummary.total_objects)) ? Number(exactSummary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : (confirmedCount + resolvedReviewCount + rejectedCount));
+    setText("historyConfirmed", confirmedCount);
     setText("historyReviewCount", resolvedReviewCount);
-    setText("historyRejected", Number.isFinite(Number(exactSummary.rejected_objects ?? exactSummary.rejected)) ? (exactSummary.rejected_objects ?? exactSummary.rejected) : rejectedCount);
+    setText("historyRejected", rejectedCount);
     setText("historyProcessedToday", totalUploads);
     setText("historyFrequentCategory", frequent ? frequent[0] : "No scan data");
     setText("historyFrequentCategoryMeta", frequent ? `${frequent[1]} item${frequent[1] === 1 ? "" : "s"}` : "-");
