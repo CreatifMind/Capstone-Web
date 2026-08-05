@@ -6153,7 +6153,10 @@ def analytics_material_final_status(material: dict, decision: dict | None, scan:
             return "rejected"
         if outcome == "confirmed":
             return "confirmed"
-    category = analytics_category(material.get("category") or material.get("material_name"))
+    raw_category = material.get("category") or material.get("material_name")
+    if not raw_category:
+        return derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
+    category = analytics_category(raw_category)
     if category == "general trash":
         return "needs_review"
     estimate = ANALYTICS_MATERIAL_ESTIMATES.get(category, ANALYTICS_MATERIAL_ESTIMATES["general trash"])
