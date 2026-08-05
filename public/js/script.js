@@ -4016,17 +4016,24 @@ function initReviewWorkspace() {
     root.innerHTML = `<button type="button" data-review-page="${Math.max(1, page - 1)}" ${page === 1 ? "disabled" : ""}>‹</button>${choices.map((item, index) => `${index && item - choices[index - 1] > 1 ? '<span aria-hidden="true">…</span>' : ""}<button type="button" data-review-page="${item}" ${item === page ? 'aria-current="page" class="active"' : ""}>${item}</button>`).join("")}<button type="button" data-review-page="${Math.min(pages, page + 1)}" ${page === pages ? "disabled" : ""}>›</button>`;
     root.querySelectorAll("[data-review-page]").forEach(button => button.addEventListener("click", () => onPage(Number(button.dataset.reviewPage))));
   };
+  const plGetAnalyticsSummaryMetrics = () => {
+    const cachedRaw = localStorage.getItem("pl_analytics_cache_all") || sessionStorage.getItem("pl_analytics_cache_all") || localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary");
+    const cached = plSafeJsonParse(cachedRaw, null);
+    const payload = cached?.payload || cached?.data?.summary || cached?.summary || cached;
+    if (!payload) return null;
+    return {
+      total_objects: Number.isFinite(Number(payload.total_objects)) ? Number(payload.total_objects) : null,
+      confirmed_objects: Number.isFinite(Number(payload.confirmed_objects)) ? Number(payload.confirmed_objects) : null,
+      needs_review_objects: Number.isFinite(Number(payload.needs_review_objects ?? payload.review_count)) ? Number(payload.needs_review_objects ?? payload.review_count) : null,
+      rejected_objects: Number.isFinite(Number(payload.rejected_objects)) ? Number(payload.rejected_objects) : null
+    };
+  };
   const updateSummary = () => {
-    const analyticsCached = plSafeJsonParse(localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary"), null);
-    const analyticsMetrics = analyticsCached?.data?.summary || analyticsCached?.summary || analyticsCached;
+    const analyticsMetrics = plGetAnalyticsSummaryMetrics();
+    const historySummary = plScanHistoryMeta.summary || {};
     const summary = {
-      ...(plScanHistoryMeta.summary || {}),
-      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || analyticsMetrics.review_count || 0) > Number(plScanHistoryMeta.summary?.needs_review_objects || 0) ? {
-        total_objects: analyticsMetrics.total_objects,
-        confirmed_objects: analyticsMetrics.confirmed_objects,
-        needs_review_objects: analyticsMetrics.needs_review_objects || analyticsMetrics.review_count,
-        rejected_objects: analyticsMetrics.rejected_objects
-      } : {})
+      ...historySummary,
+      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > Number(historySummary.needs_review_objects || 0) ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
     };
     const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
@@ -4075,6 +4082,18 @@ function initReviewWorkspace() {
           summary: payload.summary
         };
         plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
+      }
+      if (!localStorage.getItem("pl_analytics_cache_all")) {
+        plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`)
+          .then(res => res.json())
+          .then(summaryData => {
+            if (summaryData && (summaryData.total_objects || summaryData.needs_review_objects)) {
+              const entry = JSON.stringify({ timestamp: Date.now(), payload: summaryData });
+              try { localStorage.setItem("pl_analytics_cache_all", entry); sessionStorage.setItem("pl_analytics_cache_all", entry); } catch {}
+              updateSummary();
+            }
+          })
+          .catch(() => {});
       }
       if (options.selectEdge && state.items.length) {
         select(options.selectEdge === "last" ? state.items[state.items.length - 1].id : state.items[0].id);
@@ -4305,16 +4324,11 @@ function initReviewModal() {
     const reviewCategory = leadingCategory(reviewRows);
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    const analyticsCached = plSafeJsonParse(localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary"), null);
-    const analyticsMetrics = analyticsCached?.data?.summary || analyticsCached?.summary || analyticsCached;
+    const analyticsMetrics = plGetAnalyticsSummaryMetrics();
+    const historySummary = plScanHistoryMeta.summary || {};
     const exactSummary = {
-      ...(plScanHistoryMeta.summary || {}),
-      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || analyticsMetrics.review_count || 0) > Number(plScanHistoryMeta.summary?.needs_review_objects || 0) ? {
-        total_objects: analyticsMetrics.total_objects,
-        confirmed_objects: analyticsMetrics.confirmed_objects,
-        needs_review_objects: analyticsMetrics.needs_review_objects || analyticsMetrics.review_count,
-        rejected_objects: analyticsMetrics.rejected_objects
-      } : {})
+      ...historySummary,
+      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > Number(historySummary.needs_review_objects || 0) ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
     };
     const countObjectStatus = status => rows.reduce((total, row) => {
       const mats = Array.isArray(row.detected_materials) ? row.detected_materials : null;
