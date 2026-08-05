@@ -6157,11 +6157,37 @@ def analytics_page_rows(database: SupabaseExecutor, table: str, principal: Princ
         offset += page_size
 
 
+ANALYTICS_SUMMARY_CACHE: dict[str, tuple[float, dict]] = {}
+ANALYTICS_CACHE_TTL = 60.0  # 60 seconds
+
+
+def clear_analytics_summary_cache():
+    ANALYTICS_SUMMARY_CACHE.clear()
+
+
 def analytics_child_rows(database: SupabaseExecutor, table: str, scan_ids: list[str], principal: Principal) -> list[dict]:
+    if not scan_ids:
+        return []
     rows: list[dict] = []
-    for index in range(0, len(scan_ids), 200):
-        ids = scan_ids[index:index + 200]
-        rows.extend(analytics_page_rows(database, table, principal, lambda client, ids=ids: client.table(table).select("*").in_("scan_result_id", ids), ANALYTICS_CHILD_PAGE_SIZE))
+    chunk_size = 500
+    chunks = [scan_ids[i:i + chunk_size] for i in range(0, len(scan_ids), chunk_size)]
+
+    def fetch_chunk(ids):
+        return analytics_page_rows(
+            database,
+            table,
+            principal,
+            lambda client, target_ids=ids: client.table(table).select("*").in_("scan_result_id", target_ids),
+            ANALYTICS_CHILD_PAGE_SIZE,
+        )
+
+    if len(chunks) == 1:
+        return fetch_chunk(chunks[0])
+
+    with ThreadPoolExecutor(max_workers=min(10, len(chunks))) as executor:
+        futures = [executor.submit(fetch_chunk, chunk) for chunk in chunks]
+        for future in as_completed(futures):
+            rows.extend(future.result())
     return rows
 
 
@@ -6176,6 +6202,14 @@ def analytics_summary(
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     if bool(start_date) != bool(end_date):
         raise HTTPException(status_code=400, detail="start_date and end_date must be supplied together.")
+
+    cache_key = f"{principal.user_id}:{principal.role}:{start_date or ''}:{end_date or ''}"
+    now_ts = time.time()
+    if cache_key in ANALYTICS_SUMMARY_CACHE:
+        cached_time, cached_payload = ANALYTICS_SUMMARY_CACHE[cache_key]
+        if now_ts - cached_time < ANALYTICS_CACHE_TTL:
+            return cached_payload
+
     try:
         database = SupabaseExecutor(supabase)
 
@@ -6191,11 +6225,19 @@ def analytics_summary(
                 query = query.gte("created_at", start_date).lt("created_at", end_date)
             return query.order("created_at", desc=True)
 
-        scans = analytics_page_rows(database, SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
-        jobs = analytics_page_rows(database, JOBS_TABLE, principal, build_jobs, ANALYTICS_PAGE_SIZE)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_scans = executor.submit(analytics_page_rows, database, SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+            fut_jobs = executor.submit(analytics_page_rows, database, JOBS_TABLE, principal, build_jobs, ANALYTICS_PAGE_SIZE)
+            scans = fut_scans.result()
+            jobs = fut_jobs.result()
+
         scan_ids = [str(scan["id"]) for scan in scans if scan.get("id")]
-        materials = analytics_child_rows(database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
-        decisions = analytics_child_rows(database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_materials = executor.submit(analytics_child_rows, database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
+            fut_decisions = executor.submit(analytics_child_rows, database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
+            materials = fut_materials.result()
+            decisions = fut_decisions.result()
         latest_decisions: dict[str, dict] = {}
         for decision in sorted(decisions, key=lambda item: str(item.get("created_at") or "")):
             latest_decisions[str(decision.get("detected_material_id") or "")] = decision
@@ -6302,7 +6344,7 @@ def analytics_summary(
         top_contaminant = max(contaminant_counts.items(), key=lambda item: item[1], default=None)
         latest_scan = scans[0] if scans else None
         recent_events = [{"timestamp": scan.get("created_at"), "source": scan.get("source_name") or scan.get("source_type") or "Web Upload", "event": "Scan Rejected" if str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} else "Scan Verified", "status": "Rejected" if str(scan.get("overall_status") or "").lower() in {"rejected", "quarantined"} else "Review Needed" if scan.get("human_review_required") else "Confirmed", "details": "Saved scan record"} for scan in scans[:5]]
-        return {
+        payload = {
             "scope": "selected_date" if start_date else "all_history",
             "start_date": start_date,
             "end_date": end_date,
@@ -6342,6 +6384,8 @@ def analytics_summary(
             "risk_severity_breakdown": [{"risk": risk, "count": count} for risk, count in sorted(risk_counts.items(), key=lambda item: -item[1])],
             "ai_accuracy_by_category": sorted(({**row, "accuracy_pct": (row["agree_count"] / row["reviewed_count"] * 100) if row["reviewed_count"] else 0} for row in accuracy_by_category.values()), key=lambda row: -row["reviewed_count"]),
         }
+        ANALYTICS_SUMMARY_CACHE[cache_key] = (now_ts, payload)
+        return payload
     except SupabaseTemporarilyUnavailable:
         return JSONResponse(status_code=503, content={"detail": "Analytics data is temporarily unavailable.", "retryable": True}, headers={"Retry-After": "2"})
     except Exception as exc:
@@ -6543,6 +6587,7 @@ def create_review(decision: ReviewDecisionInput, principal: Principal = Depends(
         updated_scan_response = supabase.table(SCAN_RESULTS_TABLE).update(scan_update).eq("id", scan_result_id).execute()
         if not updated_scan_response.data:
             raise HTTPException(status_code=500, detail="Review was saved, but the scan result status could not be updated.")
+        clear_analytics_summary_cache()
         return {
             "decision": inserted.data[0] if inserted.data else None,
             "material": updated_material,
