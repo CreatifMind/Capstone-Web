@@ -4051,7 +4051,7 @@ function initReviewWorkspace() {
         state.loading = false;
         return fetchReviewPage(pages, options);
       }
-      if (payload.summary && !search?.value.trim() && !category?.value && !date?.value && !reviewStatusParam()) {
+      if (payload.summary) {
         plScanHistoryMeta = {
           ...plScanHistoryMeta,
           total: state.total,
