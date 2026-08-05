@@ -193,6 +193,13 @@ class ScanHistoryContractTests(unittest.TestCase):
         })
         self.assertNotIn("scans", payload)
 
+    def test_scan_history_filter_does_not_exclude_video_frame_rows(self):
+        query = FakeQuery(main.SCAN_RESULTS_TABLE, [])
+
+        main.apply_scan_history_filters(query, {"start_date": None, "end_date": None, "search": None, "status": None})
+
+        self.assertNotIn("source_type!=", query.filters)
+
     def test_scan_history_review_page_uses_ten_row_ranges(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
@@ -203,6 +210,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["offset"], 10)
         self.assertEqual(len(payload["items"]), 10)
         self.assertEqual(fake.queries[0].range_args, (0, 499))
+        self.assertEqual(payload["summary"]["total_objects"], 25)
 
     def test_scan_history_accepts_review_filters_and_confidence_sort(self):
         fake = FakeSupabase()
@@ -217,9 +225,11 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["sort"], "confidence")
         self.assertEqual(payload["direction"], "asc")
         self.assertEqual(fake.queries[0].filters["source_name"], "%bottle%")
+        self.assertNotIn("source_name", fake.queries[1].filters)
         self.assertNotIn("human_review_required", fake.queries[0].filters)
         self.assertEqual(payload["total"], 0)
         self.assertEqual(payload["items"], [])
+        self.assertEqual(payload["summary"]["total_objects"], 25)
         self.assertEqual(fake.queries[0].order_args[0], ("overall_confidence",))
         self.assertEqual(fake.queries[0].range_args, (0, 499))
 
@@ -248,9 +258,21 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["category"], "plastic")
         self.assertEqual(payload["total"], 25)
         self.assertEqual(len(payload["items"]), 10)
+        self.assertEqual(payload["summary"]["total_objects"], 25)
         self.assertEqual(fake.rpc_calls, [])
 
-    def test_scan_history_search_filter_applies_to_summary_counts(self):
+    def test_category_summary_filters_material_rows_not_whole_scans(self):
+        scans = [{"id": "scan-1"}]
+        materials = [
+            {"id": "material-1", "scan_result_id": "scan-1", "category": "Plastic", "confidence": 0.9},
+            {"id": "material-2", "scan_result_id": "scan-1", "category": "Glass", "confidence": 0.9},
+        ]
+
+        filtered = main.filter_materials_by_final_category(materials, scans, [], "plastic")
+
+        self.assertEqual([material["id"] for material in filtered], ["material-1"])
+
+    def test_scan_history_search_filter_applies_to_list_scope(self):
         fake = FakeSupabase()
         with self.fake_backend(fake):
             main.get_scan_history(limit=10, offset=0, search="missing", principal=fake_principal())

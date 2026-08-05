@@ -72,7 +72,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(sum(item["review_required"] for item in materials), 1)
         self.assertTrue(summarize(materials)["human_review_required"])
 
-    def test_object_metrics_deduplicate_video_objects_per_scan_only(self):
+    def test_object_metrics_count_every_detected_material_row(self):
         scans = [
             {"id": "job-a-object", "source_type": "tracked_video"},
             {"id": "job-b-object", "source_type": "tracked_video"},
@@ -84,11 +84,29 @@ class ClassificationTests(unittest.TestCase):
         ]
 
         self.assertEqual(object_metrics_from_rows(scans, materials, []), {
-            "total_objects": 2,
-            "confirmed_objects": 1,
+            "total_objects": 3,
+            "confirmed_objects": 2,
             "needs_review_objects": 1,
             "rejected_objects": 0,
         })
+
+    def test_general_trash_status_uses_confidence_not_category(self):
+        self.assertEqual(
+            object_metrics_from_rows(
+                [{"id": "scan-1"}],
+                [
+                    {"id": "high-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.8},
+                    {"id": "low-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.31},
+                ],
+                [],
+            ),
+            {
+                "total_objects": 2,
+                "confirmed_objects": 1,
+                "needs_review_objects": 1,
+                "rejected_objects": 0,
+            },
+        )
 
 
 if __name__ == "__main__":

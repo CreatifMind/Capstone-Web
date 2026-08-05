@@ -1036,12 +1036,28 @@ def filter_scans_by_final_category(scans: list[dict], materials: list[dict], dec
     for material in materials:
         materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append(material)
 
-    def final_category(scan: dict) -> str:
-        material = (materials_by_scan.get(str(scan.get("id", ""))) or [{}])[0]
+    def final_category(scan: dict, material: dict) -> str:
         decision = latest.get(str(material.get("id", "")), {})
-        return canonical_category_key(scan.get("verified_category") or decision.get("chosen_category") or material.get("category"))
+        return canonical_category_key(decision.get("chosen_category") or scan.get("verified_category") or material.get("category") or material.get("material_name"))
 
-    return [scan for scan in scans if final_category(scan) == category]
+    return [
+        scan for scan in scans
+        if any(final_category(scan, material) == category for material in materials_by_scan.get(str(scan.get("id", "")), []))
+    ]
+
+
+def filter_materials_by_final_category(materials: list[dict], scans: list[dict], decisions: list[dict], category: str) -> list[dict]:
+    latest = latest_decisions_by_material(decisions)
+    scan_by_id = {str(scan.get("id")): scan for scan in scans if scan.get("id")}
+    return [
+        material for material in materials
+        if canonical_category_key(
+            (latest.get(str(material.get("id") or "")) or {}).get("chosen_category")
+            or (scan_by_id.get(str(material.get("scan_result_id") or "")) or {}).get("verified_category")
+            or material.get("category")
+            or material.get("material_name")
+        ) == category
+    ]
 
 
 @dataclass(frozen=True)
@@ -1419,7 +1435,6 @@ def scan_history_filters(
 
 
 def apply_scan_history_filters(query, filters: dict[str, str | None], status_override: str | None = None):
-    query = query.neq("source_type", "video_frame")
     if filters.get("start_date"):
         query = query.gte("created_at", filters["start_date"])
     if filters.get("end_date"):
@@ -2160,30 +2175,13 @@ def derive_final_status(*, confidence: Any, decision: dict | None = None, scan: 
     return "confirmed" if normalized_confidence(numeric) >= DECISION_CONFIDENCE_THRESHOLD else "needs_review"
 
 
-def object_identity(scan: dict, material: dict) -> str:
-    scan_id = str(scan.get("id") or material.get("scan_result_id") or "")
-    if str(scan.get("source_type") or scan.get("result_kind") or material.get("result_type") or "") in {"tracked_video", "video_track_object", "tracked_video_object"}:
-        stable = material.get("stable_object_id") or material.get("object_uid")
-        if stable:
-            return f"{scan_id}:{stable}"
-        track = material.get("track_id")
-        if track:
-            return f"{scan_id}:{track}"
-    return str(material.get("id") or f"{scan_id}:{material.get('detection_key') or material.get('created_at') or len(str(material))}")
-
-
 def object_metrics_from_rows(scans: list[dict], materials: list[dict], decisions: list[dict]) -> dict[str, int]:
     latest = latest_decisions_by_material(decisions)
     scan_by_id = {str(scan.get("id")): scan for scan in scans if scan.get("id")}
-    seen: set[str] = set()
     counts = {"total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}
     for material in materials:
         scan = scan_by_id.get(str(material.get("scan_result_id") or ""), {})
-        identity = object_identity(scan, material)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        status = analytics_material_final_status(material, latest.get(str(material.get("id") or "")), scan)
+        status = derive_final_status(confidence=material.get("confidence"), decision=latest.get(str(material.get("id") or "")), scan=scan)
         counts["total_objects"] += 1
         counts[f"{status}_objects"] += 1
     return counts
@@ -6144,26 +6142,7 @@ def analytics_timestamp(value: Any) -> datetime | None:
 
 
 def analytics_material_final_status(material: dict, decision: dict | None, scan: dict | None = None) -> str:
-    scan_status = str((scan or {}).get("review_status") or (scan or {}).get("overall_status") or "").strip().lower().replace("-", "_").replace(" ", "_")
-    if scan_status in {"rejected", "quarantined"}:
-        return "rejected"
-    if decision:
-        outcome = str(decision.get("outcome") or decision.get("review_outcome") or "confirmed").strip().lower().replace("-", "_").replace(" ", "_")
-        if outcome == "rejected":
-            return "rejected"
-        if outcome == "confirmed":
-            return "confirmed"
-    raw_category = material.get("category") or material.get("material_name")
-    if not raw_category:
-        return derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
-    category = analytics_category(raw_category)
-    if category == "general trash":
-        return "needs_review"
-    estimate = ANALYTICS_MATERIAL_ESTIMATES.get(category, ANALYTICS_MATERIAL_ESTIMATES["general trash"])
-    if estimate["material_class"] not in {"recyclable", "contaminant"}:
-        return "needs_review"
-    confidence = normalized_confidence(material.get("confidence"))
-    return "confirmed" if confidence >= DECISION_CONFIDENCE_THRESHOLD else "needs_review"
+    return derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
 
 
 def analytics_page_rows(database: SupabaseExecutor, table: str, principal: Principal, build_query: Callable[[Any], Any], page_size: int) -> list[dict]:
@@ -6609,26 +6588,39 @@ def get_scan_history(
         if category and category_key == "unknown":
             return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0, "total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}}
 
-        base_filters = {**filters, "status": None}
+        list_filters = {**filters, "status": None}
+        summary_filters = {**filters, "search": None, "status": None}
 
-        def build_scans(client):
-            query = client.table(SCAN_RESULTS_TABLE).select("*")
-            query = apply_scan_history_filters(query, base_filters)
-            return query.order(order_column, desc=descending)
+        def fetch_scans(scope_filters: dict[str, str | None]) -> list[dict]:
+            def build_scans(client):
+                query = client.table(SCAN_RESULTS_TABLE).select("*")
+                query = apply_scan_history_filters(query, scope_filters)
+                return query.order(order_column, desc=descending)
 
-        all_scans = analytics_page_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+            return analytics_page_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
+
+        all_scans = fetch_scans(list_filters)
+        summary_scans = fetch_scans(summary_filters)
         all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
+        summary_scan_ids = [str(scan.get("id")) for scan in summary_scans if scan.get("id")]
         if all_scan_ids:
             all_materials = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), DETECTED_MATERIALS_TABLE, all_scan_ids, principal)
             all_decisions = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), REVIEW_DECISIONS_TABLE, all_scan_ids, principal)
         else:
             all_materials = []
             all_decisions = []
+        if summary_scan_ids:
+            summary_materials = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), DETECTED_MATERIALS_TABLE, summary_scan_ids, principal)
+            summary_decisions = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), REVIEW_DECISIONS_TABLE, summary_scan_ids, principal)
+        else:
+            summary_materials = []
+            summary_decisions = []
         if category_key:
             all_scans = filter_scans_by_final_category(all_scans, all_materials, all_decisions, category_key)
             all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
             all_materials = [material for material in all_materials if str(material.get("scan_result_id") or "") in set(all_scan_ids)]
             all_decisions = [decision for decision in all_decisions if str(decision.get("scan_result_id") or "") in set(all_scan_ids)]
+            summary_materials = filter_materials_by_final_category(summary_materials, summary_scans, summary_decisions, category_key)
         latest_all_decisions = latest_decisions_by_material(all_decisions)
         materials_by_scan_all: dict[str, list[dict]] = {}
         for material in all_materials:
@@ -6648,7 +6640,7 @@ def get_scan_history(
                 return "rejected" in statuses or normalize_status(scan.get("overall_status")) in {"rejected", "quarantined"}
             return True
 
-        summary_metrics = object_metrics_from_rows(all_scans, all_materials, all_decisions)
+        summary_metrics = object_metrics_from_rows(summary_scans, summary_materials, summary_decisions)
         filtered_scans = [scan for scan in all_scans if not normalized_status or scan_matches_status(scan, normalized_status)]
         total = len(filtered_scans)
         scans = filtered_scans[offset:offset + limit]

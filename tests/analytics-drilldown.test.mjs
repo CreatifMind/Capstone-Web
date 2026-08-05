@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync("app/analytics/page.tsx", "utf8");
+const reviewPage = readFileSync("app/review/page.tsx", "utf8");
 const script = readFileSync("public/js/script.js", "utf8");
 
 test("analytics drill-through uses object labels, nine material cards, and overview return", () => {
@@ -21,6 +22,12 @@ test("analytics drill-through uses object labels, nine material cards, and overv
   ["Saved scans", "Detected materials", "Avg confidence"].forEach((needle) => {
     assert.doesNotMatch(script, new RegExp(`<span>${needle}</span>`));
   });
+});
+
+test("review summary labels detected records, not unique physical objects", () => {
+  assert.ok(reviewPage.includes("Total Detected Objects"));
+  assert.ok(reviewPage.includes("All persisted detection records"));
+  assert.doesNotMatch(reviewPage, /Unique Objects Detected/);
 });
 
 test("analytics summary uses object status and real confidence values", () => {
