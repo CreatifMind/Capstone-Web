@@ -6636,16 +6636,16 @@ def get_scan_history(
         list_filters = {**filters, "status": None}
         summary_filters = {**filters, "search": None, "status": None}
 
-        def fetch_scans(scope_filters: dict[str, str | None]) -> list[dict]:
+        def fetch_scans(scope_filters: dict[str, str | None], select_columns: str = "*") -> list[dict]:
             def build_scans(client):
-                query = client.table(SCAN_RESULTS_TABLE).select("*")
+                query = client.table(SCAN_RESULTS_TABLE).select(select_columns)
                 query = apply_scan_history_filters(query, scope_filters)
                 return query.order(order_column, desc=descending)
 
             return analytics_page_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
 
-        all_scans = fetch_scans(list_filters)
-        summary_scans = fetch_scans(summary_filters)
+        all_scans = fetch_scans(list_filters, select_columns="*")
+        summary_scans = fetch_scans(summary_filters, select_columns="id,source_name,source_type,batch_id,overall_status,human_review_required,overall_confidence,created_at,reviewed_at,contamination_risk")
         all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
         summary_scan_ids = [str(scan.get("id")) for scan in summary_scans if scan.get("id")]
         if all_scan_ids:
