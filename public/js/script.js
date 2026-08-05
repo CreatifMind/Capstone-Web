@@ -4016,11 +4016,34 @@ function initReviewWorkspace() {
     root.innerHTML = `<button type="button" data-review-page="${Math.max(1, page - 1)}" ${page === 1 ? "disabled" : ""}>‹</button>${choices.map((item, index) => `${index && item - choices[index - 1] > 1 ? '<span aria-hidden="true">…</span>' : ""}<button type="button" data-review-page="${item}" ${item === page ? 'aria-current="page" class="active"' : ""}>${item}</button>`).join("")}<button type="button" data-review-page="${Math.min(pages, page + 1)}" ${page === pages ? "disabled" : ""}>›</button>`;
     root.querySelectorAll("[data-review-page]").forEach(button => button.addEventListener("click", () => onPage(Number(button.dataset.reviewPage))));
   };
+  let plAnalyticsSummaryPromise = null;
+  const plFetchAnalyticsSummaryForReview = () => {
+    if (plAnalyticsSummaryPromise) return plAnalyticsSummaryPromise;
+    plAnalyticsSummaryPromise = plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`)
+      .then(res => res.json())
+      .then(payload => {
+        if (payload && (payload.total_objects || payload.needs_review_objects)) {
+          const entry = JSON.stringify({ timestamp: Date.now(), payload });
+          try {
+            localStorage.setItem("pl_analytics_cache_all", entry);
+            sessionStorage.setItem("pl_analytics_cache_all", entry);
+          } catch {}
+          window.dispatchEvent(new Event("purityloop:analytics-summary-synced"));
+        }
+        return payload;
+      })
+      .catch(() => null)
+      .finally(() => { plAnalyticsSummaryPromise = null; });
+    return plAnalyticsSummaryPromise;
+  };
   const plGetAnalyticsSummaryMetrics = () => {
     const cachedRaw = localStorage.getItem("pl_analytics_cache_all") || sessionStorage.getItem("pl_analytics_cache_all") || localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary");
     const cached = plSafeJsonParse(cachedRaw, null);
     const payload = cached?.payload || cached?.data?.summary || cached?.summary || cached;
-    if (!payload) return null;
+    if (!payload) {
+      plFetchAnalyticsSummaryForReview();
+      return null;
+    }
     return {
       total_objects: Number.isFinite(Number(payload.total_objects)) ? Number(payload.total_objects) : null,
       confirmed_objects: Number.isFinite(Number(payload.confirmed_objects)) ? Number(payload.confirmed_objects) : null,
@@ -4033,7 +4056,7 @@ function initReviewWorkspace() {
     const historySummary = plScanHistoryMeta.summary || {};
     const summary = {
       ...historySummary,
-      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > Number(historySummary.needs_review_objects || 0) ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
+      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > 0 ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
     };
     const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
@@ -4135,6 +4158,7 @@ function initReviewWorkspace() {
     card.addEventListener("click", activate); card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
   });
   document.querySelectorAll(".review-tab").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.tab)));
+  window.addEventListener("purityloop:analytics-summary-synced", updateSummary);
   document.querySelectorAll(".history-sort").forEach(button => button.addEventListener("click", () => { const next = button.dataset.sort || (button.id.includes("Confidence") ? "confidence" : "timestamp"); state.direction = state.sort === next ? -state.direction : -1; state.sort = next; document.querySelectorAll(".review-filter-toolbar .history-sort").forEach(item => item.classList.toggle("active", item.dataset.sort === next)); applyFilters(); }));
   let modalOpener = null; let modalState = { page: 1, sort: "timestamp", direction: "desc" }; let remote = { items: [], total: 0 };
   const fullSearch = document.getElementById("fullHistorySearch"), fullDate = document.getElementById("fullHistoryDate"), fullCategory = document.getElementById("fullHistoryCategory"), fullStatus = document.getElementById("fullHistoryStatus"), fullBody = document.getElementById("fullHistoryTableBody"), fullRange = document.getElementById("reviewHistoryModalRange"), fullPager = document.getElementById("fullHistoryPageButtons");
