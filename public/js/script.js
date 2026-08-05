@@ -413,11 +413,16 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
         total: Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null,
         limit: Number(payload?.limit) || PL_SCAN_BOOTSTRAP_PAGE_SIZE,
         offset: Number(payload?.offset) || 0,
-        summary: {
-          confirmed: Number.isFinite(Number(payload?.summary?.confirmed)) ? Number(payload.summary.confirmed) : null,
-          needs_review: Number.isFinite(Number(payload?.summary?.needs_review)) ? Number(payload.summary.needs_review) : null,
-          rejected: Number.isFinite(Number(payload?.summary?.rejected)) ? Number(payload.summary.rejected) : null
-        }
+        summary: payload?.summary ? {
+          ...payload.summary,
+          confirmed: Number.isFinite(Number(payload.summary.confirmed_objects ?? payload.summary.confirmed)) ? Number(payload.summary.confirmed_objects ?? payload.summary.confirmed) : null,
+          needs_review: Number.isFinite(Number(payload.summary.needs_review_objects ?? payload.summary.needs_review)) ? Number(payload.summary.needs_review_objects ?? payload.summary.needs_review) : null,
+          rejected: Number.isFinite(Number(payload.summary.rejected_objects ?? payload.summary.rejected)) ? Number(payload.summary.rejected_objects ?? payload.summary.rejected) : null,
+          total_objects: Number.isFinite(Number(payload.summary.total_objects)) ? Number(payload.summary.total_objects) : null,
+          confirmed_objects: Number.isFinite(Number(payload.summary.confirmed_objects)) ? Number(payload.summary.confirmed_objects) : null,
+          needs_review_objects: Number.isFinite(Number(payload.summary.needs_review_objects)) ? Number(payload.summary.needs_review_objects) : null,
+          rejected_objects: Number.isFinite(Number(payload.summary.rejected_objects)) ? Number(payload.summary.rejected_objects) : null
+        } : { confirmed: null, needs_review: null, rejected: null }
       };
       plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
       plSetScanResults(scans);
