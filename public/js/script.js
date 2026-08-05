@@ -4861,6 +4861,7 @@ function initAnalyticsCharts() {
   const dateInput = document.getElementById("analyticsDate");
   if (!dateInput || dateInput.dataset.analyticsReady === "true") return;
   dateInput.dataset.analyticsReady = "true";
+  try { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); } catch { window.scrollTo(0, 0); }
   initAnalyticsOverview();
   window.addEventListener("purityloop:page-cleanup", () => {
     Object.values(plOverviewCharts).forEach(chart => chart.destroy());
@@ -4917,7 +4918,7 @@ function activateDetailPanel(targetId, options = {}) {
     if (hint) hint.hidden = dock.dataset.drillActive === "true";
   }
   panel.classList.add("active");
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function returnToAnalyticsOverview() {
@@ -4930,7 +4931,7 @@ function returnToAnalyticsOverview() {
   dock.querySelectorAll("[data-analytics-return]").forEach(button => { button.hidden = true; });
   const hint = dock.querySelector(".detail-hint");
   if (hint) hint.hidden = false;
-  document.querySelector(".analytics-overview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderSparkBars(container, values, color) {
