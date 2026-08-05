@@ -1,8 +1,27 @@
+import { IBM_Plex_Sans, IBM_Plex_Sans_Condensed, IBM_Plex_Mono } from "next/font/google";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Script from "next/script";
 import ThemeProvider from "@/components/ThemeProvider";
 import "./globals.css";
+
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap"
+});
+
+const ibmPlexSansCondensed = IBM_Plex_Sans_Condensed({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap"
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap"
+});
 
 export const metadata: Metadata = {
   title: "PurityLoop AI | Intelligent Waste Sorting Platform",
@@ -17,7 +36,7 @@ const assetVersion = Date.now();
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${ibmPlexSans.className} ${ibmPlexSansCondensed.className} ${ibmPlexMono.className}`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -25,12 +44,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               "try{if(localStorage.getItem('pl_sidebar')==='collapsed'&&window.matchMedia('(min-width:1001px)').matches){document.documentElement.classList.add('sidebar-state-collapsed')}}catch(e){}" +
               "try{var k='purityloop-theme',p=localStorage.getItem(k),v=['light','dark','system'];if(v.indexOf(p)<0){var l=localStorage.getItem('pl_theme')||localStorage.getItem('purityloop_theme');p=v.indexOf(l)>=0?l:'system';localStorage.setItem(k,p)}var r=p==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):p,d=document.documentElement;d.setAttribute('data-theme',r);d.setAttribute('data-theme-preference',p);d.style.colorScheme=r;}catch(e){}"
           }}
-        />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
         />
         <link
           rel="stylesheet"
