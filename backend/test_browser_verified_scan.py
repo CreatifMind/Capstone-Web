@@ -250,6 +250,13 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertEqual(materials[0]["disposal_route"], "General-Waste Disposal")
         self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
 
+    def test_backend_build_marker_is_exposed_for_deployment_verification(self):
+        self.assertEqual(main.health()["backend_build_version"], main.BACKEND_BUILD_VERSION)
+        self.assertEqual(main.health_check()["backend_build_version"], main.BACKEND_BUILD_VERSION)
+        self.assertIn("browser-confidence-object-metrics-fix-20260805", main.BACKEND_BUILD_VERSION)
+        response = main._scan_response({"id": "scan-1"}, [])
+        self.assertEqual(response["backend_build_version"], main.BACKEND_BUILD_VERSION)
+
     def test_annotated_image_preview_bytes_embed_detection_overlay(self):
         raw = image_bytes()
         materials = main.validate_browser_detected_detections([detected(x1=20, y1=20, x2=100, y2=90)], 160, 120)

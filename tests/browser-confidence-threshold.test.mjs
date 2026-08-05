@@ -16,3 +16,11 @@ test("browser ONNX persistence sends the unified decision threshold metadata", (
   ) || [];
   assert.equal(decisionThresholdAppends.length, 2);
 });
+
+test("review workspace always accepts server object summary", () => {
+  assert.match(script, /if \(payload\.summary\) \{/);
+  assert.doesNotMatch(
+    script,
+    /payload\.summary && !search\?\.value\.trim\(\) && !category\?\.value && !date\?\.value && !reviewStatusParam\(\)/
+  );
+});

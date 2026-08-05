@@ -193,6 +193,7 @@ BROWSER_MODEL_NAME = "best.onnx"
 BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
 BROWSER_MODEL_VERSION = "v3_ffremask_9cls"
 BROWSER_INFERENCE_ENGINE = "browser-onnx"
+BACKEND_BUILD_VERSION = "browser-confidence-object-metrics-fix-20260805"
 BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
@@ -2854,6 +2855,7 @@ def _scan_response(scan: dict, materials: list[dict]) -> dict:
         "annotated_video_probe": video_summary.get("annotated_video_probe"),
         "tracked_objects": materials if str(scan.get("result_kind") or "") in {"tracked_video_object", "video_track_object"} else None,
         "detected_materials": materials,
+        "backend_build_version": BACKEND_BUILD_VERSION,
     }
 
 
@@ -3944,6 +3946,7 @@ def health():
     return {
         "ok": True,
         "mode": "public_demo",
+        "backend_build_version": BACKEND_BUILD_VERSION,
         **safe_startup_diagnostics(),
     }
 
@@ -6872,6 +6875,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "purityloop-backend",
+        "backend_build_version": BACKEND_BUILD_VERSION,
         **safe_startup_diagnostics(),
         "model_error": model_error,
     }
