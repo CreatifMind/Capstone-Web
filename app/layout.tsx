@@ -55,11 +55,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }}
         />
         <ThemeProvider>{children}</ThemeProvider>
-        <Script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js" strategy="afterInteractive" />
-        <Script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" strategy="afterInteractive" />
+        <Script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js" strategy="lazyOnload" />
+        <Script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" strategy="lazyOnload" />
         <Script
           src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
         <Script src="https://cdn.jsdelivr.net/npm/chart.js" strategy="afterInteractive" />
         <Script
@@ -68,11 +68,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
         <Script
           src="https://cdnjs.cloudflare.com/ajax/libs/typed.js/2.0.16/typed.umd.js"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
         <Script
           src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.8.0/countUp.umd.js"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
         <Script src={`/js/theme.js?v=${assetVersion}`} strategy="afterInteractive" />
         <Script src={`/js/script.js?v=${assetVersion}`} strategy="afterInteractive" />

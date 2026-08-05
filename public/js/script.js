@@ -4712,8 +4712,26 @@ function initAnalyticsOverview() {
   const refreshAnalytics = async () => {
     const date = plAnalyticsSelectedDate;
     const requestId = ++plAnalyticsRequestId;
-    plAnalyticsDateData = null;
-    render("loading");
+    const cacheKey = `pl_analytics_cache_${date || "all"}`;
+    let hasCached = false;
+    try {
+      const cachedRaw = window.sessionStorage?.getItem(cacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        if (cached && cached.payload && Date.now() - (cached.timestamp || 0) < 300000) {
+          plAnalyticsDateData = { summary: cached.payload };
+          render();
+          updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
+          hasCached = true;
+        }
+      }
+    } catch {}
+
+    if (!hasCached) {
+      plAnalyticsDateData = null;
+      render("loading");
+    }
+
     try {
       let url = `${plApiBaseUrl()}/api/analytics/summary`;
       if (date) {
@@ -4742,12 +4760,17 @@ function initAnalyticsOverview() {
       }
       if (requestId !== plAnalyticsRequestId) return;
       plAnalyticsDateData = { summary: payload };
+      try {
+        window.sessionStorage?.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), payload }));
+      } catch {}
       render();
       updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
     } catch (error) {
       if (requestId !== plAnalyticsRequestId) return;
-      console.error("PurityLoop: date analytics refresh failed.", error);
-      render("error");
+      if (!hasCached) {
+        console.error("PurityLoop: date analytics refresh failed.", error);
+        render("error");
+      }
     }
   };
   const syncSelection = value => {
