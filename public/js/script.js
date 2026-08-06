@@ -3471,19 +3471,14 @@ function initResultPage() {
 
   function getActiveBoxes() {
     if (!activeScan) return [];
-    const boxes = plMaterialsToBoxes(activeScan.detected_materials);
     const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
-    if (isTrackedVideo && boxes.length) {
-      const primaryMaterial = activeScan.detected_materials?.[0];
-      const targetCategory = plNormalizeCategory(primaryMaterial?.category || activeScan.overall_status || "Target Object");
-      const targetConfidence = Math.round(plConfidencePercent(primaryMaterial?.confidence ?? activeScan.overall_confidence ?? 0));
-      return [{
-        ...boxes[0],
-        label: `${targetCategory} | ${targetConfidence}% | Target Object`,
-        color: activeScan.human_review_required ? "#eab308" : (plNormalizeStatus(activeScan.overall_status) === "rejected" ? "#ef4444" : "#22c55e")
-      }];
+    if (isTrackedVideo) {
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        console.info("[review-preview] Skipping canvas overlay for annotated tracked-video preview.", { scanId: activeScan.id });
+      }
+      return [];
     }
-    return boxes;
+    return plMaterialsToBoxes(activeScan.detected_materials);
   }
 
   function getActiveTrackPath() {
