@@ -3829,7 +3829,7 @@ function initResultPage() {
       // If maskHeader is enabled, draw a solid background pill to cover any burned-in raw video text header
       if (box.maskHeader) {
         ctx2d.fillStyle = document.documentElement.dataset.theme === "light" ? "rgba(223, 233, 226, 0.96)" : "rgba(7, 17, 13, 0.96)";
-        ctx2d.fillRect(boxX - 2, max(0, boxY - 24), Math.max(tagW + 80, boxW + 4), 26);
+        ctx2d.fillRect(boxX - 2, Math.max(0, boxY - 24), Math.max(tagW + 80, boxW + 4), 26);
       }
 
       // Dark chip background (exactly like NANDO AI - very dark, slight transparency)
