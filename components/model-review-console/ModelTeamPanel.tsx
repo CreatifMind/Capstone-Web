@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { MODEL_CONFIG } from "@/lib/inference/model-config";
 import { runModel } from "@/lib/inference/onnx-session";
 import { postprocessOutput } from "@/lib/inference/postprocess";
@@ -32,11 +32,13 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [activeSample, setActiveSample] = useState<SampleImageRecord | null>(null);
+  const [sampleBatch, setSampleBatch] = useState<SampleImageRecord[]>([]);
 
-  const [status, setStatus] = useState("Click 'Fetch Random DB Test Image' or upload a file to begin.");
+  const [syncFrequency, setSyncFrequency] = useState<"hourly" | "daily">("daily");
+  const [status, setStatus] = useState("Automated DB Batch ready. Select any sample to test accuracy.");
   const [error, setError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [isFetchingSample, setIsFetchingSample] = useState(false);
+  const [isSyncingBatch, setIsSyncingBatch] = useState(false);
 
   const [detections, setDetections] = useState<Detection[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
@@ -44,7 +46,9 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
 
   const [classFilter, setClassFilter] = useState("all");
   const [materialFilter, setMaterialFilter] = useState("all");
+
   const [confidenceThreshold, setConfidenceThreshold] = useState(stats.settings.confidence_threshold);
+  const [retrainThreshold, setRetrainThreshold] = useState(stats.settings.retrain_threshold);
   const [suggestedLabels, setSuggestedLabels] = useState<Record<string, string>>({});
   const [retraining, setRetraining] = useState(false);
 
@@ -55,10 +59,39 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     previewUrlRef.current = "";
   };
 
+  const fetchBatchFromDB = async (material = materialFilter) => {
+    setIsSyncingBatch(true);
+    setError("");
+    setStatus(`Fetching automated ${syncFrequency} test image batch from database…`);
+
+    try {
+      const res = await fetch(`/api/model-review/sample-images?material=${material}`);
+      if (!res.ok) throw new Error("Failed to fetch image batch from database");
+      const data = await res.json();
+      const samples: SampleImageRecord[] = data.samples || [];
+      setSampleBatch(samples);
+
+      if (samples.length > 0) {
+        const first = samples[0];
+        await loadAndTestSample(first);
+      } else {
+        setStatus("No images found in current DB batch query.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load automated DB batch.");
+      setStatus("DB Batch sync failed.");
+    } finally {
+      setIsSyncingBatch(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBatchFromDB();
+  }, [syncFrequency]);
+
   const executeInferenceOnLoadedImage = async (
     targetImage: HTMLImageElement,
-    label: string,
-    sampleRecord: SampleImageRecord | null = null
+    label: string
   ) => {
     if (runningRef.current) return;
     runningRef.current = true;
@@ -103,33 +136,20 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     }
   };
 
-  const fetchRandomSampleImage = async () => {
-    if (runningRef.current || isFetchingSample) return;
-    setIsFetchingSample(true);
-    setError("");
-    setStatus("Fetching random test image from database…");
+  const loadAndTestSample = async (sample: SampleImageRecord) => {
+    if (runningRef.current) return;
+    revokePreviewUrl();
+    setFile(null);
+    setActiveSample(sample);
+    setPreviewUrl(sample.url);
 
     try {
-      const res = await fetch(`/api/model-review/sample-images?material=${materialFilter}&random=true`);
-      if (!res.ok) throw new Error("Failed to fetch sample image from DB");
-      const data = await res.json();
-      const sample: SampleImageRecord = data.image;
-
-      revokePreviewUrl();
-      setFile(null);
-      setActiveSample(sample);
-      setPreviewUrl(sample.url);
-
       const loadedImg = await loadImage(sample.url, sample.filename);
       setImage(loadedImg);
       setStatus(`Loaded DB sample: ${sample.groundTruthLabel} (${sample.source})`);
-
-      await executeInferenceOnLoadedImage(loadedImg, sample.filename, sample);
+      await executeInferenceOnLoadedImage(loadedImg, sample.filename);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load database test image.");
-      setStatus("DB Sample load failed.");
-    } finally {
-      setIsFetchingSample(false);
+      setError(err instanceof Error ? err.message : "Failed to load sample image.");
     }
   };
 
@@ -180,7 +200,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     setDetections([]);
     setRunId(null);
     setError("");
-    setStatus("Click 'Fetch Random DB Test Image' or upload a file to begin.");
+    setStatus("Select any DB batch sample or upload a file to test accuracy.");
   };
 
   const flagDetection = async (detection: Detection, signalType: "fp" | "fn") => {
@@ -223,6 +243,24 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       if (!response.ok) setError("Unable to update confidence threshold.");
     } catch {
       setError("Unable to update confidence threshold.");
+    }
+  };
+
+  const updateRetrainThreshold = async (value: number) => {
+    setRetrainThreshold(value);
+    try {
+      const response = await fetch("/api/model-review/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retrainThreshold: value })
+      });
+      if (response.ok) {
+        onChanged();
+      } else {
+        setError("Unable to update retrain threshold.");
+      }
+    } catch {
+      setError("Unable to update retrain threshold.");
     }
   };
 
@@ -271,8 +309,8 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     .filter((detection) => classFilter === "all" || detection.className === classFilter)
     .filter((detection) => detection.confidence >= confidenceThreshold);
 
-  const readyToRetrain = stats.unresolvedFlags >= stats.settings.retrain_threshold;
-  const flagsProgressPercent = Math.min(100, Math.round((stats.unresolvedFlags / stats.settings.retrain_threshold) * 100));
+  const readyToRetrain = stats.unresolvedFlags >= retrainThreshold;
+  const flagsProgressPercent = Math.min(100, Math.round((stats.unresolvedFlags / retrainThreshold) * 100));
   const maxDaily = Math.max(...stats.dailyBars.map((bar) => bar.count), 1);
 
   return (
@@ -288,8 +326,8 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
           </div>
           <div>
             <span>2</span>
-            <strong>DB Accuracy Check</strong>
-            <small>Fetch random DB images & run ONNX</small>
+            <strong>Automated DB Batch Pull</strong>
+            <small>Hourly/Daily auto-sync inspection batch</small>
           </div>
           <div>
             <span>3</span>
@@ -307,15 +345,15 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
           <div className="mrc-guide-box">
             <h3>When should I train the initial model?</h3>
             <p>
-              Train an initial model baseline when deploying a new material classification category, upgrading the target
-              YOLO model architecture, or when establishing a new sorting line baseline dataset.
+              Train an initial base model when deploying a new material classification category, upgrading the target YOLO
+              architecture, or establishing a new sorting line baseline dataset.
             </p>
           </div>
           <div className="mrc-guide-box">
             <h3>What triggers model retraining?</h3>
             <p>
-              Retraining is triggered when <strong>accumulated false signal flags reach the trigger threshold</strong> (currently{" "}
-              {stats.settings.retrain_threshold} flags), when confidence drift occurs on verified DB test samples, or when new batch datasets arrive.
+              Retraining is triggered automatically when <strong>accumulated false signal flags reach the threshold</strong> (currently{" "}
+              {retrainThreshold} flags), or when accuracy drift occurs on automated hourly/daily DB batches.
             </p>
           </div>
         </div>
@@ -324,13 +362,13 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       {/* Retrain Triggers & Readiness Dashboard */}
       <section className="mrc-grid-2">
         <div className="mrc-card">
-          <h2>Active Retrain Triggers & Readiness</h2>
+          <h2>Active Retrain Triggers & Settings</h2>
           <div className="mrc-trigger-list">
             <div className="mrc-trigger-item">
               <div className="mrc-trigger-header">
                 <strong>Trigger 1: False Signal Flag Threshold</strong>
                 <span className={`mrc-badge${readyToRetrain ? " mrc-badge-ready" : ""}`}>
-                  {stats.unresolvedFlags} / {stats.settings.retrain_threshold} Flags ({flagsProgressPercent}%)
+                  {stats.unresolvedFlags} / {retrainThreshold} Flags ({flagsProgressPercent}%)
                 </span>
               </div>
               <div className="mrc-progress-bar">
@@ -339,8 +377,26 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
               <small className="mrc-muted">
                 {readyToRetrain
                   ? "Threshold reached! Ready to initiate fine-tuning."
-                  : `${stats.settings.retrain_threshold - stats.unresolvedFlags} more false signals needed to trigger retrain.`}
+                  : `${retrainThreshold - stats.unresolvedFlags} more false signals needed to trigger retrain.`}
               </small>
+            </div>
+
+            {/* Retrain Threshold Slider - Moved to Model Team */}
+            <div className="mrc-trigger-item">
+              <label className="mrc-field">
+                Configured Retrain Threshold ({retrainThreshold} flags):
+                <input
+                  type="range"
+                  min={1}
+                  max={30}
+                  step={1}
+                  value={retrainThreshold}
+                  onChange={(event) => setRetrainThreshold(Number(event.target.value))}
+                  onPointerUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))}
+                  onKeyUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))}
+                />
+              </label>
+              <small className="mrc-muted">Adjust how many accumulated false signals trigger model fine-tuning.</small>
             </div>
 
             <div className="mrc-trigger-item">
@@ -348,15 +404,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
                 <strong>Trigger 2: Confidence Stability Drift</strong>
                 <span className="mrc-badge mrc-badge-ready">Stable (&ge; 90%)</span>
               </div>
-              <small className="mrc-muted">Evaluates confidence distribution on random DB inspection batches.</small>
-            </div>
-
-            <div className="mrc-trigger-item">
-              <div className="mrc-trigger-header">
-                <strong>Trigger 3: Dataset Sample Delta</strong>
-                <span className="mrc-badge">Accumulating (45 / 100 new samples)</span>
-              </div>
-              <small className="mrc-muted">New verified sample volume collected from active sorting lines.</small>
+              <small className="mrc-muted">Evaluates confidence stability across automated DB inspection batches.</small>
             </div>
           </div>
 
@@ -379,7 +427,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
         <div className="mrc-card">
           <h2>Cumulative False Signals by Day</h2>
           <p className="mrc-muted">
-            {stats.unresolvedFlags} unresolved &middot; Retrain threshold: {stats.settings.retrain_threshold}
+            {stats.unresolvedFlags} unresolved &middot; Retrain threshold: {retrainThreshold}
           </p>
           <div className="mrc-chart">
             {stats.dailyBars.map((bar) => (
@@ -393,29 +441,50 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
         </div>
       </section>
 
-      {/* Main Interactive Testing Suite: DB Image Fetcher & Inference */}
-      <section className="mrc-card" aria-label="Database Test Image & Accuracy Verification Suite">
-        <h2>Automated Accuracy Suite — Database Image Testing</h2>
-        <p className="mrc-muted">
-          Pull random test images from the database inspection repository to evaluate model accuracy without needing manual uploads.
-        </p>
+      {/* Main Interactive Testing Suite: Automated DB Batch Pull */}
+      <section className="mrc-card" aria-label="Automated Database Batch Pull Suite">
+        <div className="mrc-health-banner-header">
+          <div>
+            <h2>Automated DB Batch Pull Suite</h2>
+            <p className="mrc-muted">
+              Auto-pulls inspection image groups from the database on a schedule for automated model accuracy evaluation.
+            </p>
+          </div>
+          <div className="mrc-retrain-controls">
+            <label className="mrc-field-inline">
+              Auto Sync Frequency:
+              <select
+                value={syncFrequency}
+                onChange={(e) => setSyncFrequency(e.target.value as "hourly" | "daily")}
+                disabled={isRunning || isSyncingBatch}
+              >
+                <option value="hourly">Hourly Auto Sync</option>
+                <option value="daily">Daily Auto Batch Sync</option>
+              </select>
+            </label>
+          </div>
+        </div>
 
-        <section className="mrc-controls">
+        {/* Batch Control Toolbar */}
+        <section className="mrc-controls" style={{ marginTop: "14px" }}>
           <button
             type="button"
             className="mrc-btn-primary"
-            onClick={fetchRandomSampleImage}
-            disabled={isRunning || isFetchingSample}
+            onClick={() => fetchBatchFromDB(materialFilter)}
+            disabled={isRunning || isSyncingBatch}
           >
-            {isFetchingSample ? "Fetching DB Image…" : "Fetch Random DB Test Image"}
+            {isSyncingBatch ? "Syncing DB Batch…" : `Sync Next ${syncFrequency === "hourly" ? "Hourly" : "Daily"} DB Batch`}
           </button>
 
           <label className="mrc-field-inline">
-            Material Category:
+            Filter Material:
             <select
               value={materialFilter}
-              onChange={(e) => setMaterialFilter(e.target.value)}
-              disabled={isRunning || isFetchingSample}
+              onChange={(e) => {
+                setMaterialFilter(e.target.value);
+                fetchBatchFromDB(e.target.value);
+              }}
+              disabled={isRunning || isSyncingBatch}
             >
               <option value="all">All Categories</option>
               <option value="plastic">Plastic</option>
@@ -428,14 +497,14 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
             </select>
           </label>
 
-          <label className={`mrc-btn-secondary${isRunning || isFetchingSample ? " mrc-disabled" : ""}`}>
+          <label className={`mrc-btn-secondary${isRunning || isSyncingBatch ? " mrc-disabled" : ""}`}>
             Or upload custom file
             <input
               ref={inputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
               onChange={selectManualImage}
-              disabled={isRunning || isFetchingSample}
+              disabled={isRunning || isSyncingBatch}
             />
           </label>
 
@@ -445,12 +514,41 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
             </button>
           )}
 
-          <button type="button" className="mrc-btn-secondary" onClick={reset} disabled={isRunning || isFetchingSample}>
+          <button type="button" className="mrc-btn-secondary" onClick={reset} disabled={isRunning || isSyncingBatch}>
             Reset Suite
           </button>
         </section>
 
-        <p className="mrc-status" role="status">
+        {/* Automated DB Batch Thumbnail Carousel / Grid */}
+        {sampleBatch.length > 0 && (
+          <div className="mrc-batch-wrapper">
+            <div className="mrc-batch-header">
+              <strong>
+                Active Automated Batch ({sampleBatch.length} Inspection Images pulled via {syncFrequency} sync):
+              </strong>
+              <small className="mrc-muted">Click any image thumbnail to inspect bounding boxes and verify accuracy.</small>
+            </div>
+            <div className="mrc-batch-grid">
+              {sampleBatch.map((sample) => {
+                const isSelected = activeSample?.id === sample.id;
+                return (
+                  <button
+                    key={sample.id}
+                    type="button"
+                    className={`mrc-batch-thumb${isSelected ? " active" : ""}`}
+                    onClick={() => loadAndTestSample(sample)}
+                    disabled={isRunning}
+                  >
+                    <img src={sample.url} alt={sample.groundTruthLabel} />
+                    <span>{sample.groundTruthLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <p className="mrc-status" role="status" style={{ marginTop: "12px" }}>
           {status}
         </p>
         {error && (
@@ -513,14 +611,14 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
                 </svg>
               </div>
             ) : (
-              <p className="mrc-muted">No test image active. Click "Fetch Random DB Test Image" to begin.</p>
+              <p className="mrc-muted">No test image active. Click any batch thumbnail above to begin.</p>
             )}
           </div>
 
           <div className="mrc-card">
             <h2>Detection Results & Feedback</h2>
             <p className="mrc-muted">Flag incorrect detections — feedback routes straight to model retraining data pipeline.</p>
-            {!detections.length && <p className="mrc-muted">Fetch a DB image or run detection to view bounding boxes.</p>}
+            {!detections.length && <p className="mrc-muted">Select a batch image or run detection to view bounding boxes.</p>}
             {!!detections.length && !visibleDetections.length && (
               <p className="mrc-muted">No detections meet confidence threshold {confidenceThreshold.toFixed(2)}.</p>
             )}

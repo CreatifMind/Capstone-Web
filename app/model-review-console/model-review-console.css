@@ -97,6 +97,17 @@ input[type="file"] { display: none; }
 .mrc-progress-fill { height: 100%; background: var(--primary); border-radius: 999px; transition: width .3s ease; }
 .mrc-retrain-action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 
+/* Batch Grid Styles */
+.mrc-batch-wrapper { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.mrc-batch-header { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; margin-bottom: 10px; }
+.mrc-batch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.mrc-batch-thumb { border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color .18s ease, transform .18s ease; }
+.mrc-batch-thumb:hover { border-color: var(--primary); transform: translateY(-2px); }
+.mrc-batch-thumb.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); box-shadow: 0 0 0 1px var(--primary); }
+.mrc-batch-thumb img { width: 100%; height: 68px; object-fit: cover; border-radius: 4px; }
+.mrc-batch-thumb span { font-size: .72rem; font-weight: 700; color: var(--text-primary, var(--text)); text-align: center; line-height: 1.2; }
+
+
 /* Web Team System Health Styles */
 .mrc-health-banner-card { display: flex; flex-direction: column; gap: 16px; }
 .mrc-health-banner-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }

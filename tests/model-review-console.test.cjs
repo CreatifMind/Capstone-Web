@@ -86,8 +86,8 @@ assert.match(modelPanel, /fetch\("\/api\/model-review\/retrain", \{ method: "POS
 
 const webPanel = fs.readFileSync("components/model-review-console/WebTeamPanel.tsx", "utf8");
 assert.match(webPanel, /fetch\("\/api\/model-review\/retrain", \{\s*method: "PATCH"/);
-assert.match(webPanel, /fetch\("\/api\/model-review\/settings", \{\s*method: "PATCH"/);
-assert.match(webPanel, /retrainThreshold: value/);
+assert.match(modelPanel, /fetch\("\/api\/model-review\/settings", \{\s*method: "PATCH"/);
+assert.match(modelPanel, /retrainThreshold: value/);
 
 const pmPanel = fs.readFileSync("components/model-review-console/PmPanel.tsx", "utf8");
 assert.match(pmPanel, /fetch\("\/api\/model-review\/tasks", \{\s*method: "POST"/);

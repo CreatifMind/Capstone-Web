@@ -20,7 +20,6 @@ type DiagnosticResultRow = {
 export default function WebTeamPanel({ stats, onChanged }: Props) {
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
-  const [retrainThreshold, setRetrainThreshold] = useState(stats.settings.retrain_threshold);
   const [integrating, setIntegrating] = useState(false);
 
   const [healthData, setHealthData] = useState<SystemHealthData | null>(null);
@@ -102,24 +101,6 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
       .writeText(SNIPPET)
       .then(() => setCopyStatus("Copied — paste into the web integration branch."))
       .catch(() => setCopyStatus("Could not access clipboard."));
-  };
-
-  const updateRetrainThreshold = async (value: number) => {
-    setError("");
-    try {
-      const response = await fetch("/api/model-review/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ retrainThreshold: value })
-      });
-      if (!response.ok) {
-        setError("Unable to update retrain threshold.");
-        return;
-      }
-      onChanged();
-    } catch {
-      setError("Unable to update retrain threshold.");
-    }
   };
 
   const markIntegrated = async () => {
@@ -294,22 +275,9 @@ export default function WebTeamPanel({ stats, onChanged }: Props) {
           <button type="button" className="mrc-btn-primary" onClick={copySnippet}>
             Copy integration snippet
           </button>
-          <p className="mrc-muted">
+          <p className="mrc-muted" style={{ marginTop: "8px" }}>
             {copyStatus || "Copies the latest model load snippet for the development integration branch."}
           </p>
-          <label className="mrc-field">
-            Retrain threshold ({retrainThreshold})
-            <input
-              type="range"
-              min={1}
-              max={30}
-              step={1}
-              value={retrainThreshold}
-              onChange={(event) => setRetrainThreshold(Number(event.target.value))}
-              onPointerUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))}
-              onKeyUp={(event) => updateRetrainThreshold(Number((event.target as HTMLInputElement).value))}
-            />
-          </label>
         </div>
 
         <div className="mrc-card">
