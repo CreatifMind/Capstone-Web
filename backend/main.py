@@ -2607,10 +2607,9 @@ def _material_from_annotated_observation(material: dict, observation: dict) -> d
     height = int(_coerce_float(observation.get("frame_height"), 0))
     x1, y1, x2, y2 = [_coerce_float(value) for value in observation["box_xyxy"][:4]]
     merged = dict(material)
-    merged["track_id"] = observation.get("track_id") or material.get("track_id")
-    merged["category"] = observation.get("category") or material.get("category")
-    merged["material_name"] = observation.get("material_name") or material.get("material_name") or merged.get("category")
-    merged["confidence"] = observation.get("confidence") if observation.get("confidence") is not None else material.get("confidence")
+    merged["category"] = material.get("category") or observation.get("category")
+    merged["material_name"] = material.get("material_name") or material.get("category") or observation.get("material_name")
+    merged["confidence"] = material.get("confidence") if material.get("confidence") is not None else observation.get("confidence")
     merged["best_box"] = {
         "xyxy": [x1, y1, x2, y2],
         "frame": observation.get("annotated_frame_index"),
@@ -2625,13 +2624,13 @@ def _material_from_annotated_observation(material: dict, observation: dict) -> d
     return merged
 
 
-def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict, observation: dict | None = None) -> tuple[bytes, dict] | None:
-    if not video_path:
+def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict, observation: dict | None = None, raw_video_path: str | Path | None = None) -> tuple[bytes, dict] | None:
+    if not video_path and not raw_video_path:
         return None
     import cv2
 
-    source = Path(video_path)
-    if not source.exists():
+    target_video = Path(raw_video_path) if raw_video_path and Path(raw_video_path).exists() else Path(video_path or "")
+    if not target_video.exists():
         return None
     observation = observation or _material_observation_fallback(material)
     if not observation:
@@ -2646,7 +2645,7 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
         return None
     frame_index = int(_coerce_float(observation.get("annotated_frame_index")))
     timestamp = _coerce_float(observation.get("timestamp"), -1)
-    capture = cv2.VideoCapture(str(source))
+    capture = cv2.VideoCapture(str(target_video))
     try:
         if not capture.isOpened():
             return None
@@ -2674,6 +2673,18 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
         bbox_format = observation.get("bbox_format")
         try:
             crop_x1, crop_y1, crop_x2, crop_y2, box_xyxy = _tracked_object_crop_bounds(frame, extraction_material)
+            category = extraction_material.get("category") or material.get("category") or "Detected object"
+            confidence = float(extraction_material.get("confidence") or material.get("confidence") or 0)
+            conf_pct = round(confidence * 100) if confidence <= 1.0 else round(confidence)
+            conf_label = f"{category} | {conf_pct}%"
+            color = (0, 200, 80) if category.lower() not in ("trash", "quarantine", "rejected") else (50, 50, 220)
+            bx1, by1, bx2, by2 = [int(v) for v in box_xyxy]
+            if bx2 > bx1 and by2 > by1:
+                (lw, lh), _ = cv2.getTextSize(conf_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+                hy1 = max(0, by1 - lh - 8)
+                cv2.rectangle(frame, (bx1, hy1), (min(frame.shape[1], bx1 + lw + 10), by1), color, -1)
+                cv2.putText(frame, conf_label, (bx1 + 4, max(16, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+                cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 2)
             crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
             if crop.size == 0:
                 raise ValueError("Tracked-object annotated-video preview crop is empty")
@@ -2682,7 +2693,7 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
                 "tracked_preview_crop_failed",
                 track_id=observation_track_id,
                 stable_object_id=material.get("stable_object_id") or material.get("object_uid"),
-                video_path=str(source),
+                video_path=str(target_video),
                 frame_index=frame_index,
                 timestamp=timestamp,
                 fps=fps,
@@ -2704,7 +2715,7 @@ def _extract_annotated_video_object_preview(video_path: str | Path | None, mater
             "format": "annotated_video_frame",
             "preview_source": "annotated_video_frame",
             "extraction_method": extraction_method,
-            "video_path": str(source),
+            "video_path": str(target_video),
             "source_width": source_width or frame.shape[1],
             "source_height": source_height or frame.shape[0],
             "fps": fps,
