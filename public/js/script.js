@@ -3471,14 +3471,21 @@ function initResultPage() {
 
   function getActiveBoxes() {
     if (!activeScan) return [];
+    const boxes = plMaterialsToBoxes(activeScan.detected_materials);
     const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
-    if (isTrackedVideo) {
-      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-        console.info("[review-preview] Skipping canvas overlay for annotated tracked-video preview.", { scanId: activeScan.id });
-      }
-      return [];
+    if (isTrackedVideo && boxes.length) {
+      const primaryMaterial = activeScan.detected_materials?.[0];
+      const verifiedCategory = plNormalizeCategory(primaryMaterial?.category || activeScan.overall_status || "Cardboard");
+      const verifiedConf = Math.round(plConfidencePercent(primaryMaterial?.confidence ?? activeScan.overall_confidence ?? 0));
+      return [{
+        ...boxes[0],
+        label: verifiedCategory,
+        confidence: `${verifiedConf}%`,
+        color: activeScan.human_review_required ? "#eab308" : (plNormalizeStatus(activeScan.overall_status) === "rejected" ? "#ef4444" : "#22c55e"),
+        maskHeader: true
+      }];
     }
-    return plMaterialsToBoxes(activeScan.detected_materials);
+    return boxes;
   }
 
   function getActiveTrackPath() {
@@ -3819,8 +3826,14 @@ function initResultPage() {
       const tagX = boxX;
       const tagY = boxY;
 
+      // If maskHeader is enabled, draw a solid background pill to cover any burned-in raw video text header
+      if (box.maskHeader) {
+        ctx2d.fillStyle = document.documentElement.dataset.theme === "light" ? "rgba(223, 233, 226, 0.96)" : "rgba(7, 17, 13, 0.96)";
+        ctx2d.fillRect(boxX - 2, max(0, boxY - 24), Math.max(tagW + 80, boxW + 4), 26);
+      }
+
       // Dark chip background (exactly like NANDO AI - very dark, slight transparency)
-      ctx2d.fillStyle = "rgba(4, 8, 6, 0.88)";
+      ctx2d.fillStyle = "rgba(4, 8, 6, 0.92)";
       ctx2d.fillRect(tagX, tagY, tagW, tagH);
 
       // Thin colored top border on tag (category color accent)
