@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { MODEL_CONFIG } from "@/lib/inference/model-config";
 import { runModel } from "@/lib/inference/onnx-session";
 import { postprocessOutput } from "@/lib/inference/postprocess";
@@ -59,37 +59,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     previewUrlRef.current = "";
   };
 
-  const fetchBatchFromDB = async (material = materialFilter) => {
-    setIsSyncingBatch(true);
-    setError("");
-    setStatus(`Fetching automated ${syncFrequency} test image batch from database…`);
-
-    try {
-      const res = await fetch(`/api/model-review/sample-images?material=${material}`);
-      if (!res.ok) throw new Error("Failed to fetch image batch from database");
-      const data = await res.json();
-      const samples: SampleImageRecord[] = data.samples || [];
-      setSampleBatch(samples);
-
-      if (samples.length > 0) {
-        const first = samples[0];
-        await loadAndTestSample(first);
-      } else {
-        setStatus("No images found in current DB batch query.");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automated DB batch.");
-      setStatus("DB Batch sync failed.");
-    } finally {
-      setIsSyncingBatch(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBatchFromDB();
-  }, [syncFrequency]);
-
-  const executeInferenceOnLoadedImage = async (
+  const executeInferenceOnLoadedImage = useCallback(async (
     targetImage: HTMLImageElement,
     label: string
   ) => {
@@ -134,9 +104,9 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       runningRef.current = false;
       setIsRunning(false);
     }
-  };
+  }, [onChanged]);
 
-  const loadAndTestSample = async (sample: SampleImageRecord) => {
+  const loadAndTestSample = useCallback(async (sample: SampleImageRecord) => {
     if (runningRef.current) return;
     revokePreviewUrl();
     setFile(null);
@@ -151,7 +121,37 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load sample image.");
     }
-  };
+  }, [executeInferenceOnLoadedImage]);
+
+  const fetchBatchFromDB = useCallback(async (material = materialFilter) => {
+    setIsSyncingBatch(true);
+    setError("");
+    setStatus(`Fetching automated ${syncFrequency} test image batch from database…`);
+
+    try {
+      const res = await fetch(`/api/model-review/sample-images?material=${material}`);
+      if (!res.ok) throw new Error("Failed to fetch image batch from database");
+      const data = await res.json();
+      const samples: SampleImageRecord[] = data.samples || [];
+      setSampleBatch(samples);
+
+      if (samples.length > 0) {
+        const first = samples[0];
+        await loadAndTestSample(first);
+      } else {
+        setStatus("No images found in current DB batch query.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load automated DB batch.");
+      setStatus("DB Batch sync failed.");
+    } finally {
+      setIsSyncingBatch(false);
+    }
+  }, [loadAndTestSample, materialFilter, syncFrequency]);
+
+  useEffect(() => {
+    fetchBatchFromDB();
+  }, [fetchBatchFromDB]);
 
   const selectManualImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
