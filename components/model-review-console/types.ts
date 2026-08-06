@@ -63,3 +63,37 @@ export type SharedStats = {
   currentRetrainRun: RetrainRun | null;
   settings: ConsoleSettings;
 };
+
+export type SampleImageRecord = {
+  id: string;
+  filename: string;
+  url: string;
+  materialClass: string;
+  groundTruthLabel: string;
+  source: string;
+  capturedAt: string;
+};
+
+export type ComponentHealthStatus = "operational" | "degraded" | "down";
+
+export type ComponentHealthItem = {
+  status: ComponentHealthStatus;
+  latencyMs: number;
+  details: string;
+};
+
+export type SystemHealthData = {
+  status: ComponentHealthStatus;
+  timestamp: string;
+  components: {
+    webApp: ComponentHealthItem;
+    apiServer: ComponentHealthItem;
+    backendFunctions: ComponentHealthItem;
+    database: ComponentHealthItem;
+    inferenceEngine: ComponentHealthItem;
+  };
+  systemMetrics: {
+    heapUsedMb: number;
+    uptimeSeconds: number;
+  };
+};
