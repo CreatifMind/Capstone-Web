@@ -43,7 +43,6 @@ test("Review and Analytics resolve tracked-video rows to the annotated preview U
   assert.equal(ledger.preview, "https://storage.example.test/annotated-track.jpg");
 });
 
-test("Review renders maskHeader overlay for video preview canvas", () => {
-  assert.match(source, /maskHeader: true/);
-  assert.match(source, /if \(box\.maskHeader\)/);
+test("Review skips frontend canvas boxes for annotated tracked-video previews", () => {
+  assert.match(source, /if \(isTrackedVideo\) \{[\s\S]*?return \[\];[\s\S]*?\}/);
 });
