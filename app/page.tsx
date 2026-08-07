@@ -454,14 +454,13 @@ const html = `
             <div class="methodology-evidence">
               <div class="measured-performance-panel">
                 
-                {/* Customer-Friendly Baseline Improvement Card */}
                 <div style="padding:18px;border:1px solid var(--primary);border-radius:12px;background:color-mix(in srgb, var(--primary) 8%, var(--surface));margin-bottom:24px;">
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
                     <div>
                       <h4 style="margin:0 0 4px;font-size:1.02rem;font-weight:700;color:var(--primary);">Model Improvement Over Baseline</h4>
                       <p style="margin:0;font-size:0.86rem;color:var(--muted);">Demonstrated accuracy gains through AI dataset refinement and segmentation optimization.</p>
                     </div>
-                    <span style="font-size:1.15rem;font-weight:800;padding:6px 16px;border-radius:999px;background:var(--primary);color:#fff;">+4.3% Model Lift</span>
+                    <span style="font-size:1.15rem;font-weight:800;padding:6px 14px;border-radius:999px;background:var(--primary);color:#fff;">+4.3% Model Lift</span>
                   </div>
 
                   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb, var(--primary) 20%, transparent);">
@@ -480,7 +479,6 @@ const html = `
                   </div>
                 </div>
 
-                {/* Industry Benchmark Comparison Table - PurityLoop AI FIRST */}
                 <h4 style="font-size:1rem;font-weight:700;margin-bottom:8px;color:var(--text);">Field Benchmark Comparison</h4>
                 <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">Comparing PurityLoop performance against industry standards and published computer vision literature.</p>
                 
@@ -495,7 +493,6 @@ const html = `
                       </tr>
                     </thead>
                     <tbody>
-                      {/* PurityLoop AI - FIRST IN ORDER */}
                       <tr style="background:rgba(0,240,138,0.12);font-weight:700;border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;color:var(--primary);font-size:0.9rem;"><strong>PurityLoop AI (Shipped Model)</strong></td>
                         <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">59.5%</td>
