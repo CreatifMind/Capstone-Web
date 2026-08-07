@@ -15181,3 +15181,30 @@ body[data-page="analytics"] .analytics-kpi strong {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ── PER-CLASS MODEL PERFORMANCE TIER BADGES ── */
+.tier-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tier-high {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+}
+.tier-mid {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3B82F6;
+}
+.tier-challenging {
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+}
+.tier-trash {
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+}
+
