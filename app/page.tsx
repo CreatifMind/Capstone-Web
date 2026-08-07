@@ -448,111 +448,86 @@ const html = `
           <article id="methodology-panel-6" class="methodology-panel methodology-results-panel" role="tabpanel" aria-labelledby="methodology-tab-6" tabindex="0" data-methodology-panel="5" hidden>
             <div class="methodology-panel-copy">
               <span class="methodology-index">06 / Model Training &amp; Benchmarks</span>
-              <h3>Training Settings, Baseline Lift &amp; Academic Benchmarks</h3>
-              <p>Shipped model training configuration, +0.043 mAP baseline improvement, and industry benchmark comparisons with peer citations.</p>
+              <h3>Model Lift &amp; Industry Benchmarks</h3>
+              <p>Model performance improvements over baseline and industry benchmark comparisons.</p>
             </div>
             <div class="methodology-evidence">
               <div class="measured-performance-panel">
                 
-                {/* Training Settings Grid */}
-                <h4 style="font-size:1rem;font-weight:700;margin-bottom:10px;color:var(--text);">Latest Model Training Configuration (Run: remask200_40ep)</h4>
-                <div class="training-settings-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:24px;">
-                  <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
-                    <small style="color:var(--muted);font-size:0.75rem;font-weight:600;">Architecture</small>
-                    <p style="margin:4px 0 0;font-weight:700;font-size:0.95rem;">YOLOv8m-seg</p>
-                    <small style="color:var(--muted);">Instance Segmentation</small>
-                  </div>
-                  <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
-                    <small style="color:var(--muted);font-size:0.75rem;font-weight:600;">Input Size &amp; Epochs</small>
-                    <p style="margin:4px 0 0;font-weight:700;font-size:0.95rem;">640 × 640 px | 40 Ep</p>
-                    <small style="color:var(--muted);">SGD (lr0=0.01, patience=15)</small>
-                  </div>
-                  <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
-                    <small style="color:var(--muted);font-size:0.75rem;font-weight:600;">Augmentation &amp; Loss</small>
-                    <p style="margin:4px 0 0;font-weight:700;font-size:0.95rem;">Copy-Paste (0.3)</p>
-                    <small style="color:var(--muted);">Box: 7.5, Cls: 0.5, DFL: 1.5</small>
-                  </div>
-                  <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
-                    <small style="color:var(--muted);font-size:0.75rem;font-weight:600;">Hardware &amp; Dataset</small>
-                    <p style="margin:4px 0 0;font-weight:700;font-size:0.95rem;">Sunway HPC (1× L40S GPU)</p>
-                    <small style="color:var(--muted);">33.6k Train / 8.5k Val Split</small>
-                  </div>
-                </div>
-
-                {/* Internal Baseline Improvement Lift */}
-                <div style="padding:16px;border:1px solid var(--primary);border-radius:10px;background:color-mix(in srgb, var(--primary) 10%, var(--surface));margin-bottom:24px;">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                {/* Customer-Friendly Baseline Improvement Card */}
+                <div style="padding:18px;border:1px solid var(--primary);border-radius:12px;background:color-mix(in srgb, var(--primary) 8%, var(--surface));margin-bottom:24px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
                     <div>
-                      <h4 style="margin:0 0 4px;font-size:0.98rem;font-weight:700;color:var(--primary);">Model Improvement Over Baseline (+0.043 mAP Lift)</h4>
-                      <p style="margin:0;font-size:0.84rem;color:var(--text-secondary, var(--muted));">
-                        Previous Model (<code>v3_ffremask_9cls</code>): <strong>0.5524 mAP50</strong> &rarr; Shipped Model (<code>remask200_40ep</code>): <strong>0.5953 mAP50</strong> (+7.8% relative gain).
-                      </p>
+                      <h4 style="margin:0 0 4px;font-size:1.02rem;font-weight:700;color:var(--primary);">Model Improvement Over Baseline</h4>
+                      <p style="margin:0;font-size:0.86rem;color:var(--muted);">Demonstrated accuracy gains through AI dataset refinement and segmentation optimization.</p>
                     </div>
-                    <span style="font-size:1.1rem;font-weight:800;padding:6px 14px;border-radius:999px;background:var(--primary);color:#fff;">+0.043 mAP</span>
+                    <span style="font-size:1.15rem;font-weight:800;padding:6px 16px;border-radius:999px;background:var(--primary);color:#fff;">+4.3% Model Lift</span>
                   </div>
-                  <p style="margin:10px 0 0;font-size:0.8rem;color:var(--muted);line-height:1.45;">
-                    <em>Key Insight:</em> The +0.043 performance gain was achieved through FastSAM full-frame label remasking and corrected validation annotations (<code>data_corrval.yaml</code>), proving that annotation quality provided more performance lift than architecture tweaks alone.
-                  </p>
+
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb, var(--primary) 20%, transparent);">
+                    <div style="padding:10px 12px;border-radius:8px;background:var(--surface);">
+                      <small style="color:var(--muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;">Baseline Model</small>
+                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--text);">55.2% mAP</p>
+                    </div>
+                    <div style="padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--primary);">
+                      <small style="color:var(--primary);font-size:0.75rem;font-weight:700;text-transform:uppercase;">PurityLoop AI (Shipped)</small>
+                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">59.5% mAP</p>
+                    </div>
+                    <div style="padding:10px 12px;border-radius:8px;background:var(--surface);">
+                      <small style="color:var(--muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;">Relative Improvement</small>
+                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">+7.8% Gain</p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Industry Benchmark Comparison Table with Academic Citations */}
-                <h4 style="font-size:1rem;font-weight:700;margin-bottom:8px;color:var(--text);">Field Benchmark Comparison &amp; Published Citations</h4>
-                <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">Comparing PurityLoop performance against published computer vision literature and commercial standards.</p>
+                {/* Industry Benchmark Comparison Table - PurityLoop AI FIRST */}
+                <h4 style="font-size:1rem;font-weight:700;margin-bottom:8px;color:var(--text);">Field Benchmark Comparison</h4>
+                <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">Comparing PurityLoop performance against industry standards and published computer vision literature.</p>
                 
-                <div class="table-responsive" style="margin-bottom:20px;">
+                <div class="table-responsive">
                   <table class="per-class-table" style="width:100%;border-collapse:collapse;font-size:0.84rem;">
                     <thead>
                       <tr style="border-bottom:1px solid var(--border);text-align:left;color:var(--muted);font-size:0.75rem;text-transform:uppercase;">
                         <th style="padding:10px 8px;">System / Model</th>
                         <th style="padding:10px 8px;">mAP50 Score</th>
                         <th style="padding:10px 8px;">Domain &amp; Dataset</th>
-                        <th style="padding:10px 8px;">Reference &amp; Citation</th>
+                        <th style="padding:10px 8px;">Reference Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:10px 8px;"><strong>TrashDet on TACO</strong></td>
-                        <td style="padding:10px 8px;">19.5%</td>
-                        <td style="padding:10px 8px;">5-class litter dataset</td>
-                        <td style="padding:10px 8px;"><small>Proença &amp; Simões, <em>TACO Benchmark</em> [1]</small></td>
-                      </tr>
-                      <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:10px 8px;"><strong>Mask R-CNN Baseline</strong></td>
-                        <td style="padding:10px 8px;">34.9%</td>
-                        <td style="padding:10px 8px;">ZeroWaste industrial baseline</td>
-                        <td style="padding:10px 8px;"><small>Bashkirova et al., <em>IEEE/CVF CVPR 2022</em> [2]</small></td>
-                      </tr>
-                      <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:10px 8px;"><strong>Zabble Commercial Product</strong></td>
-                        <td style="padding:10px 8px;">54.5%</td>
-                        <td style="padding:10px 8px;">Commercial product (14k images)</td>
-                        <td style="padding:10px 8px;"><small>Zabble Inc. Commercial Benchmark Standard [3]</small></td>
+                      {/* PurityLoop AI - FIRST IN ORDER */}
+                      <tr style="background:rgba(0,240,138,0.12);font-weight:700;border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 8px;color:var(--primary);font-size:0.9rem;"><strong>PurityLoop AI (Shipped Model)</strong></td>
+                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">59.5%</td>
+                        <td style="padding:10px 8px;">8,453 held-out validation images</td>
+                        <td style="padding:10px 8px;"><strong>This Capstone Project</strong> (2026)</td>
                       </tr>
                       <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;"><strong>EcoDetect-YOLOv2</strong></td>
                         <td style="padding:10px 8px;font-weight:700;">59.9%</td>
                         <td style="padding:10px 8px;">IEWED 9-class cluttered stream</td>
-                        <td style="padding:10px 8px;"><small>MDPI <em>Sensors Journal</em> (Vol. 25, 2025) [4]</small></td>
+                        <td style="padding:10px 8px;"><small>MDPI <em>Sensors Journal</em> (2025)</small></td>
                       </tr>
-                      <tr style="background:rgba(0,240,138,0.08);font-weight:700;">
-                        <td style="padding:10px 8px;"><strong>PurityLoop (remask200_40ep)</strong></td>
-                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;">59.5%</td>
-                        <td style="padding:10px 8px;">8,453 held-out validation images</td>
-                        <td style="padding:10px 8px;"><small><strong>This Capstone Project</strong> (2026)</small></td>
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 8px;"><strong>Zabble Commercial Product</strong></td>
+                        <td style="padding:10px 8px;">54.5%</td>
+                        <td style="padding:10px 8px;">Commercial product (14k images)</td>
+                        <td style="padding:10px 8px;"><small>Zabble Inc. Commercial Benchmark (2024)</small></td>
+                      </tr>
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 8px;"><strong>Mask R-CNN Baseline</strong></td>
+                        <td style="padding:10px 8px;">34.9%</td>
+                        <td style="padding:10px 8px;">ZeroWaste industrial baseline</td>
+                        <td style="padding:10px 8px;"><small>Bashkirova et al., <em>CVPR 2022</em></small></td>
+                      </tr>
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 8px;"><strong>TrashDet on TACO</strong></td>
+                        <td style="padding:10px 8px;">19.5%</td>
+                        <td style="padding:10px 8px;">5-class litter dataset</td>
+                        <td style="padding:10px 8px;"><small>Proença &amp; Simões, <em>TACO Benchmark</em></small></td>
                       </tr>
                     </tbody>
                   </table>
-                </div>
-
-                {/* Academic Citations Box */}
-                <div style="padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:0.78rem;color:var(--muted);line-height:1.5;">
-                  <h5 style="margin:0 0 6px;font-size:0.82rem;font-weight:700;color:var(--text);">Academic &amp; Industry Citations</h5>
-                  <ol style="margin:0;padding-left:18px;">
-                    <li>Proença, P., &amp; Simões, P. (2020). <em>TACO: Trash Annotations in Context for Litter Detection</em>. arXiv preprint arXiv:2003.04339.</li>
-                    <li>Bashkirova, D., et al. (2022). <em>ZeroWaste: Towards Waste Recycling with Synthetic-to-Real Domain Adaptation</em>. Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), pp. 21009-21019.</li>
-                    <li>Zabble Inc. (2024). <em>AI Waste Quality Metrics &amp; Computer Vision Benchmark Standard</em>. Zabble Commercial Technical Whitepaper. ("mAP50 &ge; 50% indicates strong commercial performance").</li>
-                    <li>MDPI Sensors Journal (2025). <em>EcoDetect-YOLOv2: An Efficient Object Detection Model for Cluttered Industrial Waste Sorting</em>. Sensors, 25(3), 812.</li>
-                  </ol>
                 </div>
 
               </div>

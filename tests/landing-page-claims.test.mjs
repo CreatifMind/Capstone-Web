@@ -105,12 +105,11 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "Cardboard",
     "Plastic",
     "Paper",
-    "General Trash",
-    "remask200_40ep",
-    "+0.043 mAP",
+    "PurityLoop AI (Shipped Model)",
+    "+4.3% Model Lift",
     "EcoDetect-YOLOv2",
     "Zabble Commercial Product",
-    "Academic &amp; Industry Citations",
+    "Field Benchmark Comparison",
   ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 });
 
