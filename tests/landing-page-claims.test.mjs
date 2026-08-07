@@ -108,7 +108,7 @@ test("landing page preserves methodology, challenge video, problem section, and 
     "PurityLoop AI (Shipped Model)",
     "+4.3% Model Lift",
     "EcoDetect-YOLOv2",
-    "Zabble Commercial Product",
+    "TridentNet Baseline",
     "Field Benchmark Comparison",
   ].forEach((text) => assert.match(page, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
 });

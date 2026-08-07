@@ -503,25 +503,25 @@ const html = `
                         <td style="padding:10px 8px;"><strong>EcoDetect-YOLOv2</strong></td>
                         <td style="padding:10px 8px;font-weight:700;">59.9%</td>
                         <td style="padding:10px 8px;">IEWED 9-class cluttered stream</td>
-                        <td style="padding:10px 8px;"><small>MDPI <em>Sensors Journal</em> (2025)</small></td>
+                        <td style="padding:10px 8px;"><small><a href="https://www.mdpi.com/1424-8220/25/11/3451" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;">MDPI <em>Sensors Journal</em> (2025) <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.7rem;"></i></a></small></td>
                       </tr>
                       <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:10px 8px;"><strong>Zabble Commercial Product</strong></td>
-                        <td style="padding:10px 8px;">54.5%</td>
-                        <td style="padding:10px 8px;">Commercial product (14k images)</td>
-                        <td style="padding:10px 8px;"><small>Zabble Inc. Commercial Benchmark (2024)</small></td>
+                        <td style="padding:10px 8px;"><strong>TridentNet Baseline</strong></td>
+                        <td style="padding:10px 8px;">36.3%</td>
+                        <td style="padding:10px 8px;">ZeroWaste industrial baseline</td>
+                        <td style="padding:10px 8px;"><small><a href="https://arxiv.org/abs/2106.02740" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;">Bashkirova et al., <em>CVPR 2022</em> <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.7rem;"></i></a></small></td>
                       </tr>
                       <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;"><strong>Mask R-CNN Baseline</strong></td>
                         <td style="padding:10px 8px;">34.9%</td>
                         <td style="padding:10px 8px;">ZeroWaste industrial baseline</td>
-                        <td style="padding:10px 8px;"><small>Bashkirova et al., <em>CVPR 2022</em></small></td>
+                        <td style="padding:10px 8px;"><small><a href="https://arxiv.org/abs/2106.02740" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;">Bashkirova et al., <em>CVPR 2022</em> <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.7rem;"></i></a></small></td>
                       </tr>
                       <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;"><strong>TrashDet on TACO</strong></td>
                         <td style="padding:10px 8px;">19.5%</td>
                         <td style="padding:10px 8px;">5-class litter dataset</td>
-                        <td style="padding:10px 8px;"><small>Proença &amp; Simões, <em>TACO Benchmark</em></small></td>
+                        <td style="padding:10px 8px;"><small><a href="https://arxiv.org/abs/2003.04339" target="_blank" rel="noopener noreferrer" style="color:var(--primary);text-decoration:underline;">Proença &amp; Simões, <em>TACO Benchmark</em> <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.7rem;"></i></a></small></td>
                       </tr>
                     </tbody>
                   </table>
