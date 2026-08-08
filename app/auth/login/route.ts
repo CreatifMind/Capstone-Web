@@ -5,14 +5,18 @@ import { ROLES, normalizeEmail, roleHomePath } from "@/lib/admin";
 type AuthCookie = { name: string; value: string; options: CookieOptions };
 const ROLE_COOKIE = "purityloop_role";
 
+const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours
+
 function redirectWithCookies(path: string, request: Request, cookies: AuthCookie[], role?: string) {
   const response = NextResponse.redirect(new URL(path, request.url), 303);
-  cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+  cookies.forEach(({ name, value, options }) =>
+    response.cookies.set(name, value, { ...options, path: "/", maxAge: SESSION_MAX_AGE })
+  );
   if (role) {
     response.cookies.set(ROLE_COOKIE, role, {
       path: "/",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7
+      maxAge: SESSION_MAX_AGE
     });
   }
   return response;

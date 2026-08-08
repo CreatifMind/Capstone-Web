@@ -148,6 +148,29 @@ async function plAccessToken({ refresh = false } = {}) {
   return plSessionTokenPromise;
 }
 
+function plStartSessionHeartbeat() {
+  const isProtectedPath = ["/upload", "/review", "/analytics", "/settings", "/result", "/log", "/overview", "/development", "/admin"].some(path => window.location.pathname.startsWith(path));
+  if (!isProtectedPath) return;
+
+  // Background heartbeat every 10 minutes to maintain active demo session continuously for 24h
+  const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+  setInterval(async () => {
+    try {
+      await plAccessToken({ refresh: true });
+    } catch {
+      // Ignore transient network hiccups
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+if (typeof window !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", plStartSessionHeartbeat);
+  } else {
+    plStartSessionHeartbeat();
+  }
+}
+
 async function plAuthHeaders(extra = {}, options = {}) {
   const token = await plAccessToken(options);
   return { ...plPublicHeaders(extra), Authorization: `Bearer ${token}` };

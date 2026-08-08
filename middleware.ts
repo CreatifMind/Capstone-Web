@@ -27,10 +27,15 @@ export async function middleware(request: NextRequest) {
     if (isAdminApi || isModelReviewApi) return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
     return isAdminPage || isOperational || isDevelopmentPage || isOverviewPage ? redirect(request, "/login", response) : response;
   }
+  const SESSION_MAX_AGE = 60 * 60 * 24; // 24 hours
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
-      setAll: (items: { name: string; value: string; options: CookieOptions }[]) => { items.forEach(({ name, value, options }) => response.cookies.set(name, value, options)); }
+      setAll: (items: { name: string; value: string; options: CookieOptions }[]) => {
+        items.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, { ...options, path: "/", maxAge: SESSION_MAX_AGE })
+        );
+      }
     }
   });
   const { data: { user } } = await supabase.auth.getUser();
@@ -60,7 +65,7 @@ export async function middleware(request: NextRequest) {
   response.cookies.set(ROLE_COOKIE, profile.role, {
     path: "/",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7
+    maxAge: SESSION_MAX_AGE
   });
   if (isHomePage) return response;
   if (profile.role === "plant_manager") {
