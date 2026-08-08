@@ -134,23 +134,30 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       const data = await res.json();
       const samples: SampleImageRecord[] = data.samples || [];
       setSampleBatch(samples);
+      setIsSyncingBatch(false);
 
       if (samples.length > 0) {
         const first = samples[0];
-        await loadAndTestSample(first);
+        loadAndTestSample(first).catch((err) => {
+          console.warn("Sample auto-test warning:", err);
+          setStatus(`Loaded ${samples.length} DB inspection images. Select any thumbnail to test accuracy.`);
+        });
       } else {
         setStatus("No images found in current DB batch query.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load automated DB batch.");
       setStatus("DB Batch sync failed.");
-    } finally {
       setIsSyncingBatch(false);
     }
   }, [loadAndTestSample, materialFilter, syncFrequency]);
 
+  const initialFetchDoneRef = useRef(false);
   useEffect(() => {
-    fetchBatchFromDB();
+    if (!initialFetchDoneRef.current) {
+      initialFetchDoneRef.current = true;
+      fetchBatchFromDB("all");
+    }
   }, [fetchBatchFromDB]);
 
   const selectManualImage = async (event: ChangeEvent<HTMLInputElement>) => {

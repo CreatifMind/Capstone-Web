@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { failure, modelReviewContext } from "@/lib/model-review/context";
+import { supabase } from "@/lib/supabase";
 
 export type SampleImageRecord = {
   id: string;
@@ -94,12 +95,57 @@ export async function GET(request: Request) {
   const filterClass = searchParams.get("material") || "all";
   const randomOnly = searchParams.get("random") === "true";
 
-  let filtered = SAMPLE_DATABASE_IMAGES;
+  let realDbImages: SampleImageRecord[] = [];
+  const client = supabase;
+
+  if (client) {
+    try {
+      const { data: files } = await client.storage.from("scan-images").list("", {
+        limit: 30,
+        sortBy: { column: "created_at", order: "desc" }
+      });
+
+      if (files && files.length > 0) {
+        realDbImages = files
+          .filter((f) => f.name && !f.name.startsWith("."))
+          .map((file, idx) => {
+            const { data: urlData } = client.storage.from("scan-images").getPublicUrl(file.name);
+            const cleanName = file.name.replace(/^\d+-/, "");
+            const lowerName = cleanName.toLowerCase();
+            const matClass = lowerName.includes("bottle") || lowerName.includes("plastic") ? "plastic" :
+                             lowerName.includes("can") || lowerName.includes("aluminum") || lowerName.includes("metal") ? "aluminum" :
+                             lowerName.includes("box") || lowerName.includes("cardboard") ? "cardboard" :
+                             lowerName.includes("glass") || lowerName.includes("jar") ? "glass" :
+                             lowerName.includes("paper") || lowerName.includes("cup") ? "paper" :
+                             lowerName.includes("battery") ? "e-waste" : "mixed";
+            
+            const rawLabel = cleanName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+            const groundTruthLabel = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
+
+            return {
+              id: `db-live-${idx}-${file.name}`,
+              filename: file.name,
+              url: urlData.publicUrl,
+              materialClass: matClass,
+              groundTruthLabel: `${groundTruthLabel} (Database Scan)`,
+              source: "Supabase Live Database Stream (scan-images)",
+              capturedAt: file.created_at || new Date().toISOString()
+            };
+          });
+      }
+    } catch {
+      // Fallback silently if storage list permissions or bucket uninitialized
+    }
+  }
+
+  const combined = [...realDbImages, ...SAMPLE_DATABASE_IMAGES];
+
+  let filtered = combined;
   if (filterClass !== "all") {
-    filtered = SAMPLE_DATABASE_IMAGES.filter(
+    filtered = combined.filter(
       (img) => img.materialClass.toLowerCase() === filterClass.toLowerCase()
     );
-    if (!filtered.length) filtered = SAMPLE_DATABASE_IMAGES; // fallback if filter returns empty
+    if (!filtered.length) filtered = combined; // fallback if filter returns empty
   }
 
   if (randomOnly) {
