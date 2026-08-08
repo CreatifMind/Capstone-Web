@@ -123,13 +123,15 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
     }
   }, [executeInferenceOnLoadedImage]);
 
-  const fetchBatchFromDB = useCallback(async (material = materialFilter) => {
+  const [batchIndex, setBatchIndex] = useState(0);
+
+  const fetchBatchFromDB = useCallback(async (material = materialFilter, nextBatch = batchIndex) => {
     setIsSyncingBatch(true);
     setError("");
-    setStatus(`Fetching automated ${syncFrequency} test image batch from database…`);
+    setStatus(`Fetching automated ${syncFrequency} DB batch #${nextBatch + 1} from database…`);
 
     try {
-      const res = await fetch(`/api/model-review/sample-images?material=${material}`);
+      const res = await fetch(`/api/model-review/sample-images?material=${material}&batch=${nextBatch}`);
       if (!res.ok) throw new Error("Failed to fetch image batch from database");
       const data = await res.json();
       const samples: SampleImageRecord[] = data.samples || [];
@@ -140,7 +142,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
         const first = samples[0];
         loadAndTestSample(first).catch((err) => {
           console.warn("Sample auto-test warning:", err);
-          setStatus(`Loaded ${samples.length} DB inspection images. Select any thumbnail to test accuracy.`);
+          setStatus(`Synced DB Batch #${nextBatch + 1} (${samples.length} inspection images loaded). Click any thumbnail to test accuracy.`);
         });
       } else {
         setStatus("No images found in current DB batch query.");
@@ -150,13 +152,19 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       setStatus("DB Batch sync failed.");
       setIsSyncingBatch(false);
     }
-  }, [loadAndTestSample, materialFilter, syncFrequency]);
+  }, [loadAndTestSample, materialFilter, syncFrequency, batchIndex]);
+
+  const handleSyncNextBatch = () => {
+    const nextIndex = batchIndex + 1;
+    setBatchIndex(nextIndex);
+    fetchBatchFromDB(materialFilter, nextIndex);
+  };
 
   const initialFetchDoneRef = useRef(false);
   useEffect(() => {
     if (!initialFetchDoneRef.current) {
       initialFetchDoneRef.current = true;
-      fetchBatchFromDB("all");
+      fetchBatchFromDB("all", 0);
     }
   }, [fetchBatchFromDB]);
 
@@ -477,7 +485,7 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
           <button
             type="button"
             className="mrc-btn-primary"
-            onClick={() => fetchBatchFromDB(materialFilter)}
+            onClick={handleSyncNextBatch}
             disabled={isRunning || isSyncingBatch}
           >
             {isSyncingBatch ? "Syncing DB Batch…" : `Sync Next ${syncFrequency === "hourly" ? "Hourly" : "Daily"} DB Batch`}
