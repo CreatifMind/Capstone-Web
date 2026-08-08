@@ -582,9 +582,9 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
                     className={`mrc-batch-thumb${isSelected ? " active" : ""}`}
                     onClick={() => loadAndTestSample(sample)}
                     disabled={isRunning}
+                    title={sample.groundTruthLabel}
                   >
                     <img src={sample.url} alt={sample.groundTruthLabel} />
-                    <span>{sample.groundTruthLabel}</span>
                   </button>
                 );
               })}
