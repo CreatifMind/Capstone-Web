@@ -134,15 +134,44 @@ export default function ModelTeamPanel({ stats, onChanged }: Props) {
       const res = await fetch(`/api/model-review/sample-images?material=${material}&batch=${nextBatch}`);
       if (!res.ok) throw new Error("Failed to fetch image batch from database");
       const data = await res.json();
-      const samples: SampleImageRecord[] = data.samples || [];
-      setSampleBatch(samples);
+      let serverSamples: SampleImageRecord[] = data.samples || [];
+
+      let localUserScans: SampleImageRecord[] = [];
+      try {
+        const rawLogs = typeof window !== "undefined" ? localStorage.getItem("purityloop_scan_logs") : null;
+        if (rawLogs) {
+          const parsed = JSON.parse(rawLogs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localUserScans = parsed
+              .filter((log: any) => log && (log.preview_image_url || log.image_url))
+              .map((log: any, idx: number) => {
+                const imgUrl = log.preview_image_url || log.image_url || "/assets/items/upload-result-reference.png";
+                const cleanName = log.source_name || `Uploaded Scan #${idx + 1}`;
+                return {
+                  id: `user-scan-${log.id || idx}`,
+                  filename: cleanName,
+                  url: imgUrl,
+                  materialClass: log.detected_materials?.[0]?.material_class || "plastic",
+                  groundTruthLabel: `${cleanName}`,
+                  source: "Your Live Database Scan (Uploaded)",
+                  capturedAt: log.created_at || new Date().toISOString()
+                };
+              });
+          }
+        }
+      } catch {
+        // Fallback silently if localStorage is unreadable
+      }
+
+      const combined = [...localUserScans, ...serverSamples].slice(0, 8);
+      setSampleBatch(combined);
       setIsSyncingBatch(false);
 
-      if (samples.length > 0) {
-        const first = samples[0];
+      if (combined.length > 0) {
+        const first = combined[0];
         loadAndTestSample(first).catch((err) => {
           console.warn("Sample auto-test warning:", err);
-          setStatus(`Synced DB Batch #${nextBatch + 1} (${samples.length} inspection images loaded). Click any thumbnail to test accuracy.`);
+          setStatus(`Synced DB Batch #${nextBatch + 1} (${combined.length} inspection images loaded). Click any thumbnail to test accuracy.`);
         });
       } else {
         setStatus("No images found in current DB batch query.");
