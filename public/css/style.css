@@ -14182,6 +14182,7 @@ body.audit-review-modal-open { overflow: hidden; }
   overflow: hidden;
   padding: clamp(14px, 2vw, 24px);
   background: color-mix(in srgb, var(--surface-muted) 94%, #ffffff);
+  color: var(--text-primary);
 }
 
 .methodology-lightbox-scale-shell {
@@ -14209,6 +14210,7 @@ body.audit-review-modal-open { overflow: hidden; }
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+  color: var(--text-primary);
 }
 
 .methodology-lightbox-scale-canvas > .methodology-panel {

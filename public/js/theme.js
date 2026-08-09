@@ -786,6 +786,7 @@ function initLandingPresentation() {
   let lightbox = null;
   let touchStartX = 0;
   let touchStartY = 0;
+  let lightboxFitFrame = 0;
 
   const ensureImage = index => {
     const image = panels[index]?.querySelector('img[data-methodology-image]');
@@ -846,6 +847,14 @@ function initLandingPresentation() {
     canvas.style.height = `${canvasHeight}px`;
   };
 
+  const scheduleLightboxFit = () => {
+    cancelAnimationFrame(lightboxFitFrame);
+    lightboxFitFrame = requestAnimationFrame(() => {
+      fitLightboxContent();
+      requestAnimationFrame(fitLightboxContent);
+    });
+  };
+
   const syncLightbox = () => {
     if (!lightbox) return;
     const image = ensureImage(activeIndex);
@@ -856,6 +865,7 @@ function initLandingPresentation() {
     if (image && lightboxImage && lightboxFigure && lightboxContent) {
       lightboxImage.setAttribute('src', image.currentSrc || image.src);
       lightboxImage.setAttribute('alt', image.alt || activeTitle());
+      lightboxImage.addEventListener('load', scheduleLightboxFit, { once: true });
       lightboxFigure.hidden = false;
       lightboxContent.hidden = true;
       lightboxContent.replaceChildren();
@@ -880,7 +890,7 @@ function initLandingPresentation() {
       lightboxContent.hidden = false;
     }
     if (title) title.textContent = activeTitle();
-    requestAnimationFrame(fitLightboxContent);
+    scheduleLightboxFit();
   };
 
   const closeLightbox = () => {
@@ -889,9 +899,10 @@ function initLandingPresentation() {
     lightbox.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('methodology-dialog-open');
     document.removeEventListener('keydown', onLightboxKeydown);
-    window.removeEventListener('resize', fitLightboxContent);
-    window.removeEventListener('orientationchange', fitLightboxContent);
-    document.removeEventListener('fullscreenchange', fitLightboxContent);
+    window.removeEventListener('resize', scheduleLightboxFit);
+    window.removeEventListener('orientationchange', scheduleLightboxFit);
+    document.removeEventListener('fullscreenchange', scheduleLightboxFit);
+    cancelAnimationFrame(lightboxFitFrame);
     if (lastFocus instanceof HTMLElement) lastFocus.focus({ preventScroll: true });
   };
 
@@ -932,9 +943,9 @@ function initLandingPresentation() {
     lightbox.setAttribute('aria-hidden', 'false');
     document.body.classList.add('methodology-dialog-open');
     document.addEventListener('keydown', onLightboxKeydown);
-    window.addEventListener('resize', fitLightboxContent);
-    window.addEventListener('orientationchange', fitLightboxContent);
-    document.addEventListener('fullscreenchange', fitLightboxContent);
+    window.addEventListener('resize', scheduleLightboxFit);
+    window.addEventListener('orientationchange', scheduleLightboxFit);
+    document.addEventListener('fullscreenchange', scheduleLightboxFit);
     lightbox.querySelector('[data-lightbox-close]')?.focus({ preventScroll: true });
   };
 
