@@ -204,11 +204,6 @@ const html = `
         </div>
       </div>
 
-      <div class="about-team-strip" data-aos="fade-up">
-        <span>Talvin — Data Quality</span>
-        <span>Chris — Training Algorithm</span>
-        <span>Naomi — Model Architecture</span>
-      </div>
     </div>
   </section>
 

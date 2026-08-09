@@ -90,9 +90,6 @@ test("landing page includes approved About Us and Contact content", () => {
     "How We Work",
     "Human-in-the-Loop",
     "Project Focus",
-    "Talvin — Data Quality",
-    "Chris — Training Algorithm",
-    "Naomi — Model Architecture",
     "Want to Learn More About PurityLoop AI?",
     "purityloopai@info.com",
     "+6012 2818212",
@@ -100,6 +97,10 @@ test("landing page includes approved About Us and Contact content", () => {
     "tel:+60122818212",
     "Message received. Thank you for contacting PurityLoop AI.",
   ].forEach((text) => assert.match(landingSource, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+
+  ["Talvin — Data Quality", "Chris — Training Algorithm", "Naomi — Model Architecture", "about-team-strip"].forEach((text) => {
+    assert.doesNotMatch(landingSource, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
 });
 
 test("landing contact form posts to server API without exposing webhook details", () => {

@@ -10481,26 +10481,6 @@ button:disabled,
   font-size: 0.95rem;
 }
 
-.about-team-strip {
-  margin-top: 22px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.about-team-strip span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 8px 13px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-muted);
-  color: var(--text-secondary);
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
 .contact-methods {
   display: grid;
   gap: 12px;
