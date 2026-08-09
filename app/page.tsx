@@ -841,7 +841,7 @@ const html = `
       <div class="contact-layout">
         <div class="contact-copy" data-aos="fade-right">
           <div class="section-tag"><i class="fa-solid fa-paper-plane"></i> CONTACT</div>
-          <h2 class="section-headline">Want to Learn More About PurityLoop AI?</h2>
+          <h2 class="section-headline">Want to Know More About PurityLoop AI?</h2>
           <p class="section-sub">For questions about the project, methodology, model workflow, or system demonstration, use the contact options below.</p>
 
           <div class="contact-methods">

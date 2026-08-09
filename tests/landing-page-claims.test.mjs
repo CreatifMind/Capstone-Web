@@ -90,7 +90,7 @@ test("landing page includes approved About Us and Contact content", () => {
     "How We Work",
     "Human-in-the-Loop",
     "Project Focus",
-    "Want to Learn More About PurityLoop AI?",
+    "Want to Know More About PurityLoop AI?",
     "purityloopai@info.com",
     "+6012 2818212",
     "mailto:purityloopai@info.com",
