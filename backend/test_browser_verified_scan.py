@@ -219,6 +219,46 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertTrue(any(item["review_required"] for item in materials))
         self.assertEqual(main.summarize(materials)["overall_status"], "review_required")
 
+    def test_preview_filter_hides_weak_and_overlapping_boxes_without_changing_materials(self):
+        materials = main.validate_browser_detected_detections([
+            detected(detection_index=0, confidence=0.92, x1=10, y1=10, x2=110, y2=110),
+            detected(detection_index=1, confidence=0.61, x1=12, y1=12, x2=112, y2=112),
+            detected(detection_index=2, confidence=0.14, x1=220, y1=20, x2=320, y2=120),
+        ], 640, 480)
+        detections = [main._material_preview_detection(material, 640, 480) for material in materials]
+
+        clean = main._clean_preview_detections(detections, 640, 480)
+
+        self.assertEqual(len(materials), 3)
+        self.assertEqual([item["confidence"] for item in clean], [0.92])
+
+    def test_preview_filter_hides_extreme_edge_strips_only(self):
+        materials = main.validate_browser_detected_detections([
+            detected(detection_index=0, confidence=0.80, x1=0, y1=10, x2=10, y2=90),
+            detected(detection_index=1, confidence=0.79, x1=10, y1=0, x2=90, y2=10),
+            detected(detection_index=2, confidence=0.78, x1=45, y1=10, x2=55, y2=90),
+            detected(detection_index=3, confidence=0.77, x1=0, y1=10, x2=40, y2=60),
+        ], 100, 100)
+        detections = [main._material_preview_detection(material, 100, 100) for material in materials]
+
+        clean = main._clean_preview_detections(detections, 100, 100)
+
+        self.assertEqual(len(materials), 4)
+        self.assertEqual([item["confidence"] for item in clean], [0.78, 0.77])
+
+    def test_preview_filter_keeps_nms_behavior_after_geometry_filter(self):
+        materials = main.validate_browser_detected_detections([
+            detected(detection_index=0, confidence=0.93, x1=10, y1=10, x2=60, y2=60),
+            detected(detection_index=1, confidence=0.88, x1=12, y1=12, x2=62, y2=62),
+            detected(detection_index=2, confidence=0.24, x1=70, y1=70, x2=95, y2=95),
+        ], 100, 100)
+        detections = [main._material_preview_detection(material, 100, 100) for material in materials]
+
+        clean = main._clean_preview_detections(detections, 100, 100)
+
+        self.assertEqual(len(materials), 3)
+        self.assertEqual([item["confidence"] for item in clean], [0.93])
+
     def test_multiple_browser_detected_confirmed_when_all_detections_meet_hitl_threshold(self):
         materials = main.validate_browser_detected_detections([
             detected(detection_index=0, confidence=0.32),

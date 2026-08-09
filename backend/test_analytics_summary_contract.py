@@ -168,6 +168,16 @@ class AnalyticsSummaryContractTests(unittest.TestCase):
         self.assertEqual(payload["confirmed_count"] + payload["review_count"] + payload["rejected_count"], payload["detected_materials_count"])
         self.assertEqual(payload["average_detection_confidence"], 85.0)
 
+    def test_summary_response_disables_http_cache(self):
+        fake = FakeSupabase(SCANS, MATERIALS, DECISIONS, JOBS)
+        response = main.Response()
+
+        with self.fake_backend(fake):
+            main.analytics_summary(start_date=None, end_date=None, response=response, principal=fake_principal())
+
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(response.headers["Pragma"], "no-cache")
+
 
 if __name__ == "__main__":
     unittest.main()

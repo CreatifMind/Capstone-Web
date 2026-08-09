@@ -31,6 +31,36 @@ function plSetJson(key, value) {
   }
 }
 
+function plRemoveStoragePrefix(storage, prefix) {
+  try {
+    const keys = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach(key => storage.removeItem(key));
+  } catch {}
+}
+
+function plInvalidateAnalyticsSummaryCache() {
+  try {
+    ["pl_analytics_cache_all", "purityloop_analytics_summary"].forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    plRemoveStoragePrefix(localStorage, "pl_analytics_cache_");
+    plRemoveStoragePrefix(sessionStorage, "pl_analytics_cache_");
+  } catch {}
+  plAnalyticsDateData = null;
+}
+
+function plMergeFreshAnalyticsSummary(historySummary, analyticsMetrics) {
+  return {
+    ...(historySummary || {}),
+    ...(analyticsMetrics || {})
+  };
+}
+
 function plSafeFiles(files) {
   if (!files) return [];
   try {
@@ -57,6 +87,7 @@ const PL_UPLOADS_KEY = "purityloop_uploads";
 const PL_VIDEO_JOBS_KEY = "purityloop_video_jobs";
 const PL_SCAN_BOOTSTRAP_PAGE_SIZE = 10;
 const PL_SCAN_META_KEY = "purityloop_scan_meta";
+const PL_ANALYTICS_SUMMARY_CACHE_TTL_MS = 30000;
 let plScanHistoryMeta = plSafeJsonParse(localStorage.getItem(PL_SCAN_META_KEY), {
   total: null,
   limit: PL_SCAN_BOOTSTRAP_PAGE_SIZE,
@@ -229,6 +260,12 @@ const PL_BROWSER_MODEL_CLASSES = ["plastic", "paper", "cardboard", "metal", "gla
 const PL_BROWSER_MODEL_VERSION = "v3_ffremask_9cls";
 const PL_BROWSER_CONFIDENCE_THRESHOLD = 0.10;
 const PL_BROWSER_NMS_IOU_THRESHOLD = 0.70;
+const PL_PREVIEW_BOX_CONFIDENCE_THRESHOLD = 0.25;
+const PL_PREVIEW_BOX_NMS_IOU_THRESHOLD = 0.50;
+const PL_PREVIEW_EDGE_STRIP_ASPECT_RATIO_MIN = 0.15;
+const PL_PREVIEW_EDGE_STRIP_ASPECT_RATIO_MAX = 6.0;
+const PL_PREVIEW_EDGE_TOLERANCE_RATIO = 0.01;
+const PL_PREVIEW_EDGE_TOLERANCE_MIN_PIXELS = 2;
 const PL_CATEGORY_CLASS_MAP = {
   general_trash: "contaminant", food_organics: "contaminant", textile: "contaminant", battery: "contaminant",
   metal: "recyclable", plastic: "recyclable", glass: "recyclable", paper: "recyclable", cardboard: "recyclable"
@@ -416,7 +453,7 @@ async function plRefreshScanResultsFromSupabase(options = {}) {
   }
   plScanHistoryRefreshPromise = (async () => {
     try {
-      const response = await plBackendFetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`);
+      const response = await plBackendFetch(`${apiBase}/api/scans?limit=${PL_SCAN_BOOTSTRAP_PAGE_SIZE}&offset=0`, { cache: "no-store" });
       const body = await response.text();
       if (!response.ok) {
         console.error("PurityLoop: scan history refresh failed.", { status: response.status, body });
@@ -573,8 +610,73 @@ function plBoxesToMaterials(boxes) {
   });
 }
 
+function plBoxIou(a, b) {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.w, b.x + b.w);
+  const bottom = Math.min(a.y + a.h, b.y + b.h);
+  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
+  const union = (a.w * a.h) + (b.w * b.h) - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+function plPreviewBoxConfidencePercent(value) {
+  if (typeof value === "string" && value.trim().endsWith("%")) {
+    const numeric = Number(value.replace("%", ""));
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+  return plConfidencePercent(value);
+}
+
+function plPreviewBoxIsExtremeEdgeStrip(box, imageWidth = 1, imageHeight = 1) {
+  const width = Number(box?.w || 0);
+  const height = Number(box?.h || 0);
+  if (!(width > 0) || !(height > 0)) return false;
+  const aspectRatio = width / height;
+  const extremeStrip = aspectRatio < PL_PREVIEW_EDGE_STRIP_ASPECT_RATIO_MIN || aspectRatio > PL_PREVIEW_EDGE_STRIP_ASPECT_RATIO_MAX;
+  if (!extremeStrip) return false;
+  const isNormalized = imageWidth <= 1 && imageHeight <= 1;
+  const toleranceX = isNormalized ? PL_PREVIEW_EDGE_TOLERANCE_RATIO : Math.max(PL_PREVIEW_EDGE_TOLERANCE_MIN_PIXELS, imageWidth * PL_PREVIEW_EDGE_TOLERANCE_RATIO);
+  const toleranceY = isNormalized ? PL_PREVIEW_EDGE_TOLERANCE_RATIO : Math.max(PL_PREVIEW_EDGE_TOLERANCE_MIN_PIXELS, imageHeight * PL_PREVIEW_EDGE_TOLERANCE_RATIO);
+  const x = Number(box?.x || 0);
+  const y = Number(box?.y || 0);
+  return x <= toleranceX || y <= toleranceY || x + width >= imageWidth - toleranceX || y + height >= imageHeight - toleranceY;
+}
+
+function plCleanPreviewBoxes(boxes) {
+  const candidates = plSafeArray(boxes)
+    .filter(box => plPreviewBoxConfidencePercent(box.confidence) >= PL_PREVIEW_BOX_CONFIDENCE_THRESHOLD * 100)
+    .filter(box => !plPreviewBoxIsExtremeEdgeStrip(box))
+    .sort((a, b) => plPreviewBoxConfidencePercent(b.confidence) - plPreviewBoxConfidencePercent(a.confidence));
+  const kept = [];
+  candidates.forEach(box => {
+    if (kept.every(existing => plBoxIou(box, existing) < PL_PREVIEW_BOX_NMS_IOU_THRESHOLD)) kept.push(box);
+  });
+  return kept;
+}
+
+function plCleanBrowserPreviewDetections(detections, imageWidth = 1, imageHeight = 1) {
+  const toBox = detection => ({
+    x: Number(detection.x1 || 0),
+    y: Number(detection.y1 || 0),
+    w: Number(detection.x2 || 0) - Number(detection.x1 || 0),
+    h: Number(detection.y2 || 0) - Number(detection.y1 || 0)
+  });
+  const kept = [];
+  plSafeArray(detections)
+    .filter(detection => Number(detection.confidence || 0) >= PL_PREVIEW_BOX_CONFIDENCE_THRESHOLD)
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .forEach(detection => {
+      const box = toBox(detection);
+      if (box.w <= 0 || box.h <= 0) return;
+      if (plPreviewBoxIsExtremeEdgeStrip(box, imageWidth, imageHeight)) return;
+      if (kept.every(existing => plBoxIou(box, existing.box) < PL_PREVIEW_BOX_NMS_IOU_THRESHOLD)) kept.push({ detection, box });
+    });
+  return kept.map(item => item.detection);
+}
+
 function plMaterialsToBoxes(materials) {
-  return plSafeArray(materials).map(material => {
+  return plCleanPreviewBoxes(plSafeArray(materials).map(material => {
     const decision = plEvaluateMaterial(material);
     return {
       label: material.material_name || material.category || "Detected material",
@@ -585,7 +687,7 @@ function plMaterialsToBoxes(materials) {
       w: Number(material.bbox_width || 0) / 100,
       h: Number(material.bbox_height || 0) / 100
     };
-  });
+  }));
 }
 
 function plFormatScanTime(scan) {
@@ -674,6 +776,7 @@ async function plSaveReview(scan, material, chosenCategory, outcome = "confirmed
     plUpdateHistorySummary(scan, updatedScan);
     window.dispatchEvent(new Event("purityloop:scan-history-refreshed"));
   }
+  plInvalidateAnalyticsSummaryCache();
   return { ...payload, scan: updatedScan, refreshWarning };
 }
 
@@ -2060,7 +2163,7 @@ function initUploadPage() {
     context.clearRect(0, 0, rect.width, rect.height);
     const scaleX = rect.width / item.originalWidth;
     const scaleY = rect.height / item.originalHeight;
-    item.browserDetections.forEach(detection => {
+    plCleanBrowserPreviewDetections(item.browserDetections, item.originalWidth, item.originalHeight).forEach(detection => {
       const x = detection.x1 * scaleX;
       const y = detection.y1 * scaleY;
       const width = (detection.x2 - detection.x1) * scaleX;
@@ -2312,6 +2415,7 @@ function initUploadPage() {
       item.browserState = "saved";
       item.persistenceState = "saved";
       item.status = plScanNeedsReview(scan) ? "review_needed" : "completed";
+      plInvalidateAnalyticsSummaryCache();
       saveCompletedPreviewCache();
     } catch (error) {
       item.browserState = "failed";
@@ -2382,6 +2486,7 @@ function initUploadPage() {
       item.browserState = "saved";
       item.persistenceState = "saved";
       item.status = "completed";
+      plInvalidateAnalyticsSummaryCache();
       saveCompletedPreviewCache();
       renderBatchSummary();
     } catch (error) {
@@ -2613,6 +2718,7 @@ function initUploadPage() {
     const job = await pollVideoJob(apiBase, ingestPayload.job_id, item.file.name);
     forgetVideoJob(ingestPayload.job_id, "completed");
     item.scanId = job.scan_ids?.[0] || "";
+    plInvalidateAnalyticsSummaryCache();
     return job;
   }
 
@@ -2847,13 +2953,12 @@ function initResultPage() {
   };
   const scanUploads = scanList => scanList.map(scan => {
     const previewUrl = scan.preview_image_url || "";
-    const hasScanImage = Boolean(previewUrl);
     const cachedPreview = findCachedUploadPreview(scan.source_name || scan.drive_file_name);
     return {
       name: scan.source_name || scan.id,
       size: scan.source_size || 0,
       thumbnailSrc: previewUrl,
-      dataUrl: hasScanImage ? "" : cachedPreview,
+      dataUrl: cachedPreview,
       assetPath: previewUrl,
       scanId: scan.id
     };
@@ -2871,6 +2976,7 @@ function initResultPage() {
   }
   let activeScan = requestedScan || scans[0] || null;
   let activeImageObj = null;
+  let activeImageUsesBackendAnnotation = false;
   if (resultSourceState) resultSourceState.textContent = activeScan ? "Saved AI result" : "No saved result";
 
   if (!isReviewWorkspace) {
@@ -3139,6 +3245,9 @@ function initResultPage() {
       renderEmptyResult();
       return;
     }
+    const rawPreviewUrl = activeFile.dataUrl || "";
+    const backendPreviewUrl = activeFile.assetPath || "";
+    activeImageUsesBackendAnnotation = isReviewWorkspace && !rawPreviewUrl && Boolean(backendPreviewUrl && backendPreviewUrl === activeScan.preview_image_url);
     if (activeBeltTitle) {
       activeBeltTitle.textContent = activeFile.name;
       activeBeltTitle.title = activeFile.name;
@@ -3158,26 +3267,28 @@ function initResultPage() {
     };
     activeImageObj.onerror = function () {
       console.info("[result] preview image failed", activeScan.id, activeImageObj.src);
-      if (activeFile.dataUrl && activeImageObj.src !== activeFile.dataUrl) {
+      if (backendPreviewUrl && activeImageObj.src !== backendPreviewUrl) {
+        activeImageUsesBackendAnnotation = isReviewWorkspace && backendPreviewUrl === activeScan.preview_image_url;
         activeImageObj = new Image();
         activeImageObj.onload = function () {
           drawCanvasFrame();
         };
         activeImageObj.onerror = function () {
-          console.info("[result] cached preview failed", activeScan.id);
+          console.info("[result] backend preview failed", activeScan.id);
           activeImageObj = null;
           drawEmptyScanCanvas("No image preview");
         };
-        activeImageObj.src = activeFile.dataUrl;
+        activeImageObj.src = backendPreviewUrl;
         return;
       }
       activeImageObj = null;
+      activeImageUsesBackendAnnotation = false;
       drawEmptyScanCanvas("No image preview");
     };
-    if (activeFile.assetPath) {
-      activeImageObj.src = activeFile.assetPath;
-    } else if (activeFile.dataUrl) {
-      activeImageObj.src = activeFile.dataUrl;
+    if (rawPreviewUrl) {
+      activeImageObj.src = rawPreviewUrl;
+    } else if (backendPreviewUrl) {
+      activeImageObj.src = backendPreviewUrl;
     } else {
       activeImageObj = null;
       console.info("[result] preview image_url", activeScan.id, "");
@@ -3494,6 +3605,7 @@ function initResultPage() {
 
   function getActiveBoxes() {
     if (!activeScan) return [];
+    if (activeImageUsesBackendAnnotation) return [];
     const isTrackedVideo = ["tracked_video_object", "video_track_object"].includes(activeScan.result_kind) || activeScan.source_type === "tracked_video";
     if (isTrackedVideo) {
       return [];
@@ -3516,6 +3628,7 @@ function initResultPage() {
     requestAnimationFrame(() => document.body.classList.add("result-detected"));
 
     const materials = activeScan?.detected_materials?.length ? activeScan.detected_materials : plBoxesToMaterials(boxes);
+    const visibleItemCount = activeImageUsesBackendAnnotation ? materials.length : boxes.length;
     const confirmedMaterials = materials.filter(material => {
       const decision = plEvaluateMaterial(material, activeScan);
       return !decision.reviewRequired && decision.materialClass !== "unknown";
@@ -3523,7 +3636,7 @@ function initResultPage() {
     const recyclableCount = confirmedMaterials.filter(material => plIsRecyclable(material, activeScan)).length;
     const purityPct = confirmedMaterials.length ? Math.round((recyclableCount / confirmedMaterials.length) * 100) : 0;
 
-    if (scannedVal) scannedVal.textContent = `${boxes.length} items`;
+    if (scannedVal) scannedVal.textContent = `${visibleItemCount} items`;
     if (purityVal) {
       purityVal.textContent = `${purityPct}%`;
 
@@ -4039,7 +4152,7 @@ function initReviewWorkspace() {
   let plAnalyticsSummaryPromise = null;
   const plFetchAnalyticsSummaryForReview = () => {
     if (plAnalyticsSummaryPromise) return plAnalyticsSummaryPromise;
-    plAnalyticsSummaryPromise = plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`)
+    plAnalyticsSummaryPromise = plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`, { cache: "no-store" })
       .then(res => res.json())
       .then(payload => {
         if (payload && (payload.total_objects || payload.needs_review_objects)) {
@@ -4056,10 +4169,24 @@ function initReviewWorkspace() {
       .finally(() => { plAnalyticsSummaryPromise = null; });
     return plAnalyticsSummaryPromise;
   };
+  const plReadAnalyticsSummaryForReview = () => {
+    const cachedCandidates = [
+      sessionStorage.getItem("pl_analytics_cache_all"),
+      localStorage.getItem("pl_analytics_cache_all"),
+      sessionStorage.getItem("purityloop_analytics_summary"),
+      localStorage.getItem("purityloop_analytics_summary")
+    ].filter(Boolean);
+    for (const cachedRaw of cachedCandidates) {
+      const cached = plSafeJsonParse(cachedRaw, null);
+      const timestamp = Number(cached?.timestamp) || 0;
+      if (!timestamp || Date.now() - timestamp > PL_ANALYTICS_SUMMARY_CACHE_TTL_MS) continue;
+      const payload = cached?.payload || cached?.data?.summary || cached?.summary || cached;
+      if (payload) return payload;
+    }
+    return null;
+  };
   const plGetAnalyticsSummaryMetrics = () => {
-    const cachedRaw = localStorage.getItem("pl_analytics_cache_all") || sessionStorage.getItem("pl_analytics_cache_all") || localStorage.getItem("purityloop_analytics_summary") || sessionStorage.getItem("purityloop_analytics_summary");
-    const cached = plSafeJsonParse(cachedRaw, null);
-    const payload = cached?.payload || cached?.data?.summary || cached?.summary || cached;
+    const payload = plReadAnalyticsSummaryForReview();
     if (!payload) {
       plFetchAnalyticsSummaryForReview();
       return null;
@@ -4074,10 +4201,7 @@ function initReviewWorkspace() {
   const updateSummary = () => {
     const analyticsMetrics = plGetAnalyticsSummaryMetrics();
     const historySummary = plScanHistoryMeta.summary || {};
-    const summary = {
-      ...historySummary,
-      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > 0 ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
-    };
+    const summary = plMergeFreshAnalyticsSummary(historySummary, analyticsMetrics);
     const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
     const pageRows = currentRows();
@@ -4090,7 +4214,12 @@ function initReviewWorkspace() {
     state.page = Math.min(state.page, pages);
     list.innerHTML = state.loading ? '<div class="feed-empty">Loading scans...</div>' : (state.error ? `<div class="feed-empty">${escape(state.error)}</div>` : (visible.length ? visible.map(row => `<button type="button" class="review-history-row ${row.id === selectedId() ? "is-selected" : ""}" data-select-scan="${escape(row.id)}" aria-pressed="${row.id === selectedId()}"><span class="review-history-thumb">${row.preview ? `<img src="${escape(row.preview)}" alt="${escape(row.category)} preview" />` : '<i class="fa-regular fa-image" aria-hidden="true"></i>'}</span><span class="review-history-main"><strong>${escape(row.category)}</strong><small>${escape(row.sourceTypeLabel)} · ${escape(row.duration || row.time)} · ${row.confidence}% confidence</small></span><span class="status-pill ${row.decisionStatus === "review_needed" ? "review" : row.decisionStatus === "rejected" ? "quarantine" : "cleared"}">${escape(row.status)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join("") : '<div class="feed-empty">No scan history matches these filters.</div>'));
     list.querySelectorAll("[data-select-scan]").forEach(button => button.addEventListener("click", () => select(button.dataset.selectScan)));
-    if (range) range.textContent = state.loading ? "Loading scans" : `Showing ${visible.length ? (state.page - 1) * pageSize + 1 : 0} to ${Math.min(state.page * pageSize, state.total)} loaded results of ${state.total} total`;
+    if (range) {
+      const formatCount = value => Number(value || 0).toLocaleString();
+      const rangeStart = visible.length ? (state.page - 1) * pageSize + 1 : 0;
+      const rangeEnd = Math.min(state.page * pageSize, state.total);
+      range.textContent = state.loading ? "Loading scans" : `Showing ${formatCount(rangeStart)}-${formatCount(rangeEnd)} of ${formatCount(state.total)} reviewable results`;
+    }
     renderPager(pager, state.page, pages, page => fetchReviewPage(page));
     const index = visible.findIndex(row => row.id === selectedId());
     const absoluteIndex = index >= 0 ? (state.page - 1) * pageSize + index : -1;
@@ -4139,18 +4268,7 @@ function initReviewWorkspace() {
         };
         plSetJson(PL_SCAN_META_KEY, plScanHistoryMeta);
       }
-      if (!localStorage.getItem("pl_analytics_cache_all")) {
-        plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`)
-          .then(res => res.json())
-          .then(summaryData => {
-            if (summaryData && (summaryData.total_objects || summaryData.needs_review_objects)) {
-              const entry = JSON.stringify({ timestamp: Date.now(), payload: summaryData });
-              try { localStorage.setItem("pl_analytics_cache_all", entry); sessionStorage.setItem("pl_analytics_cache_all", entry); } catch {}
-              updateSummary();
-            }
-          })
-          .catch(() => {});
-      }
+      plFetchAnalyticsSummaryForReview().then(() => updateSummary()).catch(() => {});
       if (options.selectEdge && state.items.length) {
         select(options.selectEdge === "last" ? state.items[state.items.length - 1].id : state.items[0].id);
       }
@@ -4400,10 +4518,7 @@ function initReviewModal() {
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
     const analyticsMetrics = plGetAnalyticsSummaryMetrics();
     const historySummary = plScanHistoryMeta.summary || {};
-    const exactSummary = {
-      ...historySummary,
-      ...(analyticsMetrics && Number(analyticsMetrics.needs_review_objects || 0) > Number(historySummary.needs_review_objects || 0) ? analyticsMetrics : (historySummary.needs_review_objects ? {} : (analyticsMetrics || {})))
-    };
+    const exactSummary = plMergeFreshAnalyticsSummary(historySummary, analyticsMetrics);
     const countObjectStatus = status => rows.reduce((total, row) => {
       const mats = Array.isArray(row.detected_materials) ? row.detected_materials : null;
       if (mats && mats.length) return total + mats.filter(m => (m.review_decision?.outcome === "confirmed" ? "confirmed" : (m.review_decision?.outcome === "rejected" ? "rejected" : (Number(m.confidence) < 0.32 ? "review_needed" : "confirmed"))) === status).length;
@@ -4835,7 +4950,7 @@ function initAnalyticsOverview() {
       const cachedRaw = window.sessionStorage?.getItem(cacheKey) || window.localStorage?.getItem(cacheKey);
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw);
-        if (cached && cached.payload && Date.now() - (cached.timestamp || 0) < 86400000) {
+        if (cached && cached.payload && Date.now() - (cached.timestamp || 0) < PL_ANALYTICS_SUMMARY_CACHE_TTL_MS) {
           plAnalyticsDateData = { summary: cached.payload };
           render();
           updateAnalyticsDetailPanels(plAnalyticsSummaryForActiveScope());
@@ -4859,7 +4974,7 @@ function initAnalyticsOverview() {
       let lastError;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const response = await plBackendFetch(url);
+          const response = await plBackendFetch(url, { cache: "no-store" });
           payload = await response.json();
           if (response.ok) break;
           if (response.status < 500 && response.status !== 429) {

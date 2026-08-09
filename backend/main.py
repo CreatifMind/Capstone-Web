@@ -164,6 +164,12 @@ OAUTH_DRIVE_SCOPES = [
 MODEL_CANDIDATE_THRESHOLD = 0.10
 DECISION_CONFIDENCE_THRESHOLD = 0.32
 CONFIRMATION_THRESHOLD = DECISION_CONFIDENCE_THRESHOLD
+PREVIEW_BOX_CONFIDENCE_THRESHOLD = 0.25
+PREVIEW_BOX_NMS_IOU_THRESHOLD = 0.50
+PREVIEW_EDGE_STRIP_ASPECT_RATIO_MIN = 0.15
+PREVIEW_EDGE_STRIP_ASPECT_RATIO_MAX = 6.0
+PREVIEW_EDGE_TOLERANCE_RATIO = 0.01
+PREVIEW_EDGE_TOLERANCE_MIN_PIXELS = 2.0
 ANALYTICS_PAGE_SIZE = 500
 ANALYTICS_CHILD_PAGE_SIZE = 500
 SCAN_HISTORY_DEFAULT_LIMIT = 10
@@ -197,6 +203,18 @@ BACKEND_BUILD_VERSION = "browser-confidence-object-metrics-fix-20260805"
 BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
+CLASS_THRESHOLDS = {
+    0: 0.12,  # plastic
+    1: 0.20,  # paper
+    2: 0.20,  # cardboard
+    3: 0.18,  # metal
+    4: 0.20,  # glass
+    5: 0.25,  # textile
+    6: 0.15,  # food_organic
+    7: 0.25,  # battery
+    8: 0.10,  # general_trash
+}
+YOLO_CALIBRATION_CANDIDATE_CONFIDENCE = 0.05
 GENERAL_TRASH_CATEGORY = "general_trash"
 BROWSER_CONFIDENCE_DETAIL = "Detection confidence must be between 0 and 1."
 BROWSER_DECISION_CONFIDENCE_THRESHOLD = DECISION_CONFIDENCE_THRESHOLD
@@ -1266,6 +1284,34 @@ def get_model():
         if MODEL_DEVICE.startswith("cuda") and not str(model_device_effective).startswith("cuda"):
             raise RuntimeError(f"MODEL_DEVICE={MODEL_DEVICE} requested CUDA, but model loaded on {model_device_effective}.")
     return model
+
+
+def _yolo_model_for_weights(model_weights: str | os.PathLike[str]):
+    weights_path = Path(model_weights)
+    if str(model_weights) == "best.pt" or weights_path == MODEL_PATH:
+        return get_model()
+    return YOLO(str(model_weights))
+
+
+def predict_with_calibration(image_input, model_weights="best.pt"):
+    model_instance = _yolo_model_for_weights(model_weights)
+    results = model_instance.predict(image_input, conf=YOLO_CALIBRATION_CANDIDATE_CONFIDENCE, verbose=False)
+
+    for result in results:
+        if result.boxes is None or len(result.boxes) <= 0:
+            continue
+        filtered_indices = []
+        for idx, (cls_tensor, conf_tensor) in enumerate(zip(result.boxes.cls, result.boxes.conf)):
+            class_id = int(cls_tensor.item())
+            confidence = float(conf_tensor.item())
+            if confidence >= CLASS_THRESHOLDS.get(class_id, 0.25):
+                filtered_indices.append(idx)
+
+        result.boxes = result.boxes[filtered_indices]
+        if result.masks is not None:
+            result.masks.data = result.masks.data[filtered_indices]
+
+    return results
 
 
 def safe_startup_diagnostics() -> dict:
@@ -2378,6 +2424,42 @@ def _material_preview_detection(material: dict, image_width: int, image_height: 
     }
 
 
+def _clean_preview_detections(detections: list[dict], image_width: int, image_height: int) -> list[dict]:
+    candidates = []
+    for detection in detections:
+        if _coerce_float(detection.get("confidence")) < PREVIEW_BOX_CONFIDENCE_THRESHOLD:
+            continue
+        try:
+            box, _box_format = _detection_box_to_pixels(detection, image_width, image_height)
+        except Exception:
+            continue
+        if _preview_box_is_extreme_edge_strip(box, image_width, image_height):
+            continue
+        candidates.append((detection, box))
+    kept: list[tuple[dict, list[float]]] = []
+    for detection, box in sorted(candidates, key=lambda item: _coerce_float(item[0].get("confidence")), reverse=True):
+        if all(_bbox_iou(box, kept_box) < PREVIEW_BOX_NMS_IOU_THRESHOLD for _kept, kept_box in kept):
+            kept.append((detection, box))
+    return [detection for detection, _box in kept]
+
+
+def _preview_box_is_extreme_edge_strip(box: list[float], image_width: int, image_height: int) -> bool:
+    if image_width <= 0 or image_height <= 0 or len(box) < 4:
+        return False
+    x1, y1, x2, y2 = [_coerce_float(value) for value in box[:4]]
+    box_width = max(0.0, x2 - x1)
+    box_height = max(0.0, y2 - y1)
+    if box_width <= 0 or box_height <= 0:
+        return False
+    aspect_ratio = box_width / box_height
+    extreme_strip = aspect_ratio < PREVIEW_EDGE_STRIP_ASPECT_RATIO_MIN or aspect_ratio > PREVIEW_EDGE_STRIP_ASPECT_RATIO_MAX
+    if not extreme_strip:
+        return False
+    tolerance_x = max(PREVIEW_EDGE_TOLERANCE_MIN_PIXELS, image_width * PREVIEW_EDGE_TOLERANCE_RATIO)
+    tolerance_y = max(PREVIEW_EDGE_TOLERANCE_MIN_PIXELS, image_height * PREVIEW_EDGE_TOLERANCE_RATIO)
+    return x1 <= tolerance_x or y1 <= tolerance_y or x2 >= image_width - tolerance_x or y2 >= image_height - tolerance_y
+
+
 def _translate_mask_to_crop(mask, image_width: int, image_height: int, crop_x: int, crop_y: int, crop_width: int, crop_height: int) -> tuple[list | None, str]:
     if not mask:
         return None, "unavailable"
@@ -2768,7 +2850,11 @@ def _encode_annotated_image_preview(file_bytes: bytes, filename: str | None, mat
         if frame is None:
             raise ValueError("Unable to decode image preview for annotation")
         image_height, image_width = frame.shape[:2]
-        detections = [_material_preview_detection(material, image_width, image_height) for material in materials]
+        detections = _clean_preview_detections(
+            [_material_preview_detection(material, image_width, image_height) for material in materials],
+            image_width,
+            image_height,
+        )
         annotated = _annotate_video_frame(frame, detections, footer_count=len(detections))
         suffix = (Path(filename or "upload.jpg").suffix or ".jpg").lower()
         extension = ".jpg" if suffix == ".jpeg" else suffix
@@ -3161,6 +3247,7 @@ def persist_scan(
                     raise
 
     saved_scan = _load_scan(database, saved_scan_id) or scan_data[0]
+    clear_analytics_summary_cache()
     return _scan_response(saved_scan, stored_materials)
 
 
@@ -3184,7 +3271,7 @@ def run_scan(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
-        result = get_model()(tmp_path, verbose=False)[0]
+        result = predict_with_calibration(tmp_path)[0]
         materials = to_detected_materials(result)
         preview_bytes = _encode_annotated_image_preview(file_bytes, filename, materials)
         return persist_scan(
@@ -4137,6 +4224,9 @@ def _mask_to_points(mask, width: int, height: int):
 def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | None = None):
     import cv2
     height, width = frame.shape[:2]
+    if not detections:
+        return frame
+    detections = _clean_preview_detections(detections, width, height)
     if not detections:
         return frame
     annotated = frame.copy()
@@ -6226,9 +6316,13 @@ def analytics_child_rows(database: SupabaseExecutor, table: str, scan_ids: list[
 def analytics_summary(
     start_date: str | None = None,
     end_date: str | None = None,
+    response: Response = None,
     principal: Principal = Depends(require_scope("scan:read")),
 ):
     """Aggregate every matching scan server-side; never expose a paginated scan page as analytics."""
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase backend env is not configured.")
     if bool(start_date) != bool(end_date):
