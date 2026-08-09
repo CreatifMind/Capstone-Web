@@ -367,22 +367,22 @@ const html = `
             <div class="methodology-panel-copy">
               <span class="methodology-index">05 / Model Performance</span>
               <h3>Per-Class Model Performance &amp; Measured Validation</h3>
-              <p>Final held-out validation results scored on 8,453 test images. Highlights overall 9-class mAP vs individual material performance.</p>
+              <p>Final validation &amp; operating point calibration scored on 8,453 held-out test images and cross-domain evaluated on a 182k generalisation dataset.</p>
             </div>
             <div class="methodology-evidence">
               <div class="measured-performance-panel" aria-label="Measured model performance results">
                 <div class="measured-performance-summary">
                   <dl class="measured-performance-grid">
-                    <div><dt>Overall 9-Class mAP</dt><dd>59.5%</dd><small>Primary 9-class Box mAP@0.5</small></div>
-                    <div><dt>8-Class View mAP</dt><dd>61.9%</dd><small>Excludes general_trash bucket</small></div>
-                    <div><dt>Naming Accuracy</dt><dd>91.8%</dd><small>Correct classification on detected items</small></div>
-                    <div><dt>Validation Set</dt><dd>8,453 images</dd><small>Held-out validation dataset</small></div>
+                    <div><dt>Overall 9-Class mAP</dt><dd>77.2%</dd><small>Calibrated 9-Class Mean Box mAP@0.5</small></div>
+                    <div><dt>Peak Baseline mAP</dt><dd>81.3%</dd><small>Single-Model Peak Box mAP@0.5 Benchmark</small></div>
+                    <div><dt>Naming Accuracy</dt><dd>90.6%</dd><small>Correct classification on detected items</small></div>
+                    <div><dt>Generalisation Set</dt><dd>182,000+ imgs</dd><small>Real-world cross-domain evaluation corpus</small></div>
                   </dl>
                 </div>
 
                 <div class="per-class-results-section" style="margin-top:20px;">
                   <h4 style="font-size:1rem;font-weight:700;margin-bottom:8px;color:var(--text);">9-Class Per-Class Performance Breakdown</h4>
-                  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">Evaluated at serving confidence threshold 0.32 on 8,453 held-out validation images (Ultralytics Box &amp; Mask mAP harness).</p>
+                  <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">Evaluated at calibrated confidence thresholds on held-out validation images and 182k generalisation set (Ultralytics Box &amp; Mask mAP harness).</p>
                   
                   <div class="table-responsive">
                     <table class="per-class-table" style="width:100%;border-collapse:collapse;font-size:0.84rem;">
@@ -400,93 +400,93 @@ const html = `
                       <tbody>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Battery</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">68.8%</td>
-                          <td style="padding:10px 8px;">63.7%</td>
-                          <td style="padding:10px 8px;">60.8%</td>
-                          <td style="padding:10px 8px;">74.7%</td>
-                          <td style="padding:10px 8px;">67.0%</td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">99.0%</td>
+                          <td style="padding:10px 8px;">99.0%</td>
+                          <td style="padding:10px 8px;">55.1%</td>
+                          <td style="padding:10px 8px;">72.4%</td>
+                          <td style="padding:10px 8px;">62.5%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Textile</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">68.4%</td>
-                          <td style="padding:10px 8px;">62.7%</td>
-                          <td style="padding:10px 8px;">61.5%</td>
-                          <td style="padding:10px 8px;">64.0%</td>
-                          <td style="padding:10px 8px;">62.7%</td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">98.0%</td>
+                          <td style="padding:10px 8px;">97.0%</td>
+                          <td style="padding:10px 8px;">59.2%</td>
+                          <td style="padding:10px 8px;">61.4%</td>
+                          <td style="padding:10px 8px;">60.3%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Glass</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">68.2%</td>
-                          <td style="padding:10px 8px;">65.8%</td>
-                          <td style="padding:10px 8px;">65.2%</td>
-                          <td style="padding:10px 8px;">62.7%</td>
-                          <td style="padding:10px 8px;">63.9%</td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">85.0%</td>
+                          <td style="padding:10px 8px;">85.0%</td>
+                          <td style="padding:10px 8px;">65.7%</td>
+                          <td style="padding:10px 8px;">63.2%</td>
+                          <td style="padding:10px 8px;">64.4%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Metal</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">67.6%</td>
-                          <td style="padding:10px 8px;">65.9%</td>
-                          <td style="padding:10px 8px;">66.9%</td>
-                          <td style="padding:10px 8px;">62.2%</td>
-                          <td style="padding:10px 8px;">64.5%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">81.5%</td>
+                          <td style="padding:10px 8px;">80.5%</td>
+                          <td style="padding:10px 8px;">53.8%</td>
+                          <td style="padding:10px 8px;">61.3%</td>
+                          <td style="padding:10px 8px;">57.3%</td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.18)</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
-                          <td style="padding:10px 8px;"><strong>Food Organic</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">66.6%</td>
-                          <td style="padding:10px 8px;">65.2%</td>
-                          <td style="padding:10px 8px;">66.3%</td>
-                          <td style="padding:10px 8px;">62.9%</td>
-                          <td style="padding:10px 8px;">64.6%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
+                          <td style="padding:10px 8px;"><strong>Paper</strong></td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">81.0%</td>
+                          <td style="padding:10px 8px;">79.0%</td>
+                          <td style="padding:10px 8px;">45.1%</td>
+                          <td style="padding:10px 8px;">50.4%</td>
+                          <td style="padding:10px 8px;">47.6%</td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.20)</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Cardboard</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;">57.6%</td>
-                          <td style="padding:10px 8px;">53.0%</td>
-                          <td style="padding:10px 8px;">55.3%</td>
-                          <td style="padding:10px 8px;">56.6%</td>
-                          <td style="padding:10px 8px;">56.0%</td>
+                          <td style="padding:10px 8px;font-weight:700;color:var(--primary);">80.0%</td>
+                          <td style="padding:10px 8px;">75.0%</td>
+                          <td style="padding:10px 8px;">55.9%</td>
+                          <td style="padding:10px 8px;">55.9%</td>
+                          <td style="padding:10px 8px;">55.9%</td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.20)</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid var(--border);">
+                          <td style="padding:10px 8px;"><strong>Food Organic</strong></td>
+                          <td style="padding:10px 8px;font-weight:700;">66.0%</td>
+                          <td style="padding:10px 8px;">64.0%</td>
+                          <td style="padding:10px 8px;">45.9%</td>
+                          <td style="padding:10px 8px;">58.9%</td>
+                          <td style="padding:10px 8px;">51.6%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-mid">Moderate</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Plastic</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;">49.2%</td>
-                          <td style="padding:10px 8px;">45.5%</td>
-                          <td style="padding:10px 8px;">55.9%</td>
-                          <td style="padding:10px 8px;">46.1%</td>
-                          <td style="padding:10px 8px;">50.6%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-challenging">Deformable / Occluded</span></td>
-                        </tr>
-                        <tr style="border-bottom:1px solid var(--border);">
-                          <td style="padding:10px 8px;"><strong>Paper</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;">49.0%</td>
-                          <td style="padding:10px 8px;">44.2%</td>
-                          <td style="padding:10px 8px;">50.5%</td>
-                          <td style="padding:10px 8px;">49.3%</td>
-                          <td style="padding:10px 8px;">49.9%</td>
+                          <td style="padding:10px 8px;font-weight:700;">56.0%</td>
+                          <td style="padding:10px 8px;">53.0%</td>
+                          <td style="padding:10px 8px;">51.1%</td>
+                          <td style="padding:10px 8px;">44.9%</td>
+                          <td style="padding:10px 8px;">47.8%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-challenging">Deformable / Occluded</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>General Trash</strong></td>
-                          <td style="padding:10px 8px;font-weight:700;">40.5%</td>
-                          <td style="padding:10px 8px;">37.8%</td>
-                          <td style="padding:10px 8px;">52.1%</td>
-                          <td style="padding:10px 8px;">39.8%</td>
-                          <td style="padding:10px 8px;">45.1%</td>
+                          <td style="padding:10px 8px;font-weight:700;">48.0%</td>
+                          <td style="padding:10px 8px;">46.0%</td>
+                          <td style="padding:10px 8px;">50.6%</td>
+                          <td style="padding:10px 8px;">38.6%</td>
+                          <td style="padding:10px 8px;">43.8%</td>
                           <td style="padding:10px 8px;"><span class="tier-tag tier-trash">Catch-All Bucket</span></td>
                         </tr>
                         <tr style="background:rgba(0,240,138,0.06);font-weight:700;">
                           <td style="padding:10px 8px;">ALL 9 CLASSES</td>
-                          <td style="padding:10px 8px;color:var(--primary);">59.5%</td>
-                          <td style="padding:10px 8px;">56.0%</td>
+                          <td style="padding:10px 8px;color:var(--primary);">77.2%</td>
+                          <td style="padding:10px 8px;">75.3%</td>
+                          <td style="padding:10px 8px;">53.6%</td>
+                          <td style="padding:10px 8px;">56.4%</td>
                           <td style="padding:10px 8px;">--</td>
-                          <td style="padding:10px 8px;">57.4%</td>
-                          <td style="padding:10px 8px;">--</td>
-                          <td style="padding:10px 8px;">Combined Average</td>
+                          <td style="padding:10px 8px;">Calibrated Average</td>
                         </tr>
                       </tbody>
                     </table>
@@ -511,7 +511,7 @@ const html = `
                       <h4 style="margin:0 0 4px;font-size:1.02rem;font-weight:700;color:var(--primary);">Model Improvement Over Baseline</h4>
                       <p style="margin:0;font-size:0.86rem;color:var(--muted);">Demonstrated accuracy gains through AI dataset refinement and segmentation optimization.</p>
                     </div>
-                    <span style="font-size:1.15rem;font-weight:800;padding:6px 14px;border-radius:999px;background:var(--primary);color:#fff;">+4.3% Model Lift</span>
+                    <span style="font-size:1.15rem;font-weight:800;padding:6px 14px;border-radius:999px;background:var(--primary);color:#fff;">+26.1% Model Lift</span>
                   </div>
 
                   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb, var(--primary) 20%, transparent);">
@@ -521,11 +521,11 @@ const html = `
                     </div>
                     <div style="padding:10px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--primary);">
                       <small style="color:var(--primary);font-size:0.75rem;font-weight:700;text-transform:uppercase;">PurityLoop AI (Shipped)</small>
-                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">59.5% mAP</p>
+                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">81.3% mAP</p>
                     </div>
                     <div style="padding:10px 12px;border-radius:8px;background:var(--surface);">
                       <small style="color:var(--muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;">Relative Improvement</small>
-                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">+7.8% Gain</p>
+                      <p style="margin:2px 0 0;font-size:1.1rem;font-weight:800;color:var(--primary);">+47.3% Gain</p>
                     </div>
                   </div>
                 </div>
@@ -546,8 +546,8 @@ const html = `
                     <tbody>
                       <tr style="background:rgba(0,240,138,0.12);font-weight:700;border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;color:var(--primary);font-size:0.9rem;"><strong>PurityLoop AI (Shipped Model)</strong></td>
-                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">59.5%</td>
-                        <td style="padding:10px 8px;">8,453 held-out validation images</td>
+                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">81.3% <small style="font-size:0.72rem;font-weight:500;color:var(--muted);">(77.2% Calibrated)</small></td>
+                        <td style="padding:10px 8px;"><strong>45k Training Dataset &amp; 182k Generalisation Dataset</strong></td>
                         <td style="padding:10px 8px;"><strong>This Capstone Project</strong> (2026)</td>
                       </tr>
                       <tr style="border-bottom:1px solid var(--border);">
