@@ -12133,7 +12133,15 @@ body[data-page="review-log"] .ledger-table { min-width: 900px; }
 .history-pagination button:disabled { cursor: not-allowed; opacity: .45; }
 
 /* Browser review follow-up: keep controls compact, centered, and data-driven. */
-.dark-landing .hero-headline { font-size: clamp(3.4rem, 5.2vw, 3.625rem); }
+.dark-landing .hero-headline {
+  max-width: min(100%, 920px);
+  font-size: clamp(3rem, 3.4vw, 3.25rem);
+  letter-spacing: 0;
+}
+.dark-landing .hero-headline-main {
+  display: block;
+  white-space: nowrap;
+}
 .dark-landing #features .section-header.centered { max-width: 760px; margin-inline: auto; text-align: center; }
 .dark-landing #features .section-header.centered .section-sub { margin-inline: auto; }
 .dark-login .login-trust-row { justify-content: center; text-align: center; }
@@ -12581,10 +12589,6 @@ body[data-page="result"] .action-callout i { color: var(--primary); margin-top: 
 body[data-page="review-log"].page-loading,
 body[data-page="review-log"].page-loaded { transform: none; }
 
-.dark-landing .hero-phone-break {
-  display: none;
-}
-
 #reviewModal {
   position: fixed !important;
   inset: 0 !important;
@@ -12678,8 +12682,8 @@ body[data-page="result"] .result-hero .ops-hero-metrics > div {
     overflow-wrap: anywhere;
   }
 
-  .dark-landing .hero-phone-break {
-    display: block;
+  .dark-landing .hero-headline-main {
+    white-space: normal;
   }
 
   .dark-landing .hero-headline {

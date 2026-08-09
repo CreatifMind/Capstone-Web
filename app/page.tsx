@@ -76,7 +76,7 @@ const html = `
         </div>
 
         <h1 class="hero-headline">
-          Automated waste<span class="hero-phone-break"><br /></span> sorting for
+          <span class="hero-headline-main">Automated waste sorting for</span>
           <span class="highlight">cleaner recycling loops.</span>
         </h1>
 
