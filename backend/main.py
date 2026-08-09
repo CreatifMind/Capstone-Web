@@ -6290,7 +6290,7 @@ def analytics_child_rows(database: SupabaseExecutor, table: str, scan_ids: list[
     if not scan_ids:
         return []
     rows: list[dict] = []
-    chunk_size = 500
+    chunk_size = 100
     chunks = [scan_ids[i:i + chunk_size] for i in range(0, len(scan_ids), chunk_size)]
 
     def fetch_chunk(ids):
@@ -6358,11 +6358,32 @@ def analytics_summary(
 
         scan_ids = [str(scan["id"]) for scan in scans if scan.get("id")]
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            fut_materials = executor.submit(analytics_child_rows, database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
-            fut_decisions = executor.submit(analytics_child_rows, database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
-            materials = fut_materials.result()
-            decisions = fut_decisions.result()
+        if start_date:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                fut_materials = executor.submit(analytics_child_rows, database, DETECTED_MATERIALS_TABLE, scan_ids, principal)
+                fut_decisions = executor.submit(analytics_child_rows, database, REVIEW_DECISIONS_TABLE, scan_ids, principal)
+                materials = fut_materials.result()
+                decisions = fut_decisions.result()
+        else:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                fut_materials = executor.submit(
+                    analytics_page_rows,
+                    database,
+                    DETECTED_MATERIALS_TABLE,
+                    principal,
+                    lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*"),
+                    ANALYTICS_CHILD_PAGE_SIZE,
+                )
+                fut_decisions = executor.submit(
+                    analytics_page_rows,
+                    database,
+                    REVIEW_DECISIONS_TABLE,
+                    principal,
+                    lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*"),
+                    ANALYTICS_CHILD_PAGE_SIZE,
+                )
+                materials = fut_materials.result()
+                decisions = fut_decisions.result()
         latest_decisions: dict[str, dict] = {}
         for decision in sorted(decisions, key=lambda item: str(item.get("created_at") or "")):
             latest_decisions[str(decision.get("detected_material_id") or "")] = decision

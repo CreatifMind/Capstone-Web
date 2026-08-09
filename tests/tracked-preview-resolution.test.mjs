@@ -89,3 +89,9 @@ test("Fresh analytics summary overrides stale history even when review count dec
   assert.ok(source.includes('plBackendFetch(`${plApiBaseUrl()}/api/analytics/summary`, { cache: "no-store" })'));
   assert.ok(source.includes('plBackendFetch(url, { cache: "no-store" })'));
 });
+
+test("Review KPI cards do not fall back to scan history summary totals", () => {
+  assert.doesNotMatch(source, /const summary = plMergeFreshAnalyticsSummary\(historySummary, analyticsMetrics\);/);
+  assert.doesNotMatch(source, /plScanHistoryMeta\.total\)\s*\?\s*Number\(plScanHistoryMeta\.total\)/);
+  assert.match(source, /setMetric\("historyProcessedToday", analyticsMetrics\?\.total_objects\);/);
+});

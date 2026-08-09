@@ -4200,12 +4200,12 @@ function initReviewWorkspace() {
   };
   const updateSummary = () => {
     const analyticsMetrics = plGetAnalyticsSummaryMetrics();
-    const historySummary = plScanHistoryMeta.summary || {};
-    const summary = plMergeFreshAnalyticsSummary(historySummary, analyticsMetrics);
-    const total = Number.isFinite(Number(summary.total_objects)) ? Number(summary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : state.total);
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-    const pageRows = currentRows();
-    set("historyProcessedToday", total); set("historyConfirmed", summary.confirmed_objects ?? summary.confirmed ?? pageRows.filter(row => row.decisionStatus === "confirmed").length); set("historyReviewCount", summary.needs_review_objects ?? summary.needs_review ?? pageRows.filter(row => row.decisionStatus === "review_needed").length); set("historyRejected", summary.rejected_objects ?? summary.rejected ?? pageRows.filter(row => row.decisionStatus === "rejected").length);
+    const setMetric = (id, value) => set(id, Number.isFinite(Number(value)) ? Number(value).toLocaleString() : "-");
+    setMetric("historyProcessedToday", analyticsMetrics?.total_objects);
+    setMetric("historyConfirmed", analyticsMetrics?.confirmed_objects);
+    setMetric("historyReviewCount", analyticsMetrics?.needs_review_objects);
+    setMetric("historyRejected", analyticsMetrics?.rejected_objects);
   };
   const render = () => {
     updateSummary();
@@ -4517,8 +4517,7 @@ function initReviewModal() {
     const average = rows.length ? rows.reduce((sum, row) => sum + row.confidence, 0) / rows.length : 0;
     const latest = scans.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
     const analyticsMetrics = plGetAnalyticsSummaryMetrics();
-    const historySummary = plScanHistoryMeta.summary || {};
-    const exactSummary = plMergeFreshAnalyticsSummary(historySummary, analyticsMetrics);
+    const exactSummary = analyticsMetrics || {};
     const countObjectStatus = status => rows.reduce((total, row) => {
       const mats = Array.isArray(row.detected_materials) ? row.detected_materials : null;
       if (mats && mats.length) return total + mats.filter(m => (m.review_decision?.outcome === "confirmed" ? "confirmed" : (m.review_decision?.outcome === "rejected" ? "rejected" : (Number(m.confidence) < 0.32 ? "review_needed" : "confirmed"))) === status).length;
@@ -4527,7 +4526,7 @@ function initReviewModal() {
     const confirmedCount = Number.isFinite(Number(exactSummary.confirmed_objects ?? exactSummary.confirmed)) ? Number(exactSummary.confirmed_objects ?? exactSummary.confirmed) : countObjectStatus("confirmed");
     const resolvedReviewCount = Number.isFinite(Number(exactSummary.needs_review_objects ?? exactSummary.needs_review)) ? Number(exactSummary.needs_review_objects ?? exactSummary.needs_review) : countObjectStatus("review_needed");
     const rejectedCount = Number.isFinite(Number(exactSummary.rejected_objects ?? exactSummary.rejected)) ? Number(exactSummary.rejected_objects ?? exactSummary.rejected) : countObjectStatus("rejected");
-    const totalUploads = Number.isFinite(Number(exactSummary.total_objects)) ? Number(exactSummary.total_objects) : (Number.isFinite(Number(plScanHistoryMeta.total)) ? Number(plScanHistoryMeta.total) : (confirmedCount + resolvedReviewCount + rejectedCount));
+    const totalUploads = Number.isFinite(Number(exactSummary.total_objects)) ? Number(exactSummary.total_objects) : (confirmedCount + resolvedReviewCount + rejectedCount);
     setText("historyConfirmed", confirmedCount);
     setText("historyReviewCount", resolvedReviewCount);
     setText("historyRejected", rejectedCount);

@@ -94,6 +94,9 @@ JOBS = [
 
 
 class AnalyticsSummaryContractTests(unittest.TestCase):
+    def setUp(self):
+        main.clear_analytics_summary_cache()
+
     def fake_backend(self, fake):
         stack = ExitStack()
         stack.enter_context(patch.object(main, "supabase", fake))
@@ -167,6 +170,23 @@ class AnalyticsSummaryContractTests(unittest.TestCase):
         self.assertEqual(payload["rejected_count"], 1)
         self.assertEqual(payload["confirmed_count"] + payload["review_count"] + payload["rejected_count"], payload["detected_materials_count"])
         self.assertEqual(payload["average_detection_confidence"], 85.0)
+
+    def test_object_metrics_include_video_frame_materials(self):
+        scans = SCANS + [
+            {"id": "scan-frame-1", "source_name": "frame.jpg", "source_type": "video_frame", "batch_id": None, "overall_status": "confirmed", "human_review_required": False, "overall_confidence": 0.91, "created_at": "2026-07-19T03:00:00Z", "reviewed_at": None, "contamination_risk": "low"},
+        ]
+        materials = MATERIALS + [
+            {"id": "material-frame-1", "scan_result_id": "scan-frame-1", "category": "Plastic", "material_name": "Plastic", "confidence": 0.91, "original_category": None},
+        ]
+        fake = FakeSupabase(scans, materials, DECISIONS, JOBS)
+
+        with self.fake_backend(fake):
+            payload = main.analytics_summary(start_date=None, end_date=None, principal=fake_principal())
+
+        self.assertEqual(payload["total_scans"], 4)
+        self.assertEqual(payload["detected_materials_count"], 4)
+        self.assertEqual(payload["object_metrics"]["total_objects"], 4)
+        self.assertEqual(payload["confirmed_count"] + payload["review_count"] + payload["rejected_count"], 4)
 
     def test_summary_response_disables_http_cache(self):
         fake = FakeSupabase(SCANS, MATERIALS, DECISIONS, JOBS)
