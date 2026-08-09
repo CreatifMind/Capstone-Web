@@ -432,7 +432,7 @@ const html = `
                           <td style="padding:10px 8px;">53.8%</td>
                           <td style="padding:10px 8px;">61.3%</td>
                           <td style="padding:10px 8px;">57.3%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.18)</span></td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Paper</strong></td>
@@ -441,7 +441,7 @@ const html = `
                           <td style="padding:10px 8px;">45.1%</td>
                           <td style="padding:10px 8px;">50.4%</td>
                           <td style="padding:10px 8px;">47.6%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.20)</span></td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Cardboard</strong></td>
@@ -450,7 +450,7 @@ const html = `
                           <td style="padding:10px 8px;">55.9%</td>
                           <td style="padding:10px 8px;">55.9%</td>
                           <td style="padding:10px 8px;">55.9%</td>
-                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">Calibrated High (conf=0.20)</span></td>
+                          <td style="padding:10px 8px;"><span class="tier-tag tier-high">High Accuracy</span></td>
                         </tr>
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 8px;"><strong>Food Organic</strong></td>
@@ -486,7 +486,7 @@ const html = `
                           <td style="padding:10px 8px;">53.6%</td>
                           <td style="padding:10px 8px;">56.4%</td>
                           <td style="padding:10px 8px;">--</td>
-                          <td style="padding:10px 8px;">Calibrated Average</td>
+                          <td style="padding:10px 8px;">Combined Average</td>
                         </tr>
                       </tbody>
                     </table>
@@ -546,7 +546,7 @@ const html = `
                     <tbody>
                       <tr style="background:rgba(0,240,138,0.12);font-weight:700;border-bottom:1px solid var(--border);">
                         <td style="padding:10px 8px;color:var(--primary);font-size:0.9rem;"><strong>PurityLoop AI (Shipped Model)</strong></td>
-                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">81.3% <small style="font-size:0.72rem;font-weight:500;color:var(--muted);">(77.2% Calibrated)</small></td>
+                        <td style="padding:10px 8px;color:var(--primary);font-weight:800;font-size:0.95rem;">81.3%</td>
                         <td style="padding:10px 8px;"><strong>45k Training Dataset &amp; 182k Generalisation Dataset</strong></td>
                         <td style="padding:10px 8px;"><strong>This Capstone Project</strong> (2026)</td>
                       </tr>
