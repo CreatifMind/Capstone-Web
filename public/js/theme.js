@@ -216,18 +216,12 @@ function initLandingNav() {
   };
   const updateActiveFromViewport = () => {
     if (!sections.length) return;
-    const activationLine = headerOffset();
+    const activationLine = headerOffset() + Math.min(160, window.innerHeight * 0.2);
     let winner = sections[0];
-    let bestScore = Number.POSITIVE_INFINITY;
     sections.forEach(section => {
       const rect = section.getBoundingClientRect();
-      const sectionVisible = rect.bottom > activationLine && rect.top < window.innerHeight;
-      if (!sectionVisible) return;
-      const topDistance = rect.top - activationLine;
-      const score = topDistance <= 0 ? Math.abs(topDistance) : topDistance + window.innerHeight;
-      if (score < bestScore) {
+      if (rect.top <= activationLine && rect.bottom > headerOffset()) {
         winner = section;
-        bestScore = score;
       }
     });
     setActiveSection(winner.id);
@@ -241,8 +235,8 @@ function initLandingNav() {
       e.preventDefault();
       setActiveSection(target.id);
       window.history.pushState(null, '', `#${target.id}`);
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setMenuState(false);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 
@@ -595,6 +589,73 @@ function initCreateAccountForm() {
       return;
     }
     window.showToast?.('Account creation is not enabled in this public demo yet. No account or password was saved.', 'warning');
+  });
+}
+
+function initContactForm() {
+  const form = document.getElementById('contactForm');
+  if (!form || form.dataset.contactReady === 'true') return;
+  form.dataset.contactReady = 'true';
+  const status = document.getElementById('contactFormStatus');
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonHtml = submitButton?.innerHTML || '';
+  const successMessage = 'Message received. Thank you for contacting PurityLoop AI.';
+  const errorMessage = "We couldn't send your message. Please try again or contact us at purityloopai@info.com.";
+
+  const setStatus = (message, type = '') => {
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('success', type === 'success');
+    status.classList.toggle('error', type === 'error');
+  };
+
+  const setSubmitting = isSubmitting => {
+    form.dataset.submitting = String(isSubmitting);
+    if (!submitButton) return;
+    submitButton.disabled = isSubmitting;
+    submitButton.setAttribute('aria-busy', String(isSubmitting));
+    submitButton.innerHTML = isSubmitting ? '<span>Sending...</span><i class="fa-solid fa-spinner fa-spin"></i>' : originalButtonHtml;
+  };
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (form.dataset.submitting === 'true') return;
+
+    const formData = new FormData(form);
+    const payload = {
+      name: String(formData.get('name') || '').trim(),
+      email: String(formData.get('email') || '').trim(),
+      subject: String(formData.get('subject') || '').trim(),
+      message: String(formData.get('message') || '').trim(),
+      website: String(formData.get('website') || '').trim()
+    };
+
+    const emailField = form.querySelector('input[name="email"]');
+    if (!payload.name || !payload.email || !payload.subject || !payload.message || !emailField?.checkValidity()) {
+      setStatus('Please complete all required fields with a valid email address.', 'error');
+      form.querySelector(':invalid')?.focus();
+      return;
+    }
+
+    setSubmitting(true);
+    setStatus('Sending message...');
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.ok !== true) throw new Error(body?.error || 'CONTACT_SEND_FAILED');
+      form.reset();
+      setStatus(successMessage, 'success');
+      window.showToast?.(successMessage, 'success');
+    } catch {
+      setStatus(errorMessage, 'error');
+      window.showToast?.(errorMessage, 'error');
+    } finally {
+      setSubmitting(false);
+    }
   });
 }
 
@@ -972,6 +1033,7 @@ function initPurityLoopTheme() {
   runThemeInit('hero bars init', initHeroBars);
   runThemeInit('landing charts init', initLandingCharts);
   runThemeInit('create account form init', initCreateAccountForm);
+  runThemeInit('contact form init', initContactForm);
   runThemeInit('auth logout init', initAuthLogout);
   runThemeInit('motion init', initMotionEffects);
   runThemeInit('metric countup init', initMetricCountUp);

@@ -15,9 +15,11 @@ const html = `
     <!-- Desktop Links -->
     <div class="nav-links">
       <a href="#hero" class="nav-link active">Home</a>
+      <a href="#about" class="nav-link">About Us</a>
       <a href="#methodology" class="nav-link">Methodology</a>
       <a href="#features" class="nav-link">Features</a>
       <a href="#analytics" class="nav-link">Analytics</a>
+      <a href="#contact" class="nav-link">Contact</a>
     </div>
 
     <!-- Actions -->
@@ -45,9 +47,11 @@ const html = `
     <div class="mobile-menu-links">
       <div data-theme-slot="landing-mobile"></div>
       <a href="#hero" class="nav-link" role="menuitem">Home</a>
+      <a href="#about" class="nav-link" role="menuitem">About Us</a>
       <a href="#methodology" class="nav-link" role="menuitem">Methodology</a>
       <a href="#features" class="nav-link" role="menuitem">Features</a>
       <a href="#analytics" class="nav-link" role="menuitem">Analytics</a>
+      <a href="#contact" class="nav-link" role="menuitem">Contact</a>
       <a href="/login" class="nav-link" role="menuitem">Login</a>
     </div>
   </div>
@@ -81,8 +85,14 @@ const html = `
         </p>
 
         <div class="hero-btns">
-          <a href="/login" class="btn-outline btn-lg">
-            Login
+          <a href="#features" class="btn btn-lg">
+            Explore the Platform
+          </a>
+          <a href="#about" class="btn-outline btn-lg">
+            About PurityLoop AI
+          </a>
+          <a href="#contact" class="btn-outline btn-lg">
+            Contact the Team
           </a>
         </div>
 
@@ -152,6 +162,52 @@ const html = `
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════════════════════════════
+       SECTION 2 — ABOUT US
+  ══════════════════════════════════════ -->
+  <section id="about" class="section about-section">
+    <div class="section-inner">
+      <div class="about-layout">
+        <div class="about-copy" data-aos="fade-right">
+          <div class="section-tag"><i class="fa-solid fa-leaf"></i> ABOUT PURITYLOOP AI</div>
+          <h2 class="section-headline">Built to Make Waste-Sorting Decisions More Traceable</h2>
+          <p class="section-sub">PurityLoop AI is a capstone project that combines computer vision, human review, operational traceability, and analytics to support more structured waste-sorting workflows.</p>
+          <p class="about-text">The platform connects AI-assisted image and video detection with review workflows, evidence retention, material reporting, and analytics so users can understand not only what the model detected, but also how each result was reviewed and used operationally.</p>
+        </div>
+
+        <div class="about-card-grid" data-aos="fade-left">
+          <article class="about-card">
+            <span class="about-card-icon"><i class="fa-solid fa-recycle"></i></span>
+            <h3>Our Purpose</h3>
+            <p>Support cleaner recycling workflows by combining AI-assisted detection with clear human-review and operational decision paths.</p>
+          </article>
+          <article class="about-card">
+            <span class="about-card-icon"><i class="fa-solid fa-route"></i></span>
+            <h3>How We Work</h3>
+            <p>PurityLoop AI connects detection, review, saved evidence, routing decisions, and analytics instead of treating model predictions as isolated outputs.</p>
+          </article>
+          <article class="about-card">
+            <span class="about-card-icon"><i class="fa-solid fa-user-check"></i></span>
+            <h3>Human-in-the-Loop</h3>
+            <p>Low-confidence results and General Trash remain reviewable so human decisions stay part of the operational workflow.</p>
+          </article>
+          <article class="about-card">
+            <span class="about-card-icon"><i class="fa-solid fa-diagram-project"></i></span>
+            <h3>Project Focus</h3>
+            <p>The project focuses on traceability, waste-category detection, review workflows, object tracking, de-duplication, evidence retention, and analytics.</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="about-team-strip" data-aos="fade-up">
+        <span>Talvin — Data Quality</span>
+        <span>Chris — Training Algorithm</span>
+        <span>Naomi — Model Architecture</span>
       </div>
     </div>
   </section>
@@ -783,6 +839,72 @@ const html = `
 
 
   <!-- ══════════════════════════════════════
+       SECTION 9 — CONTACT
+  ══════════════════════════════════════ -->
+  <section id="contact" class="section contact-section">
+    <div class="section-inner">
+      <div class="contact-layout">
+        <div class="contact-copy" data-aos="fade-right">
+          <div class="section-tag"><i class="fa-solid fa-paper-plane"></i> CONTACT</div>
+          <h2 class="section-headline">Want to Learn More About PurityLoop AI?</h2>
+          <p class="section-sub">For questions about the project, methodology, model workflow, or system demonstration, use the contact options below.</p>
+
+          <div class="contact-methods">
+            <a class="contact-method" href="mailto:purityloopai@info.com">
+              <span><i class="fa-solid fa-envelope"></i></span>
+              <div>
+                <small>Email</small>
+                <strong>purityloopai@info.com</strong>
+              </div>
+            </a>
+            <a class="contact-method" href="tel:+60122818212">
+              <span><i class="fa-solid fa-phone"></i></span>
+              <div>
+                <small>Phone</small>
+                <strong>+6012 2818212</strong>
+              </div>
+            </a>
+          </div>
+          <p class="contact-context">Use this form for capstone presentation coordination, project methodology questions, model workflow discussion, or system demonstration follow-up.</p>
+        </div>
+
+        <form id="contactForm" class="contact-form-card" data-aos="fade-left" novalidate>
+          <div class="contact-form-grid">
+            <label>
+              <span>Name</span>
+              <input name="name" type="text" autocomplete="name" maxlength="100" required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input name="email" type="email" autocomplete="email" maxlength="254" required />
+            </label>
+          </div>
+          <label>
+            <span>Subject</span>
+            <input name="subject" type="text" maxlength="160" required />
+          </label>
+          <label>
+            <span>Message</span>
+            <textarea name="message" rows="6" maxlength="2000" required></textarea>
+          </label>
+          <label class="contact-honeypot" aria-hidden="true">
+            <span>Website</span>
+            <input name="website" type="text" tabindex="-1" autocomplete="off" />
+          </label>
+          <div class="contact-form-footer">
+            <p id="contactFormStatus" class="contact-form-status" role="status" aria-live="polite"></p>
+            <button class="btn btn-lg" type="submit">
+              <span>Send Message</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ══════════════════════════════════════
        SECTION 10 — FINAL CTA
   ══════════════════════════════════════ -->
   <section id="cta" class="section section-alt final-cta">
@@ -818,10 +940,17 @@ const html = `
     </div>
     <div class="footer-links">
       <a href="#hero">Home</a>
+      <a href="#about">About Us</a>
       <a href="#methodology">Methodology</a>
       <a href="#features">Features</a>
       <a href="#analytics">Analytics</a>
+      <a href="#contact">Contact</a>
       <a href="/login">Login</a>
+    </div>
+    <div class="footer-contact">
+      <a href="mailto:purityloopai@info.com">purityloopai@info.com</a>
+      <span aria-hidden="true">|</span>
+      <a href="tel:+60122818212">+6012 2818212</a>
     </div>
     <p class="footer-copy">© 2026 PurityLoop AI | Capstone Presentation Project | Built with YOLOv8 +
       JavaScript</p>

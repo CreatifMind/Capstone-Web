@@ -72,13 +72,53 @@ test("landing page replaces unsupported capability claims with accurate wording"
 
 test("landing page navigation uses existing destinations and does not target removed sections", () => {
   assert.match(page, /href="#hero"[^>]*>Home/);
+  assert.match(page, /href="#about"[^>]*>About Us/);
   assert.match(page, /href="#methodology"[^>]*>Methodology/);
   assert.match(page, /href="#features"[^>]*>Features/);
   assert.match(page, /href="#analytics"[^>]*>Analytics/);
+  assert.match(page, /href="#contact"[^>]*>Contact/);
   assert.match(page, /href="\/login"[^>]*>Login/);
   assert.doesNotMatch(page, /href="#impact"/);
-  assert.doesNotMatch(page, /href="#contact"/);
-  assert.doesNotMatch(page, />Contact</);
+});
+
+test("landing page includes approved About Us and Contact content", () => {
+  [
+    "ABOUT PURITYLOOP AI",
+    "Built to Make Waste-Sorting Decisions More Traceable",
+    "PurityLoop AI is a capstone project that combines computer vision, human review, operational traceability, and analytics to support more structured waste-sorting workflows.",
+    "Our Purpose",
+    "How We Work",
+    "Human-in-the-Loop",
+    "Project Focus",
+    "Talvin — Data Quality",
+    "Chris — Training Algorithm",
+    "Naomi — Model Architecture",
+    "Want to Learn More About PurityLoop AI?",
+    "purityloopai@info.com",
+    "+6012 2818212",
+    "mailto:purityloopai@info.com",
+    "tel:+60122818212",
+    "Message received. Thank you for contacting PurityLoop AI.",
+  ].forEach((text) => assert.match(landingSource, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+});
+
+test("landing contact form posts to server API without exposing webhook details", () => {
+  const contactRoute = readFileSync("app/api/contact/route.ts", "utf8");
+  const envExample = readFileSync(".env.example", "utf8");
+
+  assert.match(page, /<form id="contactForm"/);
+  ["name", "email", "subject", "message", "website"].forEach((field) => {
+    assert.match(page, new RegExp(`name="${field}"`));
+  });
+  assert.match(theme, /fetch\('\/api\/contact'/);
+  assert.match(theme, /form\.dataset\.submitting === 'true'/);
+  assert.match(contactRoute, /process\.env\.CONTACT_WEBHOOK_URL/);
+  assert.match(contactRoute, /CONTACT_WEBHOOK_NOT_CONFIGURED/);
+  assert.match(contactRoute, /CONTACT_INVALID_EMAIL/);
+  assert.match(contactRoute, /CONTACT_SPAM_REJECTED/);
+  assert.match(envExample, /^CONTACT_WEBHOOK_URL=$/m);
+  assert.doesNotMatch(page, /CONTACT_WEBHOOK_URL/);
+  assert.doesNotMatch(theme, /CONTACT_WEBHOOK_URL/);
 });
 
 test("landing page preserves methodology, challenge video, problem section, and dummy analytics visuals", () => {
