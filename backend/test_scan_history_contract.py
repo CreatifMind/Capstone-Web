@@ -72,19 +72,18 @@ class FakeQuery:
         return self
 
     def execute(self):
-        count = None
-        if self.table == main.SCAN_RESULTS_TABLE and self.count == "exact":
-            if self.filters.get("in", (None,))[0] == "overall_status":
-                count = 10
-            elif self.filters.get("human_review_required") is True:
-                count = 107
-            else:
-                count = 4312
         rows = self.rows
         if self.filters.get("id") == "missing":
             rows = []
         elif self.filters.get("id"):
             rows = [row for row in rows if row.get("id") == self.filters["id"]]
+        if self.filters.get("in"):
+            field, values = self.filters["in"]
+            allowed = {str(value) for value in values}
+            rows = [row for row in rows if str(row.get(field)) in allowed]
+        if "source_type!=" in self.filters:
+            rows = [row for row in rows if row.get("source_type") != self.filters["source_type!="]]
+        count = len(rows) if self.table == main.SCAN_RESULTS_TABLE and self.count == "exact" else None
         if self.range_args:
             start, end = self.range_args
             rows = rows[start:end + 1]
@@ -94,16 +93,37 @@ class FakeQuery:
 
 
 class FakeRpc:
-    def __init__(self, params):
+    def __init__(self, fake, params):
+        self.fake = fake
         self.params = params
 
     def execute(self):
-        status_totals = {"rejected": 4, "review_needed": 107, "confirmed": 437}
-        total = status_totals.get(self.params.get("p_status"), 548)
+        rows = list(self.fake.scan_rows)
+        rows = [row for row in rows if row.get("source_type") != "video_frame"]
+        search = self.params.get("p_search")
+        if search:
+            rows = [row for row in rows if search.lower() in str(row.get("source_name") or "").lower()]
+        if self.params.get("p_status") == "review_needed":
+            rows = [row for row in rows if row.get("human_review_required") is True]
+        elif self.params.get("p_status") == "confirmed":
+            rows = [row for row in rows if row.get("human_review_required") is False]
+        total = len(rows)
+        offset = max(0, self.params.get("p_offset") or 0)
+        limit = max(1, self.params.get("p_limit") or 10)
+        page = rows[offset:offset + limit]
         rows = [
-            {"scan": {"id": f"category-scan-{index}", "created_at": "2026-07-19T00:00:00Z"}, "total_count": total}
-            for index in range(min(self.params.get("p_limit") or 10, total))
+            {
+                "scan": row,
+                "total_count": total,
+                "total_objects": total,
+                "confirmed_objects": total,
+                "needs_review_objects": 0,
+                "rejected_objects": 0,
+            }
+            for row in page
         ]
+        if not rows:
+            rows = [{"scan": None, "total_count": total, "total_objects": total, "confirmed_objects": total, "needs_review_objects": 0, "rejected_objects": 0}]
         return SimpleNamespace(data=rows, count=None)
 
 
@@ -112,20 +132,22 @@ class FakeSupabase:
         self.queries = []
         self.rpc_calls = []
         self.scan_count = scan_count
+        self.scan_rows = [
+            {
+                "id": f"scan-{index}",
+                "source_name": f"bottle-{index}.jpg",
+                "source_type": "image",
+                "created_at": "2026-07-19T00:00:00Z",
+                "overall_confidence": 0.91,
+                "human_review_required": False,
+                "preview_image_url": f"https://example.test/{index}.jpg",
+            }
+            for index in range(self.scan_count)
+        ]
 
     def table(self, table):
         if table == main.SCAN_RESULTS_TABLE:
-            rows = [
-                {
-                    "id": f"scan-{index}",
-                    "source_name": f"bottle-{index}.jpg",
-                    "created_at": "2026-07-19T00:00:00Z",
-                    "overall_confidence": 0.91,
-                    "human_review_required": False,
-                    "preview_image_url": f"https://example.test/{index}.jpg",
-                }
-                for index in range(self.scan_count)
-            ]
+            rows = self.scan_rows
         elif table == main.DETECTED_MATERIALS_TABLE:
             rows = [
                 {
@@ -160,7 +182,7 @@ class FakeSupabase:
 
     def rpc(self, name, params):
         self.rpc_calls.append((name, params))
-        return FakeRpc(params)
+        return FakeRpc(self, params)
 
 
 class ScanHistoryContractTests(unittest.TestCase):
@@ -179,9 +201,11 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["limit"], 10)
         self.assertEqual(payload["offset"], 0)
         self.assertEqual(len(payload["items"]), 10)
-        self.assertEqual(fake.queries[0].range_args, (0, 499))
-        self.assertEqual(fake.queries[0].columns, ("*",))
-        self.assertIsNone(fake.queries[0].count)
+        self.assertEqual(fake.rpc_calls[0][0], "scan_history_page")
+        self.assertEqual(fake.rpc_calls[0][1]["p_limit"], 10)
+        self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 0)
+        self.assertEqual(fake.rpc_calls[0][1]["p_category_key"], None)
+        self.assertEqual(fake.queries[0].filters["in"][1], [f"scan-{index}" for index in range(10)])
         self.assertEqual(payload["summary"], {
             "confirmed": 25,
             "needs_review": 0,
@@ -193,12 +217,36 @@ class ScanHistoryContractTests(unittest.TestCase):
         })
         self.assertNotIn("scans", payload)
 
-    def test_scan_history_filter_does_not_exclude_video_frame_rows(self):
+    def test_scan_history_filter_excludes_video_frame_rows(self):
         query = FakeQuery(main.SCAN_RESULTS_TABLE, [])
 
         main.apply_scan_history_filters(query, {"start_date": None, "end_date": None, "search": None, "status": None})
 
-        self.assertNotIn("source_type!=", query.filters)
+        self.assertEqual(query.filters["source_type!="], "video_frame")
+
+    def test_scan_history_filter_keeps_image_and_tracked_video_rows(self):
+        query = FakeQuery(main.SCAN_RESULTS_TABLE, [
+            {"id": "image", "source_type": "image"},
+            {"id": "tracked", "source_type": "tracked_video"},
+            {"id": "frame", "source_type": "video_frame"},
+        ])
+
+        main.apply_scan_history_filters(query, {"start_date": None, "end_date": None, "search": None, "status": None})
+
+        self.assertEqual([row["id"] for row in query.execute().data], ["image", "tracked"])
+
+    def test_scan_history_endpoint_excludes_video_frame_rows(self):
+        fake = FakeSupabase(scan_count=0)
+        fake.scan_rows = [
+            {"id": "image", "source_name": "image.jpg", "source_type": "image", "human_review_required": False},
+            {"id": "tracked", "source_name": "tracked.mp4", "source_type": "tracked_video", "human_review_required": False},
+            {"id": "frame", "source_name": "frame.jpg", "source_type": "video_frame", "human_review_required": False},
+        ]
+        with self.fake_backend(fake):
+            payload = main.get_scan_history(limit=10, offset=0, principal=fake_principal())
+
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual([row["id"] for row in payload["items"]], ["image", "tracked"])
 
     def test_scan_history_review_page_uses_ten_row_ranges(self):
         fake = FakeSupabase()
@@ -209,7 +257,9 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["limit"], 10)
         self.assertEqual(payload["offset"], 10)
         self.assertEqual(len(payload["items"]), 10)
-        self.assertEqual(fake.queries[0].range_args, (0, 499))
+        self.assertEqual(fake.rpc_calls[0][1]["p_limit"], 10)
+        self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 10)
+        self.assertEqual(fake.queries[0].filters["in"][1], [f"scan-{index}" for index in range(10, 20)])
         self.assertEqual(payload["summary"]["total_objects"], 25)
 
     def test_scan_history_accepts_review_filters_and_confidence_sort(self):
@@ -224,14 +274,35 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["status"], "review_needed")
         self.assertEqual(payload["sort"], "confidence")
         self.assertEqual(payload["direction"], "asc")
-        self.assertEqual(fake.queries[0].filters["source_name"], "%bottle%")
-        self.assertNotIn("source_name", fake.queries[1].filters)
-        self.assertNotIn("human_review_required", fake.queries[0].filters)
+        self.assertEqual(fake.rpc_calls[0][1]["p_search"], "bottle")
+        self.assertEqual(fake.rpc_calls[0][1]["p_status"], "review_needed")
+        self.assertEqual(fake.rpc_calls[0][1]["p_sort"], "confidence")
+        self.assertEqual(fake.rpc_calls[0][1]["p_direction"], "asc")
         self.assertEqual(payload["total"], 0)
         self.assertEqual(payload["items"], [])
-        self.assertEqual(payload["summary"]["total_objects"], 25)
-        self.assertEqual(fake.queries[0].order_args[0], ("overall_confidence",))
-        self.assertEqual(fake.queries[0].range_args, (0, 499))
+        self.assertEqual(payload["summary"]["total_objects"], 0)
+        self.assertEqual(fake.queries, [])
+
+    def test_scan_history_review_page_three_uses_offset_twenty(self):
+        fake = FakeSupabase()
+        with self.fake_backend(fake):
+            payload = main.get_scan_history(limit=10, offset=20, principal=fake_principal())
+
+        self.assertEqual(payload["total"], 25)
+        self.assertEqual(len(payload["items"]), 5)
+        self.assertEqual(fake.rpc_calls[0][1]["p_limit"], 10)
+        self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 20)
+        self.assertEqual(fake.queries[0].filters["in"][1], [f"scan-{index}" for index in range(20, 25)])
+
+    def test_scan_history_offset_beyond_total_keeps_exact_total_without_child_queries(self):
+        fake = FakeSupabase()
+        with self.fake_backend(fake):
+            payload = main.get_scan_history(limit=10, offset=30, principal=fake_principal())
+
+        self.assertEqual(payload["total"], 25)
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(fake.rpc_calls[0][1]["p_offset"], 30)
+        self.assertEqual(fake.queries, [])
 
     def test_final_category_filter_prefers_verified_then_reviewed_category(self):
         scans = [
@@ -259,7 +330,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         self.assertEqual(payload["total"], 25)
         self.assertEqual(len(payload["items"]), 10)
         self.assertEqual(payload["summary"]["total_objects"], 25)
-        self.assertEqual(fake.rpc_calls, [])
+        self.assertEqual(fake.rpc_calls[0][1]["p_category_key"], "plastic")
 
     def test_category_summary_filters_material_rows_not_whole_scans(self):
         scans = [{"id": "scan-1"}]
@@ -277,7 +348,7 @@ class ScanHistoryContractTests(unittest.TestCase):
         with self.fake_backend(fake):
             main.get_scan_history(limit=10, offset=0, search="missing", principal=fake_principal())
 
-        self.assertEqual(fake.queries[0].filters["source_name"], "%missing%")
+        self.assertEqual(fake.rpc_calls[0][1]["p_search"], "missing")
 
     def test_scan_lookup_rejects_invalid_uuid_safely(self):
         fake = FakeSupabase()

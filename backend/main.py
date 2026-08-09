@@ -1435,6 +1435,7 @@ def scan_history_filters(
 
 
 def apply_scan_history_filters(query, filters: dict[str, str | None], status_override: str | None = None):
+    query = query.neq("source_type", "video_frame")
     if filters.get("start_date"):
         query = query.gte("created_at", filters["start_date"])
     if filters.get("end_date"):
@@ -1480,6 +1481,25 @@ def attach_scan_children(scans: list[dict], materials: list[dict], decisions: li
             "review_decision": latest.get(str(material.get("id", ""))),
         })
     return [{**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])} for scan in scans]
+
+
+def scan_history_page_from_rpc(rows: list[dict]) -> tuple[list[dict], int, dict[str, int]]:
+    scans: list[dict] = []
+    total = 0
+    summary = {"confirmed": 0, "needs_review": 0, "rejected": 0, "total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}
+    for row in rows:
+        if row.get("total_count") is not None:
+            total = int(row.get("total_count") or 0)
+        for key in ("total_objects", "confirmed_objects", "needs_review_objects", "rejected_objects"):
+            if row.get(key) is not None:
+                summary[key] = int(row.get(key) or 0)
+        scan = row.get("scan")
+        if scan:
+            scans.append(scan)
+    summary["confirmed"] = summary["confirmed_objects"]
+    summary["needs_review"] = summary["needs_review_objects"]
+    summary["rejected"] = summary["rejected_objects"]
+    return scans, total, summary
 
 
 def export_material_decision(scan: dict) -> tuple[dict, dict | None]:
@@ -6214,7 +6234,7 @@ def analytics_summary(
     if bool(start_date) != bool(end_date):
         raise HTTPException(status_code=400, detail="start_date and end_date must be supplied together.")
 
-    cache_key = f"{principal.user_id}:{principal.role}:{start_date or ''}:{end_date or ''}"
+    cache_key = f"{principal.id}:{principal.role}:{start_date or ''}:{end_date or ''}"
     now_ts = time.time()
     if cache_key in ANALYTICS_SUMMARY_CACHE:
         cached_time, cached_payload = ANALYTICS_SUMMARY_CACHE[cache_key]
@@ -6638,141 +6658,33 @@ def get_scan_history(
         offset = max(0, int(offset))
         filters = scan_history_filters(start_date, end_date, search, status)
         normalized_status = filters["status"] or ""
-        order_column = "overall_confidence" if sort == "confidence" else "created_at"
         descending = str(direction).lower() != "asc"
         category_key = canonical_category_key(category) if category else ""
         if category and category_key == "unknown":
             return {"items": [], "total": 0, "limit": limit, "offset": offset, "start_date": start_date, "end_date": end_date, "search": search, "category": category, "status": status, "sort": "confidence" if sort == "confidence" else "timestamp", "direction": "desc" if descending else "asc", "summary": {"confirmed": 0, "needs_review": 0, "rejected": 0, "total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}}
 
-        list_filters = {**filters, "status": None}
-        summary_filters = {**filters, "search": None, "status": None}
-
-        if not normalized_status and not category_key and not filters["search"] and not filters["start_date"] and not filters["end_date"]:
-            exec_inst = SupabaseExecutor(client_factory=_new_supabase_client, attempts=2)
-            page_res = exec_inst.execute("fast scan history page query", lambda client: client.table(SCAN_RESULTS_TABLE).select("*", count="exact").order(order_column, desc=descending).range(offset, offset + limit - 1).execute())
-            scans = page_res.data or []
-            total = page_res.count if page_res.count is not None else len(scans)
-            summary_data = get_analytics_summary()
-            summary_metrics = {
-                "confirmed": summary_data.get("confirmed_scans", 0),
-                "needs_review": summary_data.get("needs_review_scans", 0),
-                "rejected": summary_data.get("rejected_scans", 0),
-                "total_objects": summary_data.get("total_objects", 0),
-                "confirmed_objects": summary_data.get("confirmed_objects", 0),
-                "needs_review_objects": summary_data.get("needs_review_objects", 0),
-                "rejected_objects": summary_data.get("rejected_objects", 0)
-            }
-            scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
-            if scan_ids:
-                materials = exec_inst.execute("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
-                decisions = exec_inst.execute("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
-            else:
-                materials = []
-                decisions = []
-            latest_decisions = {}
-            for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
-                latest_decisions[str(decision.get("detected_material_id", ""))] = decision
-            materials_by_scan = {}
-            for material in materials:
-                materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
-                    **material,
-                    "review_decision": latest_decisions.get(str(material.get("id", ""))),
-                })
-            items = [
-                {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
-                for scan in scans
-            ]
-            return {
-                "items": items,
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "start_date": start_date,
-                "end_date": end_date,
-                "search": search,
-                "category": category,
-                "status": status,
-                "sort": "confidence" if sort == "confidence" else "timestamp",
-                "direction": "desc" if descending else "asc",
-                "summary": summary_metrics,
-            }
-
-        def fetch_scans(scope_filters: dict[str, str | None], select_columns: str = "*") -> list[dict]:
-            def build_scans(client):
-                query = client.table(SCAN_RESULTS_TABLE).select(select_columns)
-                query = apply_scan_history_filters(query, scope_filters)
-                return query.order(order_column, desc=descending)
-
-            return analytics_page_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), SCAN_RESULTS_TABLE, principal, build_scans, ANALYTICS_PAGE_SIZE)
-
-        all_scans = fetch_scans(list_filters, select_columns="*")
-        summary_scans = fetch_scans(summary_filters, select_columns="id,source_name,source_type,batch_id,overall_status,human_review_required,overall_confidence,created_at,reviewed_at,contamination_risk")
-        all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
-        summary_scan_ids = [str(scan.get("id")) for scan in summary_scans if scan.get("id")]
-        if all_scan_ids:
-            all_materials = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), DETECTED_MATERIALS_TABLE, all_scan_ids, principal)
-            all_decisions = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), REVIEW_DECISIONS_TABLE, all_scan_ids, principal)
-        else:
-            all_materials = []
-            all_decisions = []
-        if summary_scan_ids:
-            summary_materials = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), DETECTED_MATERIALS_TABLE, summary_scan_ids, principal)
-            summary_decisions = analytics_child_rows(SupabaseExecutor(client_factory=_new_supabase_client, attempts=2), REVIEW_DECISIONS_TABLE, summary_scan_ids, principal)
-        else:
-            summary_materials = []
-            summary_decisions = []
-        if category_key:
-            all_scans = filter_scans_by_final_category(all_scans, all_materials, all_decisions, category_key)
-            all_scan_ids = [str(scan.get("id")) for scan in all_scans if scan.get("id")]
-            all_materials = [material for material in all_materials if str(material.get("scan_result_id") or "") in set(all_scan_ids)]
-            all_decisions = [decision for decision in all_decisions if str(decision.get("scan_result_id") or "") in set(all_scan_ids)]
-            summary_materials = filter_materials_by_final_category(summary_materials, summary_scans, summary_decisions, category_key)
-        latest_all_decisions = latest_decisions_by_material(all_decisions)
-        materials_by_scan_all: dict[str, list[dict]] = {}
-        for material in all_materials:
-            materials_by_scan_all.setdefault(str(material.get("scan_result_id", "")), []).append(material)
-
-        def scan_matches_status(scan: dict, status_value: str) -> bool:
-            material_rows = materials_by_scan_all.get(str(scan.get("id") or ""), [])
-            statuses = [
-                derive_final_status(confidence=material.get("confidence"), decision=latest_all_decisions.get(str(material.get("id") or "")), scan=scan)
-                for material in material_rows
-            ]
-            if status_value == "confirmed":
-                return bool(statuses) and all(item == "confirmed" for item in statuses)
-            if status_value == "review_needed":
-                return "needs_review" in statuses
-            if status_value == "rejected":
-                return "rejected" in statuses or normalize_status(scan.get("overall_status")) in {"rejected", "quarantined"}
-            return True
-
-        summary_metrics = object_metrics_from_rows(summary_scans, summary_materials, summary_decisions)
-        filtered_scans = [scan for scan in all_scans if not normalized_status or scan_matches_status(scan, normalized_status)]
-        total = len(filtered_scans)
-        scans = filtered_scans[offset:offset + limit]
+        database = SupabaseExecutor(client_factory=_new_supabase_client, attempts=2)
+        rpc_params = {
+            "p_limit": limit,
+            "p_offset": offset,
+            "p_start_date": filters["start_date"],
+            "p_end_date": filters["end_date"],
+            "p_search": filters["search"],
+            "p_category_key": category_key or None,
+            "p_status": normalized_status or None,
+            "p_sort": "confidence" if sort == "confidence" else "timestamp",
+            "p_direction": "asc" if not descending else "desc",
+        }
+        page_response = database.execute(lambda client: scoped_query(client.rpc("scan_history_page", rpc_params), principal).execute())
+        scans, total, summary_metrics = scan_history_page_from_rpc(page_response.data or [])
         scan_ids = [str(scan.get("id")) for scan in scans if scan.get("id")]
-        confirmed = summary_metrics["confirmed_objects"]
-        needs_review = summary_metrics["needs_review_objects"]
-        rejected = summary_metrics["rejected_objects"]
         if scan_ids:
-            materials = execute_scan_read("page materials query", lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
-            decisions = execute_scan_read("page decisions query", lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+            materials = database.execute(lambda client: client.table(DETECTED_MATERIALS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
+            decisions = database.execute(lambda client: client.table(REVIEW_DECISIONS_TABLE).select("*").in_("scan_result_id", scan_ids).execute()).data or []
         else:
             materials = []
             decisions = []
-        latest_decisions = {}
-        for decision in sorted(decisions, key=lambda item: str(item.get("created_at", ""))):
-            latest_decisions[str(decision.get("detected_material_id", ""))] = decision
-        materials_by_scan = {}
-        for material in materials:
-            materials_by_scan.setdefault(str(material.get("scan_result_id", "")), []).append({
-                **material,
-                "review_decision": latest_decisions.get(str(material.get("id", ""))),
-            })
-        items = [
-            {**scan, "detected_materials": materials_by_scan.get(str(scan.get("id", "")), [])}
-            for scan in scans
-        ]
+        items = attach_scan_children(scans, materials, decisions)
         return {
             "items": items,
             "total": total,
@@ -6785,12 +6697,7 @@ def get_scan_history(
             "status": status,
             "sort": "confidence" if sort == "confidence" else "timestamp",
             "direction": "desc" if descending else "asc",
-            "summary": {
-                "confirmed": confirmed,
-                "needs_review": needs_review,
-                "rejected": rejected,
-                **summary_metrics,
-            },
+            "summary": summary_metrics,
         }
     except Exception as exc:
         if not isinstance(exc, (SupabaseTemporarilyUnavailable, RuntimeError)):
