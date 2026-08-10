@@ -123,7 +123,7 @@ os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
 from PIL import Image
 
-from backend.main import VideoTrackAggregator, _duplicate_evidence, _process_video_drive_file, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
+from backend.main import VideoTrackAggregator, _duplicate_evidence, _process_video_drive_file, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
 from backend.deduplicate_tracked_video_results import build_report
 
 
@@ -740,6 +740,196 @@ class VideoTrackAggregationTests(unittest.TestCase):
 
         self.assertEqual(summary["total_unique_objects"], 2)
         self.assertEqual(summary["counts_by_class"], {"plastic": 1, "metal": 1})
+
+    def test_preview_selector_rejects_reused_track_id_outside_frame_range(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "category": "cardboard",
+            "confidence": 0.87,
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 100, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20}
+            ]
+        }
+
+        self.assertIsNone(_select_annotated_preview_observation(material, observations))
+
+    def test_preview_selector_chooses_highest_confidence_inside_frame_range_only(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "cardboard", "confidence": 0.80, "source_frame_index": 15, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "cardboard", "confidence": 0.87, "source_frame_index": 25, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 100, "box_xyxy": [3, 3, 10, 10], "frame_width": 20, "frame_height": 20},
+            ]
+        }
+
+        selected = _select_annotated_preview_observation(material, observations)
+
+        self.assertEqual(selected["source_frame_index"], 25)
+        self.assertEqual(selected["category"], "cardboard")
+
+    def test_preview_selector_outside_range_does_not_change_canonical_metadata(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "category": "cardboard",
+            "confidence": 0.87,
+            "disposal_route": "CARDBOARD SORTING BIN",
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+        }
+        original = dict(material)
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 100, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20}
+            ]
+        }
+
+        self.assertIsNone(_select_annotated_preview_observation(material, observations))
+        self.assertEqual(material, original)
+
+    def test_preview_selector_preserves_normal_long_running_track(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "cardboard", "confidence": 0.81, "source_frame_index": 10, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "cardboard", "confidence": 0.91, "source_frame_index": 50, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+            ]
+        }
+
+        selected = _select_annotated_preview_observation(material, observations)
+
+        self.assertEqual(selected["source_frame_index"], 50)
+
+    def test_preview_selector_allows_merged_fragment_ranges_but_rejects_reused_raw_id(self):
+        material = {
+            "track_id": "12,19",
+            "source_track_ids": ["12", "19"],
+            "track_first_frame": 10,
+            "track_last_frame": 80,
+            "track_debug": {
+                "accepted_track_fragments": {
+                    "12": [{"first_frame": 20, "last_frame": 35}],
+                    "19": [{"first_frame": 70, "last_frame": 80}],
+                }
+            },
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "cardboard", "confidence": 0.84, "source_frame_index": 30, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 60, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+            ],
+            "19": [
+                {"track_id": "19", "category": "cardboard", "confidence": 0.89, "source_frame_index": 75, "box_xyxy": [3, 3, 10, 10], "frame_width": 20, "frame_height": 20}
+            ],
+        }
+
+        selected = _select_annotated_preview_observation(material, observations)
+
+        self.assertEqual(selected["track_id"], "19")
+        self.assertEqual(selected["source_frame_index"], 75)
+        self.assertEqual(selected["category"], "cardboard")
+
+    def test_preview_selector_allows_multiple_fragments_for_same_raw_id(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+            "track_debug": {
+                "accepted_track_fragments": {
+                    "12": [
+                        {"first_frame": 10, "last_frame": 20},
+                        {"first_frame": 40, "last_frame": 50},
+                    ]
+                }
+            },
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "cardboard", "confidence": 0.81, "source_frame_index": 15, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "metal", "confidence": 0.99, "source_frame_index": 30, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "cardboard", "confidence": 0.91, "source_frame_index": 45, "box_xyxy": [3, 3, 10, 10], "frame_width": 20, "frame_height": 20},
+            ]
+        }
+
+        selected = _select_annotated_preview_observation(material, observations)
+
+        self.assertEqual(selected["source_frame_index"], 45)
+        self.assertEqual(selected["category"], "cardboard")
+
+    def test_preview_selector_rejects_different_raw_id_inside_global_range(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+            "track_debug": {
+                "accepted_track_fragments": {
+                    "12": [{"first_frame": 10, "last_frame": 50}],
+                }
+            },
+        }
+        observations = {
+            "13": [
+                {"track_id": "13", "category": "metal", "confidence": 0.99, "source_frame_index": 30, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20}
+            ],
+            "12": [
+                {"track_id": "13", "category": "metal", "confidence": 0.99, "source_frame_index": 30, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20}
+            ],
+        }
+
+        self.assertIsNone(_select_annotated_preview_observation(material, observations))
+
+    def test_preview_selector_falls_back_to_global_range_without_fragments(self):
+        material = {
+            "track_id": "12",
+            "source_track_ids": ["12"],
+            "track_first_frame": 10,
+            "track_last_frame": 50,
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "cardboard", "confidence": 0.87, "source_frame_index": 25, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 60, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+            ]
+        }
+
+        selected = _select_annotated_preview_observation(material, observations)
+
+        self.assertEqual(selected["source_frame_index"], 25)
+        self.assertEqual(selected["category"], "cardboard")
+
+    def test_merged_tracks_record_accepted_track_fragments(self):
+        aggregator = VideoTrackAggregator("upload-fragments", min_frames=1, lost_buffer=2)
+        for frame in range(20, 36):
+            aggregator.observe(frame, frame / 10, [detection(12, "cardboard", 0.84, 0.1, 0.1, 0.2, 0.2)])
+        aggregator.flush_stale(39)
+        for frame in range(70, 81):
+            aggregator.observe(frame, frame / 10, [detection(19, "cardboard", 0.89, 0.11, 0.1, 0.21, 0.2)])
+        aggregator.finish(83)
+
+        merged = merge_track_fragments(aggregator.finalized, "upload-fragments")
+        canonical = next(item for item in merged if set(item.get("source_track_ids") or []) == {"12", "19"})
+        fragments = canonical["track_debug"]["accepted_track_fragments"]
+
+        self.assertEqual(fragments["12"], [{"first_frame": 20, "last_frame": 35}])
+        self.assertEqual(fragments["19"], [{"first_frame": 70, "last_frame": 80}])
 
     def test_cleanup_dry_run_report_performs_no_writes(self):
         scan_1 = {"id": "scan-1", "batch_id": "batch-1", "overall_confidence": 0.7}

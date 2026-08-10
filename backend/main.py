@@ -1011,6 +1011,7 @@ class VideoTrackAggregator:
             "track_path": state.path,
             "track_debug": {
                 "frame_observations": state.observations,
+                "accepted_track_fragments": _track_frame_fragments(state.observations),
                 "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
                 "raw_track_ids": sorted(state.raw_track_ids),
                 "appearance_fingerprints": state.appearance_fingerprints,
@@ -2651,6 +2652,70 @@ def _record_annotated_frame_observations(observations_by_track: dict[str, list[d
         observations_by_track.setdefault(observation["track_id"], []).append(observation)
 
 
+def _track_frame_fragments(observations: list[dict]) -> dict[str, list[dict]]:
+    frames_by_track: dict[str, list[int]] = {}
+    for observation in observations or []:
+        if not isinstance(observation, dict):
+            continue
+        track_id = str(observation.get("track_id") or "").strip()
+        frame = int(_coerce_float(observation.get("frame", observation.get("source_frame_index")), -1))
+        if not track_id or frame < 0:
+            continue
+        frames_by_track.setdefault(track_id, []).append(frame)
+
+    fragments: dict[str, list[dict]] = {}
+    for track_id, frames in frames_by_track.items():
+        sorted_frames = sorted(set(frames))
+        ranges = []
+        start = previous = sorted_frames[0]
+        for frame in sorted_frames[1:]:
+            if frame == previous + 1:
+                previous = frame
+                continue
+            ranges.append({"first_frame": start, "last_frame": previous})
+            start = previous = frame
+        ranges.append({"first_frame": start, "last_frame": previous})
+        fragments[track_id] = ranges
+    return fragments
+
+
+def _material_track_fragments(material: dict) -> dict[str, list[tuple[int, int]]]:
+    debug = material.get("track_debug") if isinstance(material.get("track_debug"), dict) else {}
+    raw_fragments = debug.get("accepted_track_fragments") if isinstance(debug, dict) else None
+    if not isinstance(raw_fragments, dict):
+        return {}
+    fragments: dict[str, list[tuple[int, int]]] = {}
+    for track_id, ranges in raw_fragments.items():
+        if not isinstance(ranges, list):
+            continue
+        normalized = []
+        for item in ranges:
+            if not isinstance(item, dict):
+                continue
+            start = int(_coerce_float(item.get("first_frame"), -1))
+            end = int(_coerce_float(item.get("last_frame"), -1))
+            if start < 0 or end < start:
+                continue
+            normalized.append((start, end))
+        if normalized:
+            fragments[str(track_id)] = normalized
+    return fragments
+
+
+def _frame_matches_material_track(material: dict, track_id: str, frame: int) -> bool:
+    fragments = _material_track_fragments(material)
+    if fragments:
+        return any(start <= frame <= end for start, end in fragments.get(str(track_id), []))
+
+    first_frame = int(_coerce_float(material.get("track_first_frame"), -1))
+    last_frame = int(_coerce_float(material.get("track_last_frame"), -1))
+    if first_frame >= 0 and frame < first_frame:
+        return False
+    if last_frame >= 0 and frame > last_frame:
+        return False
+    return True
+
+
 def _select_annotated_preview_observation(material: dict, observations_by_track: dict[str, list[dict]] | None) -> dict | None:
     track_ids = _track_id_values(material)
     if not track_ids or not observations_by_track:
@@ -2659,6 +2724,9 @@ def _select_annotated_preview_observation(material: dict, observations_by_track:
     for track_id in track_ids:
         for observation in observations_by_track.get(str(track_id), []):
             if str(observation.get("track_id") or "") not in track_ids:
+                continue
+            frame = int(_coerce_float(observation.get("source_frame_index", observation.get("frame")), -1))
+            if not _frame_matches_material_track(material, str(track_id), frame):
                 continue
             width = int(_coerce_float(observation.get("frame_width"), 0))
             height = int(_coerce_float(observation.get("frame_height"), 0))
@@ -5128,6 +5196,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         ): item
         for item in merged_observations
     }
+    sorted_observations = sorted(deduplicated_observations.values(), key=lambda item: int(_coerce_float(item.get("frame"))))
     frame_count = len(deduplicated_observations)
     max_confidence = max(_coerce_float(track.get("track_max_confidence") or track.get("confidence")) for track in tracks)
     weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
@@ -5171,7 +5240,8 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         **({"track_start_scene_center": {"x": sorted_scene_path[0].get("x"), "y": sorted_scene_path[0].get("y")}} if sorted_scene_path else {}),
         **({"track_end_scene_center": {"x": sorted_scene_path[-1].get("x"), "y": sorted_scene_path[-1].get("y")}} if sorted_scene_path else {}),
         "track_debug": {
-            "frame_observations": sorted(deduplicated_observations.values(), key=lambda item: int(_coerce_float(item.get("frame")))),
+            "frame_observations": sorted_observations,
+            "accepted_track_fragments": _track_frame_fragments(sorted_observations),
             "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
             "raw_track_ids": source_track_ids,
             "stabilized_track_path": sorted_scene_path,

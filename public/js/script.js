@@ -3917,6 +3917,8 @@ function initResultPage() {
 
     // - 4. Draw all bounding boxes (NANDO AI static style) -
     const boxes = getActiveBoxes();
+    const canonicalMaterials = activeScan?.detected_materials?.length ? activeScan.detected_materials : [];
+    const canonicalObjectCount = activeImageUsesBackendAnnotation ? canonicalMaterials.length : boxes.length;
 
     boxes.forEach(box => {
       const boxX = drawX + drawW * box.x;
@@ -3989,7 +3991,7 @@ function initResultPage() {
     ctx2d.font = "10px 'Courier New', monospace";
     const now = new Date();
     const tsStr = now.toISOString().replace("T", "  ").substring(0, 19) + " UTC";
-    ctx2d.fillText(`YOLOv8x  |  ${boxes.length} objects detected  |  ${tsStr}`, 14, hudY + 19);
+    ctx2d.fillText(`YOLOv8x  |  ${canonicalObjectCount} objects detected  |  ${tsStr}`, 14, hudY + 19);
   }
 
   // Utility: convert hex colour to rgba string

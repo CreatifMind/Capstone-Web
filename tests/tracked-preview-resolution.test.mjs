@@ -55,6 +55,10 @@ test("Review image preview uses exactly one bounding-box layer", () => {
   assert.match(source, /if \(activeImageUsesBackendAnnotation\) return \[\];/);
 });
 
+test("Tracked-video backend preview footer uses canonical material count", () => {
+  assert.match(source, /function drawCanvasFrame\(\) \{[\s\S]*?const boxes = getActiveBoxes\(\);[\s\S]*?const canonicalMaterials = activeScan\?\.detected_materials\?\.length \? activeScan\.detected_materials : \[\];[\s\S]*?const canonicalObjectCount = activeImageUsesBackendAnnotation \? canonicalMaterials\.length : boxes\.length;[\s\S]*?YOLOv8x\s+\|\s+\$\{canonicalObjectCount\} objects detected/);
+});
+
 test("Preview cleanup hides low-confidence and extreme edge strips only", () => {
   const { plCleanPreviewBoxes } = buildContext();
   const boxes = [
