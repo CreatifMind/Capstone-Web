@@ -194,7 +194,7 @@ ANALYTICS_MATERIAL_ESTIMATES = {
     "cardboard": {"label": "Cardboard", "average_weight_kg": 0.125, "price_per_kg_rm": 0.25, "material_class": "recyclable"},
 }
 BROWSER_CONFIDENCE_THRESHOLD = MODEL_CANDIDATE_THRESHOLD
-BROWSER_NMS_IOU_THRESHOLD = 0.45
+BROWSER_NMS_IOU_THRESHOLD = 0.70
 BROWSER_MODEL_NAME = "best.onnx"
 BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
 BROWSER_MODEL_VERSION = "v3_ffremask_9cls"
@@ -204,15 +204,15 @@ BROWSER_MODEL_CLASSES = (
     "plastic", "paper", "cardboard", "metal", "glass", "textile", "food_organic", "battery", "general_trash",
 )
 CLASS_THRESHOLDS = {
-    0: 0.25,  # plastic
+    0: 0.12,  # plastic
     1: 0.20,  # paper
     2: 0.20,  # cardboard
-    3: 0.15,  # metal
+    3: 0.18,  # metal
     4: 0.20,  # glass
     5: 0.25,  # textile
-    6: 0.20,  # food_organic
+    6: 0.15,  # food_organic
     7: 0.25,  # battery
-    8: 0.20,  # general_trash
+    8: 0.10,  # general_trash
 }
 YOLO_CALIBRATION_CANDIDATE_CONFIDENCE = 0.05
 GENERAL_TRASH_CATEGORY = "general_trash"
@@ -795,24 +795,6 @@ def reset_video_tracker_state(video_model: Any) -> int:
     return reset_count
 
 
-def determine_canonical_category(
-    class_votes: dict[str, float],
-    class_max_conf: dict[str, float] | None = None,
-    fallback: str = "unknown"
-) -> str:
-    if not class_votes:
-        return fallback
-    class_max_conf = class_max_conf or {}
-    sorted_peaks = sorted(class_max_conf.items(), key=lambda item: item[1], reverse=True)
-    if sorted_peaks and sorted_peaks[0][1] >= 0.70:
-        top_category, top_peak = sorted_peaks[0]
-        second_peak = sorted_peaks[1][1] if len(sorted_peaks) > 1 else 0.0
-        if top_peak - second_peak >= 0.15:
-            return top_category
-
-    return max(class_votes, key=class_votes.get, default=fallback)
-
-
 @dataclass
 class VideoTrackState:
     key: str
@@ -823,7 +805,6 @@ class VideoTrackState:
     first_timestamp: float = 0.0
     last_timestamp: float = 0.0
     class_votes: dict[str, float] = field(default_factory=dict)
-    class_max_conf: dict[str, float] = field(default_factory=dict)
     class_names: dict[str, str] = field(default_factory=dict)
     confidences: list[float] = field(default_factory=list)
     observations: list[dict] = field(default_factory=list)
@@ -926,8 +907,7 @@ class VideoTrackAggregator:
             state.segment_ids.add(str(segment_id))
         state.last_frame = frame_index
         state.last_timestamp = timestamp
-        state.class_votes[category] = state.class_votes.get(category, 0.0) + (confidence ** 3.0)
-        state.class_max_conf[category] = max(state.class_max_conf.get(category, 0.0), confidence)
+        state.class_votes[category] = state.class_votes.get(category, 0.0) + confidence
         state.class_names.setdefault(category, str(detection.get("material_name") or category))
         state.confidences.append(confidence)
         center = _bbox_center(box)
@@ -1051,13 +1031,12 @@ class VideoTrackAggregator:
             return
         state.counted = True
 
-
     def _finalize(self, state: VideoTrackState) -> dict | None:
         frame_count = len(state.observations)
         raw_max_confidence = max(state.confidences or [0.0])
         if frame_count < self.min_frames and raw_max_confidence < self.short_track_confidence:
             return None
-        final_category = determine_canonical_category(state.class_votes, state.class_max_conf, fallback="unknown")
+        final_category = max(state.class_votes, key=state.class_votes.get, default="unknown")
         class_confidence = _class_confidence_for_observations(state.observations, final_category, raw_max_confidence)
         avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
         recyclable_status, contaminant_status = material_status(final_category)
@@ -1149,7 +1128,7 @@ def canonical_category_key(value: str | None) -> str:
         return "glass"
     if "paper" in key:
         return "paper"
-    if "metal" in key or "aluminum" in key or "aluminium" in key or "steel" in key or "can" in key or "watch" in key or "clock" in key or "silver" in key or "tin" in key or "copper" in key or "iron" in key or "brass" in key or "metallic" in key or "alloy" in key or "hardware" in key or "jewelry" in key:
+    if "metal" in key or "aluminum" in key or "aluminium" in key or "can" in key:
         return "metal"
     if "plastic" in key or "bottle" in key or "pet" in key or "film" in key:
         return "plastic"
@@ -2303,7 +2282,7 @@ def material_category(name: str) -> str:
         return "cardboard"
     if "paper" in text:
         return "paper"
-    if "metal" in text or "aluminum" in text or "aluminium" in text or "steel" in text or "can" in text or "watch" in text or "clock" in text or "silver" in text or "tin" in text or "copper" in text or "iron" in text or "brass" in text or "metallic" in text or "alloy" in text or "hardware" in text or "jewelry" in text:
+    if "metal" in text or "aluminum" in text or "aluminium" in text or "can" in text:
         return "metal"
     if "plastic" in text or "bottle" in text or "pet" in text:
         return "plastic"
@@ -2378,7 +2357,7 @@ def determine_detection_status(confidence: float, is_contaminant: bool, category
     if derive_final_status(confidence=confidence, category=category) == "needs_review":
         return {
             "review_status": "needs_review",
-            "ai_status": "low_confidence_detection" if category != "general_trash" else "general_trash_requires_review",
+            "ai_status": "low_confidence_detection" if material_category(category) != "general_trash" else "general_trash_requires_review",
         }
     return {
         "review_status": "confirmed",
@@ -2937,17 +2916,12 @@ def _canonical_annotation_frame_map(
     frame_map: dict[int, list[dict]] = {}
     if not observations_by_track:
         return frame_map
-    seen_frame_tracks: set[tuple[int, str]] = set()
     for material in materials or []:
         for track_id in _track_id_values(material):
             for observation in observations_by_track.get(str(track_id), []):
                 frame = int(_coerce_float(observation.get("source_frame_index", observation.get("frame")), -1))
                 if frame < 0 or not _frame_matches_material_track(material, str(track_id), frame):
                     continue
-                key = (frame, str(track_id))
-                if key in seen_frame_tracks:
-                    continue
-                seen_frame_tracks.add(key)
                 canonical = _canonical_annotated_observation(material, observation)
                 frame_map.setdefault(frame, []).append(canonical)
     return frame_map
@@ -4404,44 +4378,6 @@ def _mask_polygon(result, index: int) -> list | None:
     return polygon
 
 
-def _refine_detected_category(box, names: dict, frame=None, xyxy=None) -> tuple[int, str, float]:
-    class_id = int(box.cls[0])
-    confidence = float(box.conf[0])
-    material_name = str(names.get(class_id, f"class_{class_id}"))
-
-    if frame is not None and xyxy is not None and len(xyxy) == 4:
-        try:
-            x1, y1, x2, y2 = [int(v) for v in xyxy]
-            h, w = frame.shape[:2]
-            x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
-            if x2 > x1 and y2 > y1:
-                crop = frame[y1:y2, x1:x2]
-                if crop.size > 0:
-                    import cv2
-                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                    sat = float(hsv[:, :, 1].mean())
-                    val = float(hsv[:, :, 2].mean())
-                    box_w = x2 - x1
-                    box_h = y2 - y1
-                    box_aspect = box_w / max(box_h, 1)
-
-                    # 1. Metallic Object (Watch, Metallic band, Can):
-                    if class_id == 0 and sat < 95 and val > 80 and 0.25 <= box_aspect <= 4.0:
-                        return 3, "metal", max(confidence, 0.86)
-
-                    # 2. Cylindrical Paper / Tissue Roll:
-                    if class_id == 0 and sat < 50 and val > 150 and 0.7 <= box_aspect <= 1.4:
-                        return 1, "paper", max(confidence, 0.82)
-
-                    # 3. Handheld Electronics / Gameboy Console:
-                    if class_id == 0 and val < 130 and 0.4 <= box_aspect <= 0.9:
-                        return 8, "general_trash", max(confidence, 0.80)
-        except Exception:
-            pass
-
-    return class_id, material_name, confidence
-
-
 def _result_track_observations(result, frame, frame_index: int, timestamp: float) -> list[dict]:
     boxes = getattr(result, "boxes", None)
     if boxes is None:
@@ -4453,7 +4389,9 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
     frame_bytes = _encode_frame_jpeg(frame)
     for index, box in enumerate(boxes):
         xyxy = [float(value) for value in box.xyxy[0].tolist()]
-        class_id, material_name, confidence = _refine_detected_category(box, names, frame, xyxy)
+        confidence = float(box.conf[0])
+        class_id = int(box.cls[0])
+        material_name = str(names.get(class_id, f"class_{class_id}"))
         track_id = None
         if track_ids is not None:
             try:
@@ -4564,11 +4502,8 @@ def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | 
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, line_width)
         confidence = _coerce_float(detection.get("confidence"))
         track_id = detection.get("track_id")
-        clean_id = str(track_id or "")
-        if "track=" in clean_id:
-            clean_id = clean_id.split("track=")[-1]
         hazard = " | HAZARD" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else ""
-        label = f"{display_label(category)} | {confidence:.2f} | ID #{clean_id or '-'}{hazard}"
+        label = f"{display_label(category)} | {confidence:.2f} | ID {track_id or '-'}{hazard}"
         font = cv2.FONT_HERSHEY_SIMPLEX
         (label_width, label_height), baseline = cv2.getTextSize(label, font, font_scale, line_width)
         label_width = min(label_width + label_padding * 2, width)
@@ -5439,7 +5374,6 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     merged_scene_path = []
     appearance_fingerprints = []
     class_votes: dict[str, float] = {}
-    class_max_conf: dict[str, float] = {}
     source_track_ids = []
     segment_ids: set[str] = set()
     for track in tracks:
@@ -5452,15 +5386,6 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         appearance_fingerprints.extend(pl for pl in debug.get("appearance_fingerprints", []) if isinstance(pl, dict))
         for category, value in (debug.get("class_votes") or {}).items():
             class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
-        for category, max_val in (debug.get("class_max_conf") or {}).items():
-            class_max_conf[category] = max(class_max_conf.get(category, 0.0), _coerce_float(max_val))
-
-    for obs in merged_observations:
-        cat = str(obs.get("category") or "")
-        conf = _coerce_float(obs.get("confidence"))
-        if cat:
-            class_max_conf[cat] = max(class_max_conf.get(cat, 0.0), conf)
-
     source_track_ids = sorted(set(source_track_ids), key=str)
     first_frame = min(int(_coerce_float(track.get("track_first_frame"))) for track in tracks)
     last_frame = max(int(_coerce_float(track.get("track_last_frame"))) for track in tracks)
@@ -5479,7 +5404,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         _coerce_float((track.get("track_debug") or {}).get("raw_max_confidence") or track.get("track_max_confidence") or track.get("confidence"))
         for track in tracks
     )
-    weighted_category = determine_canonical_category(class_votes, class_max_conf, fallback=primary.get("category") or "unknown")
+    weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
     observation_confidences = [_coerce_float(item.get("confidence")) for item in deduplicated_observations.values()]
     class_confidence = _class_confidence_for_observations(list(deduplicated_observations.values()), weighted_category, raw_max_confidence)
     avg_confidence = (
