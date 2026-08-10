@@ -194,7 +194,7 @@ ANALYTICS_MATERIAL_ESTIMATES = {
     "cardboard": {"label": "Cardboard", "average_weight_kg": 0.125, "price_per_kg_rm": 0.25, "material_class": "recyclable"},
 }
 BROWSER_CONFIDENCE_THRESHOLD = MODEL_CANDIDATE_THRESHOLD
-BROWSER_NMS_IOU_THRESHOLD = 0.70
+BROWSER_NMS_IOU_THRESHOLD = 0.45
 BROWSER_MODEL_NAME = "best.onnx"
 BROWSER_MODEL_PATH = APP_ROOT / "public" / "models" / "purityloop" / BROWSER_MODEL_NAME
 BROWSER_MODEL_VERSION = "v3_ffremask_9cls"

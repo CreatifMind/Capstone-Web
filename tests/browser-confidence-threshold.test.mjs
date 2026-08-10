@@ -17,6 +17,15 @@ test("browser ONNX persistence sends the unified decision threshold metadata", (
   assert.equal(decisionThresholdAppends.length, 2);
 });
 
+test("browser ONNX persistence sends the backend NMS IoU contract value", () => {
+  assert.match(script, /const PL_BROWSER_NMS_IOU_THRESHOLD = 0\.45;/);
+
+  const nmsThresholdAppends = script.match(
+    /formData\.append\("nms_iou_threshold", String\(PL_BROWSER_NMS_IOU_THRESHOLD\)\);/g
+  ) || [];
+  assert.equal(nmsThresholdAppends.length, 2);
+});
+
 test("review workspace always accepts server object summary", () => {
   assert.match(script, /if \(payload\.summary\) \{/);
   assert.doesNotMatch(

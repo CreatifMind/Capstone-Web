@@ -9,7 +9,7 @@ export const MODEL_CONFIG = {
   inputSize: 640,
   paddingValue: 114,
   confidenceThreshold: MODEL_CANDIDATE_THRESHOLD,
-  nmsIouThreshold: 0.7,
+  nmsIouThreshold: 0.45,
   executionProvider: "wasm",
   classes: [
     "plastic",
