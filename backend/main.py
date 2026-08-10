@@ -2313,7 +2313,7 @@ def normalize_status(value: Any) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
 
 
-def derive_final_status(*, confidence: Any, decision: dict | None = None, scan: dict | None = None) -> str:
+def derive_final_status(*, confidence: Any, category: str = "", decision: dict | None = None, scan: dict | None = None) -> str:
     """Canonical object status. Human decisions win; auto confidence threshold is inclusive."""
     decision_status = normalize_status((decision or {}).get("outcome") or (decision or {}).get("review_outcome"))
     scan_status = normalize_status((scan or {}).get("review_status") or (scan or {}).get("overall_status"))
@@ -2321,6 +2321,9 @@ def derive_final_status(*, confidence: Any, decision: dict | None = None, scan: 
         return "rejected"
     if decision_status == "confirmed" or scan_status in {"verified", "corrected"}:
         return "confirmed"
+    cat_key = material_category(category or (decision or {}).get("chosen_category") or "")
+    if cat_key in {"general_trash", "trash"}:
+        return "needs_review"
     try:
         numeric = float(confidence)
     except (TypeError, ValueError):
@@ -2336,7 +2339,7 @@ def object_metrics_from_rows(scans: list[dict], materials: list[dict], decisions
     counts = {"total_objects": 0, "confirmed_objects": 0, "needs_review_objects": 0, "rejected_objects": 0}
     for material in materials:
         scan = scan_by_id.get(str(material.get("scan_result_id") or ""), {})
-        status = derive_final_status(confidence=material.get("confidence"), decision=latest.get(str(material.get("id") or "")), scan=scan)
+        status = derive_final_status(confidence=material.get("confidence"), category=material.get("category") or material.get("material_name"), decision=latest.get(str(material.get("id") or "")), scan=scan)
         counts["total_objects"] += 1
         counts[f"{status}_objects"] += 1
     return counts
@@ -2351,10 +2354,10 @@ def _looks_like_uuid(value: Any) -> bool:
 
 
 def determine_detection_status(confidence: float, is_contaminant: bool, category: str = "unknown") -> dict[str, str]:
-    if derive_final_status(confidence=confidence) == "needs_review":
+    if derive_final_status(confidence=confidence, category=category) == "needs_review":
         return {
             "review_status": "needs_review",
-            "ai_status": "low_confidence_detection",
+            "ai_status": "low_confidence_detection" if material_category(category) != "general_trash" else "general_trash_requires_review",
         }
     return {
         "review_status": "confirmed",

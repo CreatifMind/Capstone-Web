@@ -24,9 +24,27 @@ class ClassificationTests(unittest.TestCase):
         self.assertFalse(evaluate_material("plastic", 0.32)["review_required"])
         self.assertTrue(evaluate_material("plastic", 0.3199)["review_required"])
 
-    def test_general_trash_uses_canonical_confidence_threshold(self):
+    def test_general_trash_requires_human_review(self):
         self.assertEqual(evaluate_material("general_trash", 0.31)["decision_status"], "review_needed")
-        self.assertEqual(evaluate_material("general_trash", 0.32)["decision_status"], "confirmed")
+        self.assertEqual(evaluate_material("general_trash", 0.80)["decision_status"], "review_needed")
+
+    def test_general_trash_status_routes_unverified_items_to_review(self):
+        self.assertEqual(
+            object_metrics_from_rows(
+                [{"id": "scan-1"}],
+                [
+                    {"id": "high-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.8},
+                    {"id": "low-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.31},
+                ],
+                [],
+            ),
+            {
+                "total_objects": 2,
+                "confirmed_objects": 0,
+                "needs_review_objects": 2,
+                "rejected_objects": 0,
+            },
+        )
 
     def test_detection_status_helper_splits_review_and_confirmed_states(self):
         self.assertEqual(
@@ -89,24 +107,6 @@ class ClassificationTests(unittest.TestCase):
             "needs_review_objects": 1,
             "rejected_objects": 0,
         })
-
-    def test_general_trash_status_uses_confidence_not_category(self):
-        self.assertEqual(
-            object_metrics_from_rows(
-                [{"id": "scan-1"}],
-                [
-                    {"id": "high-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.8},
-                    {"id": "low-trash", "scan_result_id": "scan-1", "category": "General Trash", "confidence": 0.31},
-                ],
-                [],
-            ),
-            {
-                "total_objects": 2,
-                "confirmed_objects": 1,
-                "needs_review_objects": 1,
-                "rejected_objects": 0,
-            },
-        )
 
 
 if __name__ == "__main__":
