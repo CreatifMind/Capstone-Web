@@ -321,6 +321,8 @@ def test_tracked_object_persistence_persists_annotated_video_extract(monkeypatch
         "confidence": 0.91,
         "track_max_confidence": 0.91,
         "track_avg_confidence": 0.88,
+        "track_first_frame": 0,
+        "track_last_frame": 10,
         "track_hazard_status": "clear",
         "recyclable_status": "recyclable",
         "contaminant_status": "clean",
@@ -403,14 +405,11 @@ def test_tracked_object_persistence_persists_annotated_video_extract(monkeypatch
     assert captured["material"]["track_debug"]["preview_bbox"]["extraction_method"] == "frame_index"
 
 
-def test_tracked_object_persistence_does_not_persist_raw_bytes_when_extraction_fails(monkeypatch):
-    frame = np.zeros((80, 120, 3), dtype=np.uint8)
-    frame[:, :] = (20, 80, 120)
-    frame_bytes = main._encode_frame_jpeg(frame)
-    item = {
-        "stable_object_id": "scan-1-object-0001",
-        "object_uid": "scan-1-object-0001",
-        "track_id": "4",
+def tracked_object_item(stable_object_id, track_id="4"):
+    return {
+        "stable_object_id": stable_object_id,
+        "object_uid": stable_object_id,
+        "track_id": str(track_id),
         "category": "plastic",
         "material_name": "plastic",
         "confidence": 0.91,
@@ -429,26 +428,116 @@ def test_tracked_object_persistence_does_not_persist_raw_bytes_when_extraction_f
         "bbox_height": 25,
         "best_box": {"xyxy": [30, 20, 60, 40], "frame": 0, "timestamp": 0.0},
         "track_debug": {"physical_reconciliation_completed": True},
-        "_best_crop_bytes": frame_bytes,
     }
 
+
+def test_tracked_object_persistence_continues_when_first_preview_unavailable(monkeypatch):
+    frame = np.zeros((80, 120, 3), dtype=np.uint8)
+    frame[:, :] = (20, 80, 120)
+    frame_bytes = main._encode_frame_jpeg(frame)
+    items = [
+        {**tracked_object_item("scan-1-object-0001", "4"), "_best_crop_bytes": frame_bytes},
+        tracked_object_item("scan-1-object-0002", "5"),
+    ]
+    persisted = []
+    events = []
+
     def fake_persist(file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
-        raise AssertionError("raw preview bytes must not be persisted when annotated extraction fails")
+        persisted.append((file_bytes, materials[0]))
+        return {"scan_result_id": f"persisted-{len(persisted)}"}
+
+    def fake_extract(_path, material, _observation):
+        if material["stable_object_id"].endswith("0001"):
+            return None
+        return (b"preview", {"format": "annotated_video_frame"})
+
+    monkeypatch.setattr(main, "_extract_annotated_video_object_preview", fake_extract)
+    monkeypatch.setattr(main, "persist_scan", fake_persist)
+    monkeypatch.setattr(main, "_video_processing_log", lambda event, **fields: events.append((event, fields)))
+
+    scan_ids = main._persist_tracked_video_objects(
+        tracked_objects=items,
+        source_name="video.mp4",
+        file_id="drive-1",
+        job={"id": "55555555-5555-4555-8555-555555555555"},
+        principal=None,
+        database=NoopDatabase(),
+        existing_drive_metadata={},
+        annotated_video_metadata={"annotated_video_status": "ready"},
+        annotated_video_path="/tmp/missing-annotated.mp4",
+        annotated_observations_by_track={
+            "4": [{"track_id": "4", "source_frame_index": 0, "box_xyxy": [1, 1, 5, 5], "confidence": 0.8, "frame_width": 20, "frame_height": 20}],
+            "5": [{"track_id": "5", "source_frame_index": 0, "box_xyxy": [1, 1, 5, 5], "confidence": 0.8, "frame_width": 20, "frame_height": 20}],
+        },
+    )
+
+    assert scan_ids == ["persisted-1", "persisted-2"]
+    assert [material["stable_object_id"] for _, material in persisted] == ["scan-1-object-0001", "scan-1-object-0002"]
+    assert persisted[0][0] is None
+    assert persisted[1][0] == b"preview"
+    assert any(event == "tracked_object_preview_warning" for event, _fields in events)
+
+
+def test_late_and_multiple_missing_tracked_previews_do_not_abort_batch(monkeypatch):
+    items = [tracked_object_item(f"scan-1-object-{index:04d}", str(index)) for index in range(1, 6)]
+    missing = {"scan-1-object-0004", "scan-1-object-0005"}
+    persisted = []
+    events = []
+
+    def fake_extract(_path, material, _observation):
+        if material["stable_object_id"] in missing:
+            return None
+        return (f"preview-{material['stable_object_id']}".encode(), {"format": "annotated_video_frame"})
+
+    def fake_persist(file_bytes, _filename, _source_type, materials, *_args, **_kwargs):
+        persisted.append((file_bytes, materials[0]["stable_object_id"]))
+        return {"scan_result_id": f"persisted-{len(persisted)}"}
+
+    monkeypatch.setattr(main, "_extract_annotated_video_object_preview", fake_extract)
+    monkeypatch.setattr(main, "persist_scan", fake_persist)
+    monkeypatch.setattr(main, "_video_processing_log", lambda event, **fields: events.append((event, fields)))
+
+    scan_ids = main._persist_tracked_video_objects(
+        tracked_objects=items,
+        source_name="video.mp4",
+        file_id="drive-1",
+        job={"id": "77777777-7777-4777-8777-777777777777"},
+        principal=None,
+        database=NoopDatabase(),
+        existing_drive_metadata={},
+        annotated_video_metadata={"annotated_video_status": "ready"},
+        annotated_video_path="/tmp/annotated.mp4",
+        annotated_observations_by_track={
+            str(index): [{"track_id": str(index), "source_frame_index": 0, "box_xyxy": [1, 1, 5, 5], "confidence": 0.8, "frame_width": 20, "frame_height": 20}]
+            for index in range(1, 6)
+        },
+    )
+
+    assert scan_ids == [f"persisted-{index}" for index in range(1, 6)]
+    assert [stable_id for _bytes, stable_id in persisted] == [item["stable_object_id"] for item in items]
+    assert [stable_id for bytes_, stable_id in persisted if bytes_ is None] == ["scan-1-object-0004", "scan-1-object-0005"]
+    warning_ids = [fields["logical_object_id"] for event, fields in events if event == "tracked_object_preview_warning"]
+    assert warning_ids == ["scan-1-object-0004", "scan-1-object-0005"]
+
+
+def test_tracked_preview_fix_does_not_hide_core_persistence_failure(monkeypatch):
+    item = tracked_object_item("scan-1-object-0001", "4")
 
     monkeypatch.setattr(main, "_extract_annotated_video_object_preview", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(main, "persist_scan", fake_persist)
+    monkeypatch.setattr(main, "persist_scan", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("database write failed")))
 
-    with pytest.raises(RuntimeError, match="Tracked-object preview unavailable for final physical cluster"):
+    with pytest.raises(RuntimeError, match="database write failed"):
         main._persist_tracked_video_objects(
             tracked_objects=[item],
             source_name="video.mp4",
             file_id="drive-1",
-            job={"id": "55555555-5555-4555-8555-555555555555"},
+            job={"id": "88888888-8888-4888-8888-888888888888"},
             principal=None,
             database=NoopDatabase(),
             existing_drive_metadata={},
             annotated_video_metadata={"annotated_video_status": "ready"},
-            annotated_video_path="/tmp/missing-annotated.mp4",
+            annotated_video_path="/tmp/annotated.mp4",
+            annotated_observations_by_track={"4": [{"track_id": "4", "source_frame_index": 0, "box_xyxy": [1, 1, 5, 5], "confidence": 0.8, "frame_width": 20, "frame_height": 20}]},
         )
 
 
@@ -750,6 +839,24 @@ def test_zero_byte_video_source_is_rejected_and_cleaned(monkeypatch, tmp_path):
         main._process_video_drive_file("drive-1", {"id": "11111111-1111-4111-8111-111111111111"}, None, NoopDatabase(), {"drive_mime_type": "video/mp4"}, b"", "empty.mp4")
 
     assert not (tmp_path / "11111111-1111-4111-8111-111111111111").exists()
+
+
+def test_video_model_load_failure_remains_fatal(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "VIDEO_WORK_ROOT", tmp_path)
+    monkeypatch.setattr(main, "get_model", lambda: (_ for _ in ()).throw(RuntimeError("model load failed")))
+
+    with pytest.raises(RuntimeError, match="model load failed"):
+        main._process_video_drive_file(
+            "drive-1",
+            {"id": "99999999-9999-4999-8999-999999999999"},
+            None,
+            NoopDatabase(),
+            {"drive_mime_type": "video/mp4"},
+            video_bytes(frames=2),
+            "model-fail.mp4",
+        )
+
+    assert not (tmp_path / "99999999-9999-4999-8999-999999999999").exists()
 
 
 def test_video_dimensions_are_normalized_to_even_values():

@@ -3133,7 +3133,7 @@ def _browser_storage_path(submission_id: UUID, filename: str | None) -> str:
 
 
 def persist_scan(
-    file_bytes: bytes,
+    file_bytes: bytes | None,
     filename: str | None,
     source_type: str,
     materials: list[dict],
@@ -5501,7 +5501,20 @@ def _persist_tracked_video_objects(
                 preview_source=preview_metadata.get("format"),
                 worker_build_revision=_worker_build_revision(),
             )
-            raise RuntimeError(f"Tracked-object preview unavailable for final physical cluster {stable_object_id}.")
+            _video_processing_log(
+                "tracked_object_preview_warning",
+                job_id=str(job["id"]),
+                scan_id=str(job["id"]),
+                object_scan_id=str(scan_uuid),
+                logical_object_id=stable_object_id,
+                track_id=public_material.get("track_id"),
+                source_track_ids=public_material.get("source_track_ids"),
+                representative_frame=best_box.get("frame"),
+                timestamp=best_box.get("timestamp"),
+                reason="preview_unavailable",
+                preview_source=preview_metadata.get("format"),
+                worker_build_revision=_worker_build_revision(),
+            )
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
         canonical_observation = _canonical_annotated_observation(public_material, selected_observation) if selected_observation else None
