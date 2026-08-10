@@ -21,9 +21,11 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
   const candidates: Detection[] = [];
   for (let candidate = 0; candidate < CANDIDATE_COUNT; candidate += 1) {
     let classId = 0;
-    let confidence = output[(4 * CANDIDATE_COUNT) + candidate];
+    const rawVal0 = output[(4 * CANDIDATE_COUNT) + candidate];
+    let confidence = rawVal0 > 1.0 || rawVal0 < 0.0 ? 1 / (1 + Math.exp(-rawVal0)) : rawVal0;
     for (let classIndex = 1; classIndex < MODEL_CONFIG.classes.length; classIndex += 1) {
-      const score = output[((4 + classIndex) * CANDIDATE_COUNT) + candidate];
+      const rawVal = output[((4 + classIndex) * CANDIDATE_COUNT) + candidate];
+      const score = rawVal > 1.0 || rawVal < 0.0 ? 1 / (1 + Math.exp(-rawVal)) : rawVal;
       if (score > confidence) {
         confidence = score;
         classId = classIndex;
