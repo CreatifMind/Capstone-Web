@@ -294,7 +294,7 @@ function plCategoryKey(value) {
   if (key.includes("cardboard") || key.includes("box")) return "cardboard";
   if (key.includes("glass") || key.includes("jar")) return "glass";
   if (key.includes("paper")) return "paper";
-  if (key.includes("metal") || key.includes("aluminum") || key.includes("aluminium") || key.includes("can")) return "metal";
+  if (key.includes("metal") || key.includes("aluminum") || key.includes("aluminium") || key.includes("steel") || key.includes("can") || key.includes("watch") || key.includes("clock") || key.includes("silver") || key.includes("tin") || key.includes("copper") || key.includes("iron") || key.includes("brass") || key.includes("metallic") || key.includes("alloy") || key.includes("hardware") || key.includes("jewelry")) return "metal";
   if (key.includes("plastic") || key.includes("bottle") || key.includes("pet") || key.includes("film")) return "plastic";
   return "unknown";
 }
@@ -1326,7 +1326,7 @@ function detectWasteTypeFromFileName(name) {
   if (fileLower.includes("food") || fileLower.includes("organic") || fileLower.includes("apple") || fileLower.includes("banana")) return detectionResults.food_organics;
   if (fileLower.includes("trash") || fileLower.includes("waste") || fileLower.includes("cup") || fileLower.includes("mug")) return detectionResults.general_trash;
   if (fileLower.includes("plastic") || fileLower.includes("bottle") || fileLower.includes("pet")) return detectionResults.plastic;
-  if (fileLower.includes("metal") || fileLower.includes("can") || fileLower.includes("aluminium") || fileLower.includes("steel")) return detectionResults.metal;
+  if (fileLower.includes("metal") || fileLower.includes("can") || fileLower.includes("aluminium") || fileLower.includes("aluminum") || fileLower.includes("steel") || fileLower.includes("watch") || fileLower.includes("clock") || fileLower.includes("silver") || fileLower.includes("tin") || fileLower.includes("copper") || fileLower.includes("iron") || fileLower.includes("brass") || fileLower.includes("metallic") || fileLower.includes("hardware") || fileLower.includes("jewelry")) return detectionResults.metal;
   if (fileLower.includes("paper") || fileLower.includes("newspaper") || fileLower.includes("sheet")) return detectionResults.paper;
   if (fileLower.includes("cardboard") || fileLower.includes("box") || fileLower.includes("package")) return detectionResults.cardboard;
   if (fileLower.includes("glass") || fileLower.includes("jar") || fileLower.includes("bottle_g")) return detectionResults.glass;

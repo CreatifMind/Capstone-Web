@@ -1128,7 +1128,7 @@ def canonical_category_key(value: str | None) -> str:
         return "glass"
     if "paper" in key:
         return "paper"
-    if "metal" in key or "aluminum" in key or "aluminium" in key or "can" in key:
+    if "metal" in key or "aluminum" in key or "aluminium" in key or "steel" in key or "can" in key or "watch" in key or "clock" in key or "silver" in key or "tin" in key or "copper" in key or "iron" in key or "brass" in key or "metallic" in key or "alloy" in key or "hardware" in key or "jewelry" in key:
         return "metal"
     if "plastic" in key or "bottle" in key or "pet" in key or "film" in key:
         return "plastic"
@@ -2282,7 +2282,7 @@ def material_category(name: str) -> str:
         return "cardboard"
     if "paper" in text:
         return "paper"
-    if "metal" in text or "aluminum" in text or "aluminium" in text or "can" in text:
+    if "metal" in text or "aluminum" in text or "aluminium" in text or "steel" in text or "can" in text or "watch" in text or "clock" in text or "silver" in text or "tin" in text or "copper" in text or "iron" in text or "brass" in text or "metallic" in text or "alloy" in text or "hardware" in text or "jewelry" in text:
         return "metal"
     if "plastic" in text or "bottle" in text or "pet" in text:
         return "plastic"
