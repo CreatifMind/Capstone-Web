@@ -123,7 +123,7 @@ os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
 from PIL import Image
 
-from backend.main import VideoTrackAggregator, _canonical_annotation_frame_map, _class_evidence_from_observations, _duplicate_evidence, _merge_two_tracks, _process_video_drive_file, _refine_detected_category, _scene_cut_signature, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, is_hard_video_scene_cut, merge_track_fragments, namespace_video_track_detections, reconcile_duplicate_tracked_objects, reset_video_tracker_state
+from backend.main import VideoTrackAggregator, _canonical_annotation_frame_map, _duplicate_evidence, _merge_two_tracks, _process_video_drive_file, _scene_cut_signature, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, is_hard_video_scene_cut, merge_track_fragments, namespace_video_track_detections, reconcile_duplicate_tracked_objects, reset_video_tracker_state
 from backend.deduplicate_tracked_video_results import build_report
 
 
@@ -429,32 +429,6 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(canonical, [track])
         self.assertEqual(report["output_count"], 1)
 
-    def test_refinement_does_not_rewrite_plastic_to_metal_or_invent_confidence(self):
-        import numpy as np
-
-        box = SimpleNamespace(cls=[0], conf=[0.42])
-        frame = np.full((100, 100, 3), 220, dtype=np.uint8)
-
-        class_id, material, confidence = _refine_detected_category(
-            box,
-            {0: "plastic", 3: "metal"},
-            frame=frame,
-            xyxy=[10, 10, 90, 90],
-        )
-
-        self.assertEqual(class_id, 0)
-        self.assertEqual(material, "plastic")
-        self.assertEqual(confidence, 0.42)
-
-    def test_refinement_preserves_raw_metal_class_and_confidence(self):
-        box = SimpleNamespace(cls=[3], conf=[0.71])
-
-        class_id, material, confidence = _refine_detected_category(box, {3: "metal"})
-
-        self.assertEqual(class_id, 3)
-        self.assertEqual(material, "metal")
-        self.assertEqual(confidence, 0.71)
-
     def test_duplicate_reconciliation_merges_occluded_track_id_change(self):
         first = self._track("upload-object-0001", 1, first=0, last=2, x=0.10)
         second = self._track("upload-object-0002", 7, first=5, last=7, x=0.13)
@@ -541,7 +515,7 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(canonical[0]["track_first_frame"], 0)
         self.assertEqual(canonical[0]["track_last_frame"], 7)
         self.assertEqual(canonical[0]["track_frame_count"], 6)
-        self.assertEqual(canonical[0]["track_debug"]["class_votes"]["plastic"], 1.6)
+        self.assertEqual(canonical[0]["track_debug"]["class_votes"]["plastic"], 4.8)
 
     def test_duplicate_reconciliation_verified_record_beats_confidence(self):
         verified = self._track("upload-object-0001", 1, confidence=0.7, first=0, last=2, x=0.10, verified=True)
@@ -769,94 +743,13 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(len(canonical), 1)
         self.assertTrue(report["confirmed_groups"][0]["evidence"][0]["partial_fragment_supported"])
 
-    def test_physical_reconciliation_rejects_far_partial_bridge_without_appearance(self):
-        partial = self._track("upload-object-0001", 1, first=0, last=8, x=0.02)
-        far = self._track("upload-object-0002", 2, first=10, last=18, x=0.90)
-        partial.update({"track_avg_width": 0.04, "track_avg_height": 0.08, "track_avg_aspect_ratio": 0.5, "best_bbox_norm": [0.0, 0.1, 0.04, 0.18]})
-        far.update({"track_avg_width": 0.10, "track_avg_height": 0.10, "track_avg_aspect_ratio": 1.0, "best_bbox_norm": [0.90, 0.1, 1.0, 0.2]})
-
-        canonical, report = reconcile_duplicate_tracked_objects([partial, far], "upload")
-
-        self.assertEqual(len(canonical), 2)
-        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "fragment bridge lacks spatial continuity")
-
-    def test_physical_reconciliation_rejects_partial_bridge_without_size_support(self):
-        broad = self._track("upload-object-0001", 1, first=0, last=8, x=0.30)
-        small = self._track("upload-object-0002", 2, first=12, last=20, x=0.60)
-        broad.update({"track_avg_width": 0.70, "track_avg_height": 0.30, "track_avg_aspect_ratio": 2.33, "best_bbox_norm": [0.0, 0.60, 0.70, 0.90]})
-        small.update({"track_avg_width": 0.10, "track_avg_height": 0.10, "track_avg_aspect_ratio": 1.0, "best_bbox_norm": [0.55, 0.60, 0.65, 0.70]})
-
-        canonical, report = reconcile_duplicate_tracked_objects([broad, small], "upload")
-
-        self.assertEqual(len(canonical), 2)
-        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "partial fragment bridge lacks size support")
-
-    def test_transitive_spatial_bridge_does_not_collapse_group(self):
-        first = self._track("upload-object-0001", 1, first=0, last=8, x=0.10)
-        bridge = self._track("upload-object-0002", 2, first=10, last=18, x=0.25)
-        last = self._track("upload-object-0003", 3, first=20, last=28, x=0.40)
-
-        canonical, report = reconcile_duplicate_tracked_objects([first, bridge, last], "upload")
-
-        self.assertEqual(len(canonical), 2)
-        self.assertTrue(report["cluster_split_events"])
-
-    def test_logical_merge_rejects_near_full_frame_fragment(self):
-        object_track = self._track("upload-object-0001", 1, first=0, last=20, x=0.30)
-        full_frame = self._track("upload-object-0002", 2, first=22, last=24, x=0.30)
-        full_frame["best_bbox_norm"] = [0.0, 0.0, 1.0, 1.0]
-        for observation in full_frame["track_debug"]["frame_observations"]:
-            observation["bbox"] = [0.0, 0.0, 1.0, 1.0]
-
-        merged = merge_track_fragments([object_track, full_frame], "upload")
-
-        self.assertEqual(len(merged), 2)
-
-    def test_logical_merge_rejects_partial_broad_fragment(self):
-        object_track = self._track("upload-object-0001", 1, first=0, last=20, x=0.45)
-        broad_fragment = self._track("upload-object-0002", 2, first=35, last=40, x=0.45)
-        broad_fragment["best_bbox_norm"] = [0.0, 0.35, 1.0, 0.95]
-        broad_fragment.update({
-            "track_avg_width": 0.95,
-            "track_avg_height": 0.55,
-            "track_avg_aspect_ratio": 1.73,
-            "track_start_center": {"x": 0.5, "y": 0.65},
-            "track_end_center": {"x": 0.5, "y": 0.65},
-        })
-        for observation in broad_fragment["track_debug"]["frame_observations"]:
-            observation["bbox"] = [0.0, 0.35, 1.0, 0.95]
-
-        merged = merge_track_fragments([object_track, broad_fragment], "upload")
-
-        self.assertEqual(len(merged), 2)
-
-    def test_recovery_does_not_attach_near_full_frame_detection(self):
-        aggregator = VideoTrackAggregator("upload-near-full-recovery", min_frames=1, lost_buffer=5)
-        aggregator.observe(0, 0.0, [detection(1, "plastic", 0.70, 0.30, 0.30, 0.50, 0.50)])
-        aggregator.observe(2, 0.2, [detection(None, "plastic", 0.80, 0.0, 0.0, 1.0, 1.0)])
-        results = aggregator.finish(10)
-
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["source_track_ids"], ["1"])
-
-    def test_recovery_does_not_attach_to_prior_broad_edge_track(self):
-        aggregator = VideoTrackAggregator("upload-broad-recovery", min_frames=1, lost_buffer=10)
-        for frame in range(3):
-            aggregator.observe(frame, frame / 10, [detection(1, "plastic", 0.70, 0.20, 0.65, 0.95, 1.0)])
-        aggregator.observe(5, 0.5, [detection(2, "plastic", 0.80, 0.30, 0.60, 0.60, 0.90)])
-        results = aggregator.finish(20)
-
-        self.assertEqual(len(results), 2)
-        self.assertEqual([item["source_track_ids"] for item in results], [["1"], ["2"]])
-
-    def test_known_video_fixture_splits_unsupported_partial_bridge(self):
+    def test_known_video_fixture_returns_exact_five_physical_groups(self):
         fixture_path = Path(__file__).parent / "fixtures" / "video_reconciliation" / "aa894e58_tracks.json"
         tracks = json.loads(fixture_path.read_text(encoding="utf-8"))["tracks"]
         expected = sorted([
             ["object-0001", "object-0003", "object-0005"],
             ["object-0002"],
-            ["object-0004"],
-            ["object-0006", "object-0009"],
+            ["object-0004", "object-0006", "object-0009"],
             ["object-0008", "object-0010"],
             ["object-0007", "object-0011"],
         ])
@@ -871,7 +764,7 @@ class VideoTrackAggregationTests(unittest.TestCase):
         reversed_canonical, _ = reconcile_duplicate_tracked_objects(list(reversed(tracks)), "fixture", dry_run=True)
 
         self.assertEqual(report["input_count"], 11)
-        self.assertEqual(report["output_count"], 6)
+        self.assertEqual(report["output_count"], 5)
         self.assertEqual(groups(canonical), expected)
         self.assertEqual(groups(reversed_canonical), expected)
 
@@ -1115,22 +1008,6 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(selected["source_frame_index"], 25)
         self.assertEqual(selected["category"], "cardboard")
 
-    def test_single_high_confidence_outlier_does_not_dominate_class(self):
-        aggregator = VideoTrackAggregator("upload-class-confidence-peak", min_frames=1, lost_buffer=10)
-        observations = [
-            detection(2, "metal", 0.8346, 0.1, 0.1, 0.2, 0.2),
-            detection(2, "plastic", 0.55, 0.1, 0.1, 0.2, 0.2),
-            detection(2, "plastic", 0.51, 0.1, 0.1, 0.2, 0.2),
-            detection(2, "plastic", 0.48, 0.1, 0.1, 0.2, 0.2),
-            detection(2, "plastic", 0.46, 0.1, 0.1, 0.2, 0.2),
-        ]
-        for frame, item in enumerate(observations):
-            aggregator.observe(frame, frame / 10, [item])
-        results = aggregator.finish(20)
-
-        self.assertEqual(results[0]["category"], "plastic")
-        self.assertEqual(results[0]["confidence"], 0.55)
-
     def test_canonical_confidence_comes_from_winning_class(self):
         aggregator = VideoTrackAggregator("upload-class-confidence", min_frames=1, lost_buffer=10)
         observations = [
@@ -1146,48 +1023,6 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(results[0]["category"], "plastic")
         self.assertEqual(results[0]["confidence"], 0.75)
         self.assertEqual(results[0]["track_debug"]["raw_max_confidence"], 0.83)
-
-    def test_short_strong_run_beats_long_weak_run(self):
-        aggregator = VideoTrackAggregator("upload-bounded-class-evidence", min_frames=1, lost_buffer=100)
-        for frame in range(40):
-            aggregator.observe(frame, frame / 10, [detection(2, "plastic", 0.40, 0.1, 0.1, 0.2, 0.2)])
-        for frame in range(40, 45):
-            aggregator.observe(frame, frame / 10, [detection(2, "metal", 0.85, 0.1, 0.1, 0.2, 0.2)])
-
-        results = aggregator.finish(100)
-
-        self.assertEqual(results[0]["category"], "metal")
-        self.assertEqual(results[0]["confidence"], 0.85)
-        self.assertGreater(results[0]["track_debug"]["class_evidence"]["scores"]["metal"], results[0]["track_debug"]["class_evidence"]["scores"]["plastic"])
-
-    def test_fragment_balancing_limits_one_long_weak_fragment(self):
-        observations = []
-        for frame in range(40):
-            observations.append({"frame": frame, "track_id": "1", "category": "plastic", "confidence": 0.45})
-        for track_id, start in (("2", 50), ("3", 70)):
-            for frame in range(start, start + 3):
-                observations.append({"frame": frame, "track_id": track_id, "category": "metal", "confidence": 0.82})
-
-        evidence = _class_evidence_from_observations(observations)
-
-        self.assertEqual(evidence["winner"], "metal")
-        self.assertAlmostEqual(evidence["scores"]["plastic"], 0.45, places=4)
-        self.assertAlmostEqual(evidence["scores"]["metal"], 1.64, places=4)
-
-    def test_near_tied_class_evidence_sets_ambiguity_flag(self):
-        observations = [
-            {"frame": frame, "track_id": "1", "category": "plastic", "confidence": 0.60}
-            for frame in range(3)
-        ] + [
-            {"frame": frame + 3, "track_id": "1", "category": "metal", "confidence": 0.58}
-            for frame in range(3)
-        ]
-
-        evidence = _class_evidence_from_observations(observations)
-
-        self.assertEqual(evidence["winner"], "plastic")
-        self.assertTrue(evidence["class_ambiguous"])
-        self.assertEqual(evidence["runner_up"], "metal")
 
     def test_merged_canonical_confidence_comes_from_winning_class(self):
         first = self._track("upload-object-0001", 2, "metal", confidence=0.83, first=0, last=0)
