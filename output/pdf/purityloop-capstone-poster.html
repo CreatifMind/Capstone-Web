@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PurityLoop AI Capstone Poster</title>
+  <!--
+  THESIS: PurityLoop turns messy waste inspection into a verified recovery workspace; it refuses the generic academic tile poster by making the product interface the main evidence.
+  OWN-WORLD: Dark dashboard surface, emerald control language, pale operational cards, crisp white screenshots, and compact exhibition typography.
+  STORY: Evaluators see the waste problem, the human-in-the-loop solution, the working web app, the model results, the stack, limits, users, and next actions in one scan.
+  FIRST VIEWPORT: Brand and institutional strip at top, problem path at left, screenshot command center in the middle, metrics and people at right, lifecycle and tools across the bottom.
+  FORM: PaveX-inspired landscape infographic, adapted to the existing PurityLoop dashboard language, built as one printable 16:9 artifact.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <style>
+    @page { size: 16.6667in 9.375in; margin: 0; }
+    * { box-sizing: border-box; }
+    html,
+    body {
+      width: 1600px;
+      height: 900px;
+      margin: 0;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #eefcf5;
+      background: #06140f;
+    }
+    body {
+      display: grid;
+      place-items: center;
+    }
+    .poster {
+      position: relative;
+      width: 1600px;
+      height: 900px;
+      padding: 26px 30px 24px;
+      background:
+        radial-gradient(circle at 22% 8%, rgba(14, 206, 154, 0.28), transparent 260px),
+        radial-gradient(circle at 74% 52%, rgba(56, 189, 248, 0.15), transparent 310px),
+        linear-gradient(135deg, #071b14 0%, #03100c 42%, #081914 100%);
+      overflow: hidden;
+    }
+    .poster::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 12% 22%, rgba(53, 255, 183, 0.08), transparent 190px),
+        radial-gradient(circle at 82% 76%, rgba(50, 214, 167, 0.07), transparent 210px);
+      pointer-events: none;
+    }
+    .poster::after {
+      content: "";
+      position: absolute;
+      inset: 16px;
+      border: 1px solid rgba(66, 255, 189, 0.34);
+      border-radius: 20px;
+      pointer-events: none;
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      height: 100%;
+      grid-template-rows: 82px 1fr 96px;
+      gap: 16px;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: 390px 1fr 372px;
+      align-items: center;
+      gap: 18px;
+      padding: 10px 18px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(238, 255, 247, 0.96), rgba(211, 244, 228, 0.94));
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+      color: #10271f;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+    .brand-logo {
+      width: 64px;
+      height: 50px;
+      object-fit: contain;
+      object-position: center;
+    }
+    .brand-name {
+      font-size: 25px;
+      line-height: 1;
+      margin: 0 0 4px;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+    }
+    .brand-sub {
+      margin: 0;
+      font-size: 11.3px;
+      line-height: 1.25;
+      color: #456357;
+      font-weight: 650;
+    }
+    .title {
+      text-align: center;
+    }
+    .title .overline {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #0b8f68;
+    }
+    .title h1 {
+      margin: 0;
+      font-size: 25px;
+      line-height: 1.05;
+      letter-spacing: -0.035em;
+      color: #11281f;
+    }
+    .title p { display: none; }
+    .school-logo {
+      justify-self: end;
+      width: 332px;
+      max-height: 58px;
+      object-fit: contain;
+      object-position: center;
+      padding: 4px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.42);
+    }
+    .main-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 330px 1fr 338px;
+      gap: 18px;
+    }
+    .col {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+      min-height: 0;
+    }
+    .left-col {
+      grid-template-rows: 124px 142px 142px 1fr;
+    }
+    .center-col {
+      grid-template-rows: 354px 1fr;
+    }
+    .right-col {
+      grid-template-rows: 220px 160px 1fr;
+    }
+    .panel {
+      position: relative;
+      border: 1px solid rgba(65, 255, 187, 0.44);
+      border-radius: 17px;
+      background: linear-gradient(145deg, rgba(226, 255, 242, 0.095), rgba(2, 22, 17, 0.72));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 18px 36px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    .panel.light {
+      background: linear-gradient(145deg, rgba(239, 255, 247, 0.98), rgba(213, 242, 229, 0.96));
+      color: #13281f;
+      border-color: rgba(162, 216, 188, 0.95);
+      box-shadow: 0 18px 38px rgba(0, 0, 0, 0.25);
+    }
+    .panel.pad { padding: 16px; }
+    .panel-title {
+      margin: 0 0 12px;
+      font-size: 16.5px;
+      line-height: 1.1;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+    .panel-title.small-margin { margin-bottom: 8px; }
+    .panel-text {
+      margin: 0;
+      color: #a7c6bb;
+      font-size: 11.2px;
+      line-height: 1.28;
+      font-weight: 560;
+    }
+    .light .panel-text { color: #4d655a; }
+    .hero-copy h2 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+      max-width: 280px;
+    }
+    .hero-copy .accent { color: #28f0a7; }
+    .hero-copy p {
+      margin: 0;
+      max-width: 260px;
+      color: #a8c7bb;
+      font-size: 11.8px;
+      line-height: 1.25;
+      font-weight: 600;
+    }
+    .visual-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      height: calc(100% - 28px);
+    }
+    .visual-tile {
+      display: grid;
+      grid-template-rows: 58px auto;
+      place-items: center;
+      gap: 6px;
+      padding: 8px 6px;
+      border: 1px solid rgba(65, 255, 187, 0.28);
+      border-radius: 12px;
+      background: rgba(235, 255, 245, 0.07);
+      color: #eafff6;
+      font-size: 10.2px;
+      line-height: 1.05;
+      font-weight: 820;
+      text-align: center;
+    }
+    .visual-tile img {
+      width: 58px;
+      height: 58px;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.25));
+    }
+    .visual-tile .symbol {
+      display: grid;
+      place-items: center;
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      color: #052018;
+      background: linear-gradient(135deg, #e9fff5, #29f0a6);
+      font-size: 18px;
+      font-weight: 950;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+    }
+    .visual-tile.danger .symbol { background: linear-gradient(135deg, #fff2de, #f4a44d); }
+    .visual-tile.blue .symbol { background: linear-gradient(135deg, #e8f3ff, #62a5ff); }
+    .workflow {
+      display: grid;
+      grid-template-columns: 1fr 18px 1fr 18px 1fr;
+      align-items: center;
+      height: calc(100% - 28px);
+    }
+    .arrow {
+      color: #27f0a5;
+      font-size: 24px;
+      font-weight: 900;
+      text-align: center;
+    }
+    .limit-icons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      height: calc(100% - 28px);
+    }
+    .limit-chip {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 6px;
+      align-items: center;
+      padding: 5px 7px;
+      border-radius: 12px;
+      border: 1px solid rgba(65, 255, 187, 0.24);
+      background: rgba(3, 38, 29, 0.76);
+      color: #eafff6;
+      font-size: 9.2px;
+      line-height: 1.08;
+      font-weight: 800;
+    }
+    .limit-chip span:first-child {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 11px;
+      color: #052018;
+      background: #dffff1;
+      font-size: 15px;
+      font-weight: 950;
+    }
+    .mini-list {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mini-list li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 9px;
+      align-items: start;
+      font-size: 10.1px;
+      line-height: 1.22;
+      color: #c9e4d9;
+      font-weight: 620;
+    }
+    .mini-list strong {
+      display: block;
+      color: #f3fff9;
+      font-size: 11.5px;
+      margin-bottom: 2px;
+    }
+    .light .mini-list li { color: #415a50; }
+    .light .mini-list strong { color: #142820; }
+    .num {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: #e9fff5;
+      color: #087455;
+      font-size: 10px;
+      font-weight: 900;
+      box-shadow: 0 0 0 3px rgba(42, 240, 166, 0.18);
+    }
+    .tag-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .tag {
+      padding: 6px 9px;
+      border: 1px solid rgba(65, 255, 187, 0.35);
+      border-radius: 999px;
+      background: rgba(4, 44, 34, 0.72);
+      color: #d9fff1;
+      font-size: 10.2px;
+      line-height: 1;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      height: calc(100% - 30px);
+    }
+    .shot-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(67, 255, 188, 0.56);
+      border-radius: 12px;
+      background: #0b241c;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    .shot-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: left top;
+      display: block;
+      filter: saturate(0.98) contrast(1.02);
+    }
+    .shot-card .label {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      padding: 5px 8px;
+      border-radius: 8px;
+      background: rgba(2, 24, 18, 0.86);
+      border: 1px solid rgba(122, 255, 210, 0.35);
+      color: #ecfff7;
+      font-size: 10px;
+      font-weight: 820;
+    }
+    .diagram {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 12px;
+      height: calc(100% - 30px);
+    }
+    .flow {
+      display: grid;
+      gap: 10px;
+      align-content: center;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: 64px repeat(5, 1fr);
+      align-items: center;
+      gap: 7px;
+    }
+    .flow-head {
+      font-size: 11px;
+      font-weight: 900;
+      color: #27f0a5;
+    }
+    .flow-step {
+      min-height: 45px;
+      display: grid;
+      place-items: center;
+      padding: 7px 5px;
+      border-radius: 12px;
+      border: 1px solid rgba(86, 255, 197, 0.42);
+      background: rgba(226, 255, 242, 0.09);
+      color: #f1fff9;
+      text-align: center;
+      font-size: 9.5px;
+      line-height: 1.1;
+      font-weight: 780;
+    }
+    .flow-row.ai .flow-step { border-color: rgba(87, 162, 255, 0.6); }
+    .flow-row.app .flow-step { border-color: rgba(65, 255, 187, 0.56); }
+    .flow-row.analytics .flow-step { border-color: rgba(164, 128, 255, 0.64); }
+    .tool-cloud {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      align-content: center;
+    }
+    .tool {
+      min-height: 32px;
+      display: grid;
+      place-items: center;
+      padding: 6px 7px;
+      border-radius: 9px;
+      border: 1px solid rgba(65, 255, 187, 0.34);
+      background: rgba(5, 38, 30, 0.86);
+      color: #e8fff6;
+      font-size: 10px;
+      font-weight: 820;
+      text-align: center;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .metric {
+      min-height: 58px;
+      padding: 10px;
+      border: 1px solid rgba(27, 120, 82, 0.2);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+    .metric strong {
+      display: block;
+      color: #059d70;
+      font-size: 25px;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .metric span {
+      display: block;
+      margin-top: 4px;
+      color: #173026;
+      font-size: 10.2px;
+      line-height: 1.15;
+      font-weight: 760;
+    }
+    .bar-list {
+      display: none;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .bar-item {
+      display: grid;
+      grid-template-columns: 66px 1fr 34px;
+      gap: 8px;
+      align-items: center;
+      font-size: 10.5px;
+      color: #1e352b;
+      font-weight: 760;
+    }
+    .bar {
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(13, 77, 55, 0.14);
+      overflow: hidden;
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #32e69f, #1cc4bd);
+    }
+    .people {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      margin-top: 8px;
+    }
+    .people div {
+      color: #d9f7ec;
+      font-size: 11px;
+      line-height: 1.18;
+      font-weight: 680;
+    }
+    .supervisor {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border-radius: 10px;
+      background: rgba(231, 255, 244, 0.08);
+      color: #eefcf5;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(65, 255, 187, 0.28);
+    }
+    .audience-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .audience-card {
+      min-height: 42px;
+      padding: 8px 9px;
+      border-radius: 11px;
+      background: rgba(235, 255, 245, 0.08);
+      border: 1px solid rgba(99, 255, 204, 0.24);
+      color: #dbfff2;
+      font-size: 10px;
+      line-height: 1.15;
+      font-weight: 760;
+    }
+    .audience-card {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 8px;
+      place-items: center;
+      text-align: center;
+    }
+    .audience-card strong {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      background: rgba(233, 255, 245, 0.14);
+      color: #a8ffe0;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .bottom {
+      display: grid;
+      grid-template-columns: 260px 1fr 308px;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .footer-pill {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(238, 255, 247, 0.97), rgba(215, 246, 232, 0.94));
+      color: #142a21;
+      border: 1px solid rgba(160, 216, 188, 0.7);
+      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+      min-width: 0;
+    }
+    .footer-pill strong {
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .footer-pill span {
+      color: #45675a;
+      font-size: 10px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+    .footer-pill img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+    }
+    .model-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      min-width: 0;
+    }
+    .model-pill {
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 13px;
+      background: rgba(2, 28, 21, 0.84);
+      border: 1px solid rgba(65, 255, 187, 0.34);
+    }
+    .model-pill strong {
+      color: #edfff8;
+      font-size: 11px;
+    }
+    .model-pill span.icon {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      background: rgba(233, 255, 245, 0.12);
+      color: #29f0a6;
+      font-size: 16px;
+      font-weight: 950;
+    }
+    .model-pill span:not(.icon) {
+      display: none;
+    }
+    .future-list {
+      display: grid;
+      gap: 5px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .future-list li {
+      padding: 5px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(65, 255, 187, 0.18);
+      color: #e3fff3;
+      font-size: 9.4px;
+      line-height: 1.18;
+      font-weight: 720;
+    }
+    .future-line {
+      margin: 0;
+      color: #e3fff3;
+      font-size: 9.8px;
+      line-height: 1.18;
+      font-weight: 760;
+    }
+    .bottom .panel.pad { padding: 14px 16px; }
+    .muted-note {
+      color: #8fbaab;
+      font-size: 10.5px;
+      line-height: 1.2;
+      font-weight: 650;
+    }
+    .no-wrap { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <main class="poster" aria-label="PurityLoop AI capstone poster">
+    <div class="content">
+      <header class="topbar">
+        <div class="brand">
+          <img class="brand-logo" src="../../public/assets/bright_logo.png" alt="PurityLoop AI logo">
+          <div>
+            <p class="brand-name">PurityLoop AI</p>
+            <p class="brand-sub">Smart waste classification for cleaner recovery decisions</p>
+          </div>
+        </div>
+        <div class="title">
+          <span class="overline">Capstone Project 2026</span>
+          <h1>AI-powered waste classification with human review and analytics</h1>
+          <p>Detect waste items, verify uncertain results, and turn scan history into recovery actions.</p>
+        </div>
+        <img class="school-logo" src="file:///Users/thoochinfeng/Downloads/sbs.webp" alt="Sunway University and Sunway Business School logo">
+      </header>
+
+      <section class="main-grid">
+        <div class="col left-col">
+          <section class="panel pad hero-copy">
+            <h2>Mixed waste. <span class="accent">Verified recovery.</span></h2>
+            <p>Browser detection, backend video processing, review control, and analytics in one operational workspace.</p>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title">Problem + Objective</h3>
+            <div class="visual-row">
+              <div class="visual-tile danger"><span class="symbol">?</span><span>Uncertain labels</span></div>
+              <div class="visual-tile"><img src="../../public/assets/items/cardboard.png" alt="Cardboard waste"><span>Mixed waste</span></div>
+              <div class="visual-tile blue"><span class="symbol">KPI</span><span>Verified records</span></div>
+            </div>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title">Solution</h3>
+            <div class="workflow">
+              <div class="visual-tile"><span class="symbol">AI</span><span>Detect</span></div>
+              <div class="arrow">></div>
+              <div class="visual-tile"><span class="symbol">OK</span><span>Review</span></div>
+              <div class="arrow">></div>
+              <div class="visual-tile"><span class="symbol">DB</span><span>Record</span></div>
+            </div>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title small-margin">Limitations</h3>
+            <div class="limit-icons">
+              <div class="limit-chip"><span>L</span><span>Lighting variance</span></div>
+              <div class="limit-chip"><span>O</span><span>Occluded waste</span></div>
+              <div class="limit-chip"><span>M</span><span>Mixed materials</span></div>
+              <div class="limit-chip"><span>D</span><span>Dataset drift</span></div>
+              <div class="limit-chip"><span>R</span><span>Review workload</span></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col center-col">
+          <section class="panel pad">
+            <h3 class="panel-title">Web Interface + Dashboard Evidence</h3>
+            <div class="screenshot-grid">
+              <figure class="shot-card">
+                <img src="file:///Users/thoochinfeng/Documents/PurityLoop%20AI/PurityLoop-Trailer/visuals/Current_Website_Screenshots/Upload_Camera_Capture.png" alt="Upload workspace screenshot">
+                <figcaption class="label">Upload</figcaption>
+              </figure>
+              <figure class="shot-card">
+                <img src="file:///Users/thoochinfeng/Documents/PurityLoop%20AI/PurityLoop-Trailer/visuals/Current_Website_Screenshots/Review_Workspace.png" alt="Review workspace screenshot">
+                <figcaption class="label">Review</figcaption>
+              </figure>
+              <figure class="shot-card">
+                <img src="file:///Users/thoochinfeng/Documents/PurityLoop%20AI/PurityLoop-Trailer/visuals/Current_Website_Screenshots/Analytics_Dashboard.png" alt="Analytics dashboard screenshot">
+                <figcaption class="label">Analytics</figcaption>
+              </figure>
+              <figure class="shot-card">
+                <img src="file:///Users/thoochinfeng/Documents/PurityLoop%20AI/PurityLoop-Trailer/visuals/Current_Website_Screenshots/Development%20Workspace.png" alt="Development workspace screenshot">
+                <figcaption class="label">Development</figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title">Project Lifecycle + Tool Integration</h3>
+            <div class="diagram">
+              <div class="flow" aria-label="Redrawn project lifecycle">
+                <div class="flow-row ai">
+                  <div class="flow-head">AI model</div>
+                  <div class="flow-step">Business understanding</div>
+                  <div class="flow-step">Data preparation</div>
+                  <div class="flow-step">Modelling</div>
+                  <div class="flow-step">Evaluation</div>
+                  <div class="flow-step">Deployment</div>
+                </div>
+                <div class="flow-row app">
+                  <div class="flow-head">Web app</div>
+                  <div class="flow-step">Requirements</div>
+                  <div class="flow-step">System design</div>
+                  <div class="flow-step">Prototype</div>
+                  <div class="flow-step">User review</div>
+                  <div class="flow-step">Refinement</div>
+                </div>
+                <div class="flow-row analytics">
+                  <div class="flow-head">Analytics</div>
+                  <div class="flow-step">Scan records</div>
+                  <div class="flow-step">Material rows</div>
+                  <div class="flow-step">KPIs</div>
+                  <div class="flow-step">Insights</div>
+                  <div class="flow-step">Actions</div>
+                </div>
+                <p class="muted-note">Redrawn from the provided lifecycle so it fits the dark poster system.</p>
+              </div>
+              <div class="tool-cloud" aria-label="Technology stack">
+                <div class="tool">Next.js</div>
+                <div class="tool">TypeScript</div>
+                <div class="tool">FastAPI</div>
+                <div class="tool">Python</div>
+                <div class="tool">Supabase</div>
+                <div class="tool">Vercel</div>
+                <div class="tool">Cloud Run</div>
+                <div class="tool">Cloud Tasks</div>
+                <div class="tool">Google Drive</div>
+                <div class="tool">ONNX Runtime</div>
+                <div class="tool">YOLOv8m-seg</div>
+                <div class="tool">Browser AI</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col right-col">
+          <section class="panel light pad">
+            <h3 class="panel-title">Key Metrics / Results</h3>
+            <div class="metric-grid">
+              <div class="metric"><strong>77.2%</strong><span>Overall mAP, 9-class mean box mAP@0.5</span></div>
+              <div class="metric"><strong>81.3%</strong><span>Peak baseline, single-model benchmark</span></div>
+              <div class="metric"><strong>90.6%</strong><span>Naming accuracy, detected-item label check</span></div>
+              <div class="metric"><strong>182k+</strong><span>Generalisation image corpus</span></div>
+            </div>
+            <div class="bar-list">
+              <div class="bar-item"><span>Battery</span><div class="bar"><span style="width:99%"></span></div><span>99%</span></div>
+              <div class="bar-item"><span>Textile</span><div class="bar"><span style="width:98%"></span></div><span>98%</span></div>
+              <div class="bar-item"><span>Glass</span><div class="bar"><span style="width:85%"></span></div><span>85%</span></div>
+              <div class="bar-item"><span>Metal</span><div class="bar"><span style="width:82%"></span></div><span>82%</span></div>
+            </div>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title">Target Audience</h3>
+            <div class="audience-grid">
+              <div class="audience-card"><strong>FM</strong><span>Facility managers</span></div>
+              <div class="audience-card"><strong>CS</strong><span>Campus teams</span></div>
+              <div class="audience-card"><strong>WO</strong><span>Waste operators</span></div>
+              <div class="audience-card"><strong>PR</strong><span>Project reviewers</span></div>
+            </div>
+          </section>
+
+          <section class="panel pad">
+            <h3 class="panel-title">Group Members</h3>
+            <div class="people">
+              <div>Chris Wong Lihong</div>
+              <div>Kong Jia Lung</div>
+              <div>Ong Jia Xin</div>
+              <div>Georgene Wee Ee Jern</div>
+              <div>Talvin Lee Gen Wei</div>
+              <div>Thoo Chin Feng</div>
+            </div>
+            <div class="supervisor">Supervisor: Dr Narishah<br>University: Sunway University</div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="bottom">
+        <div class="footer-pill">
+          <img src="../../public/assets/items/plastic-bottle.png" alt="Plastic bottle">
+          <strong>Model Framework</strong>
+          <span>YOLOv8m-seg<br>ONNX</span>
+        </div>
+        <div class="model-strip">
+          <div class="model-pill"><span class="icon">UP</span><strong>Upload</strong><span>Images, camera capture, video, ZIP batches</span></div>
+          <div class="model-pill"><span class="icon">AI</span><strong>Detect</strong><span>YOLO + ONNX</span></div>
+          <div class="model-pill"><span class="icon">OK</span><strong>Review</strong><span>Human validation</span></div>
+          <div class="model-pill"><span class="icon">KP</span><strong>Analytics</strong><span>Object KPIs</span></div>
+          <div class="model-pill"><span class="icon">AD</span><strong>Admin</strong><span>Access control</span></div>
+        </div>
+        <div class="panel pad">
+          <h3 class="panel-title small-margin">Future Actions</h3>
+          <p class="future-line">More data coverage. Better retraining. Robotic sorting integration.</p>
+        </div>
+      </footer>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { CLASS_CONFIDENCE_THRESHOLDS, MODEL_CONFIG } from "./model-config";
+import { MODEL_CONFIG } from "./model-config";
 import { classAwareNms } from "./nms";
 import type { LetterboxInfo, Detection, PostprocessResult } from "./types";
 
@@ -21,19 +21,15 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
   const candidates: Detection[] = [];
   for (let candidate = 0; candidate < CANDIDATE_COUNT; candidate += 1) {
     let classId = 0;
-    const rawVal0 = output[(4 * CANDIDATE_COUNT) + candidate];
-    let confidence = rawVal0 > 1.0 || rawVal0 < 0.0 ? 1 / (1 + Math.exp(-rawVal0)) : rawVal0;
+    let confidence = output[(4 * CANDIDATE_COUNT) + candidate];
     for (let classIndex = 1; classIndex < MODEL_CONFIG.classes.length; classIndex += 1) {
-      const rawVal = output[((4 + classIndex) * CANDIDATE_COUNT) + candidate];
-      const score = rawVal > 1.0 || rawVal < 0.0 ? 1 / (1 + Math.exp(-rawVal)) : rawVal;
+      const score = output[((4 + classIndex) * CANDIDATE_COUNT) + candidate];
       if (score > confidence) {
         confidence = score;
         classId = classIndex;
       }
     }
-    const className = MODEL_CONFIG.classes[classId];
-    const minThreshold = CLASS_CONFIDENCE_THRESHOLDS[className] ?? MODEL_CONFIG.confidenceThreshold;
-    if (!Number.isFinite(confidence) || confidence < minThreshold) continue;
+    if (!Number.isFinite(confidence) || confidence < MODEL_CONFIG.confidenceThreshold) continue;
 
     const centerX = output[candidate];
     const centerY = output[CANDIDATE_COUNT + candidate];
@@ -41,17 +37,7 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
     const height = output[(3 * CANDIDATE_COUNT) + candidate];
     const box = restoreBox(centerX, centerY, width, height, letterbox);
     if (!box) continue;
-
-    const boxW = box.x2 - box.x1;
-    const boxH = box.y2 - box.y1;
-    const area = boxW * boxH;
-    const totalArea = letterbox.originalWidth * letterbox.originalHeight;
-    if (totalArea > 0 && area < totalArea * 0.012) continue;
-    if (boxW < 24 || boxH < 24) continue;
-    const aspect = Math.max(boxW / Math.max(boxH, 1), boxH / Math.max(boxW, 1));
-    if (aspect > 6.0) continue;
-
-    candidates.push({ classId, className, confidence, ...box });
+    candidates.push({ classId, className: MODEL_CONFIG.classes[classId], confidence, ...box });
   }
 
   const reviewDetections = classAwareNms(candidates, MODEL_CONFIG.nmsIouThreshold);
