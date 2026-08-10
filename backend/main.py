@@ -4412,10 +4412,21 @@ def _refine_detected_category(box, names: dict, frame=None, xyxy=None) -> tuple[
                     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
                     sat = float(hsv[:, :, 1].mean())
                     val = float(hsv[:, :, 2].mean())
-                    is_metallic_hue = sat < 70 and val > 105
-                    box_aspect = (x2 - x1) / max(y2 - y1, 1)
-                    if class_id == 0 and is_metallic_hue and 0.3 <= box_aspect <= 3.5:
-                        return 3, "metal", max(confidence, 0.85)
+                    box_w = x2 - x1
+                    box_h = y2 - y1
+                    box_aspect = box_w / max(box_h, 1)
+
+                    # 1. Metallic Object (Watch, Metallic band, Can):
+                    if class_id == 0 and sat < 95 and val > 80 and 0.25 <= box_aspect <= 4.0:
+                        return 3, "metal", max(confidence, 0.86)
+
+                    # 2. Cylindrical Paper / Tissue Roll:
+                    if class_id == 0 and sat < 50 and val > 150 and 0.7 <= box_aspect <= 1.4:
+                        return 1, "paper", max(confidence, 0.82)
+
+                    # 3. Handheld Electronics / Gameboy Console:
+                    if class_id == 0 and val < 130 and 0.4 <= box_aspect <= 0.9:
+                        return 8, "general_trash", max(confidence, 0.80)
         except Exception:
             pass
 
