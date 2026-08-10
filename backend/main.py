@@ -805,6 +805,7 @@ class VideoTrackState:
     first_timestamp: float = 0.0
     last_timestamp: float = 0.0
     class_votes: dict[str, float] = field(default_factory=dict)
+    class_max_conf: dict[str, float] = field(default_factory=dict)
     class_names: dict[str, str] = field(default_factory=dict)
     confidences: list[float] = field(default_factory=list)
     observations: list[dict] = field(default_factory=list)
@@ -907,7 +908,8 @@ class VideoTrackAggregator:
             state.segment_ids.add(str(segment_id))
         state.last_frame = frame_index
         state.last_timestamp = timestamp
-        state.class_votes[category] = state.class_votes.get(category, 0.0) + confidence
+        state.class_votes[category] = state.class_votes.get(category, 0.0) + (confidence ** 3.0)
+        state.class_max_conf[category] = max(state.class_max_conf.get(category, 0.0), confidence)
         state.class_names.setdefault(category, str(detection.get("material_name") or category))
         state.confidences.append(confidence)
         center = _bbox_center(box)
@@ -1031,12 +1033,30 @@ class VideoTrackAggregator:
             return
         state.counted = True
 
+def determine_canonical_category(
+    class_votes: dict[str, float],
+    class_max_conf: dict[str, float] | None = None,
+    fallback: str = "unknown"
+) -> str:
+    if not class_votes:
+        return fallback
+    class_max_conf = class_max_conf or {}
+    sorted_peaks = sorted(class_max_conf.items(), key=lambda item: item[1], reverse=True)
+    if sorted_peaks and sorted_peaks[0][1] >= 0.70:
+        top_category, top_peak = sorted_peaks[0]
+        second_peak = sorted_peaks[1][1] if len(sorted_peaks) > 1 else 0.0
+        if top_peak - second_peak >= 0.15:
+            return top_category
+
+    return max(class_votes, key=class_votes.get, default=fallback)
+
+
     def _finalize(self, state: VideoTrackState) -> dict | None:
         frame_count = len(state.observations)
         raw_max_confidence = max(state.confidences or [0.0])
         if frame_count < self.min_frames and raw_max_confidence < self.short_track_confidence:
             return None
-        final_category = max(state.class_votes, key=state.class_votes.get, default="unknown")
+        final_category = determine_canonical_category(state.class_votes, state.class_max_conf, fallback="unknown")
         class_confidence = _class_confidence_for_observations(state.observations, final_category, raw_max_confidence)
         avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
         recyclable_status, contaminant_status = material_status(final_category)
@@ -5371,6 +5391,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     merged_scene_path = []
     appearance_fingerprints = []
     class_votes: dict[str, float] = {}
+    class_max_conf: dict[str, float] = {}
     source_track_ids = []
     segment_ids: set[str] = set()
     for track in tracks:
@@ -5383,6 +5404,15 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         appearance_fingerprints.extend(pl for pl in debug.get("appearance_fingerprints", []) if isinstance(pl, dict))
         for category, value in (debug.get("class_votes") or {}).items():
             class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
+        for category, max_val in (debug.get("class_max_conf") or {}).items():
+            class_max_conf[category] = max(class_max_conf.get(category, 0.0), _coerce_float(max_val))
+
+    for obs in merged_observations:
+        cat = str(obs.get("category") or "")
+        conf = _coerce_float(obs.get("confidence"))
+        if cat:
+            class_max_conf[cat] = max(class_max_conf.get(cat, 0.0), conf)
+
     source_track_ids = sorted(set(source_track_ids), key=str)
     first_frame = min(int(_coerce_float(track.get("track_first_frame"))) for track in tracks)
     last_frame = max(int(_coerce_float(track.get("track_last_frame"))) for track in tracks)
@@ -5401,7 +5431,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         _coerce_float((track.get("track_debug") or {}).get("raw_max_confidence") or track.get("track_max_confidence") or track.get("confidence"))
         for track in tracks
     )
-    weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
+    weighted_category = determine_canonical_category(class_votes, class_max_conf, fallback=primary.get("category") or "unknown")
     observation_confidences = [_coerce_float(item.get("confidence")) for item in deduplicated_observations.values()]
     class_confidence = _class_confidence_for_observations(list(deduplicated_observations.values()), weighted_category, raw_max_confidence)
     avg_confidence = (

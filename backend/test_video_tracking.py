@@ -1008,6 +1008,22 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(selected["source_frame_index"], 25)
         self.assertEqual(selected["category"], "cardboard")
 
+    def test_peak_confidence_dominant_class_wins(self):
+        aggregator = VideoTrackAggregator("upload-class-confidence-peak", min_frames=1, lost_buffer=10)
+        observations = [
+            detection(2, "metal", 0.8346, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.55, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.51, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.48, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.46, 0.1, 0.1, 0.2, 0.2),
+        ]
+        for frame, item in enumerate(observations):
+            aggregator.observe(frame, frame / 10, [item])
+        results = aggregator.finish(20)
+
+        self.assertEqual(results[0]["category"], "metal")
+        self.assertEqual(results[0]["confidence"], 0.8346)
+
     def test_canonical_confidence_comes_from_winning_class(self):
         aggregator = VideoTrackAggregator("upload-class-confidence", min_frames=1, lost_buffer=10)
         observations = [
