@@ -950,10 +950,11 @@ class VideoTrackAggregator:
 
     def _finalize(self, state: VideoTrackState) -> dict | None:
         frame_count = len(state.observations)
-        max_confidence = max(state.confidences or [0.0])
-        if frame_count < self.min_frames and max_confidence < self.short_track_confidence:
+        raw_max_confidence = max(state.confidences or [0.0])
+        if frame_count < self.min_frames and raw_max_confidence < self.short_track_confidence:
             return None
         final_category = max(state.class_votes, key=state.class_votes.get, default="unknown")
+        class_confidence = _class_confidence_for_observations(state.observations, final_category, raw_max_confidence)
         avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
         recyclable_status, contaminant_status = material_status(final_category)
         hazard_status = "hazard" if CATEGORY_CLASS_MAP.get(final_category) == "contaminant" else "clear"
@@ -980,9 +981,9 @@ class VideoTrackAggregator:
             "track_id": ",".join(sorted(state.raw_track_ids)) or stable_suffix,
             "material_name": state.class_names.get(final_category, final_category),
             "category": final_category,
-            "confidence": round(max_confidence, 4),
+            "confidence": round(class_confidence, 4),
             "track_avg_confidence": round(avg_confidence, 4),
-            "track_max_confidence": round(max_confidence, 4),
+            "track_max_confidence": round(class_confidence, 4),
             "track_first_frame": state.first_frame,
             "track_last_frame": state.last_frame,
             "track_first_timestamp": round(state.first_timestamp, 3),
@@ -1000,7 +1001,7 @@ class VideoTrackAggregator:
             "track_avg_aspect_ratio": round(sum(aspects) / len(aspects), 6) if aspects else 0,
             "recyclable_status": recyclable_status,
             "contaminant_status": contaminant_status,
-            **evaluate_material(final_category, max_confidence),
+            **evaluate_material(final_category, class_confidence),
             "bbox_x": round(_coerce_float(best_box.get("x")), 2),
             "bbox_y": round(_coerce_float(best_box.get("y")), 2),
             "bbox_width": round(_coerce_float(best_box.get("width")), 2),
@@ -1013,6 +1014,7 @@ class VideoTrackAggregator:
                 "frame_observations": state.observations,
                 "accepted_track_fragments": _track_frame_fragments(state.observations),
                 "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
+                "raw_max_confidence": round(raw_max_confidence, 4),
                 "raw_track_ids": sorted(state.raw_track_ids),
                 "appearance_fingerprints": state.appearance_fingerprints,
                 "stabilized_track_path": state.scene_path,
@@ -2679,6 +2681,17 @@ def _track_frame_fragments(observations: list[dict]) -> dict[str, list[dict]]:
     return fragments
 
 
+def _class_confidence_for_observations(observations: list[dict], category: str, fallback: float = 0.0) -> float:
+    matching = [
+        max(0.0, min(1.0, _coerce_float(item.get("confidence"))))
+        for item in observations or []
+        if material_category(item.get("category") or item.get("material_name")) == category
+    ]
+    if matching:
+        return max(matching)
+    return max(0.0, min(1.0, _coerce_float(fallback)))
+
+
 def _material_track_fragments(material: dict) -> dict[str, list[tuple[int, int]]]:
     debug = material.get("track_debug") if isinstance(material.get("track_debug"), dict) else {}
     raw_fragments = debug.get("accepted_track_fragments") if isinstance(debug, dict) else None
@@ -2792,6 +2805,78 @@ def _material_from_annotated_observation(material: dict, observation: dict) -> d
     if observation.get("mask") is not None:
         merged["segmentation_mask"] = observation.get("mask")
     return merged
+
+
+def _canonical_annotated_observation(material: dict, observation: dict) -> dict:
+    canonical = dict(observation)
+    category = material_category(material.get("category") or material.get("material_name"))
+    confidence = max(0.0, min(1.0, _coerce_float(material.get("confidence") or material.get("track_max_confidence") or 0)))
+    canonical.update({
+        "category": category,
+        "material_name": material.get("material_name") or category,
+        "confidence": round(confidence, 4),
+        "track_hazard_status": "hazard" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else "clear",
+    })
+    return canonical
+
+
+def _canonical_annotation_frame_map(
+    materials: list[dict],
+    observations_by_track: dict[str, list[dict]] | None,
+) -> dict[int, list[dict]]:
+    frame_map: dict[int, list[dict]] = {}
+    if not observations_by_track:
+        return frame_map
+    for material in materials or []:
+        for track_id in _track_id_values(material):
+            for observation in observations_by_track.get(str(track_id), []):
+                frame = int(_coerce_float(observation.get("source_frame_index", observation.get("frame")), -1))
+                if frame < 0 or not _frame_matches_material_track(material, str(track_id), frame):
+                    continue
+                canonical = _canonical_annotated_observation(material, observation)
+                frame_map.setdefault(frame, []).append(canonical)
+    return frame_map
+
+
+def _render_canonical_annotated_video(
+    source_video_path: str | Path,
+    output_path: str | Path,
+    materials: list[dict],
+    observations_by_track: dict[str, list[dict]] | None,
+    *,
+    fps: float,
+    width: int,
+    height: int,
+) -> int:
+    import cv2
+
+    frame_map = _canonical_annotation_frame_map(materials, observations_by_track)
+    capture = cv2.VideoCapture(str(source_video_path))
+    writer = None
+    frames_written = 0
+    try:
+        if not capture.isOpened():
+            raise VideoDecodeError("OpenCV could not reopen MP4 source for canonical annotation.")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+        if not writer.isOpened():
+            raise RuntimeError("OpenCV VideoWriter could not open canonical annotated MP4 output")
+        frame_index = 0
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            frame = _normalize_video_frame(frame, width, height)
+            detections = frame_map.get(frame_index, [])
+            output_frame = _annotate_video_frame(frame, detections) if detections else frame
+            writer.write(_normalize_video_frame(output_frame, width, height))
+            frames_written += 1
+            frame_index += 1
+    finally:
+        capture.release()
+        if writer is not None:
+            writer.release()
+    return frames_written
 
 
 def _extract_annotated_video_object_preview(video_path: str | Path | None, material: dict, observation: dict | None = None, raw_video_path: str | Path | None = None) -> tuple[bytes, dict] | None:
@@ -5198,9 +5283,13 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     }
     sorted_observations = sorted(deduplicated_observations.values(), key=lambda item: int(_coerce_float(item.get("frame"))))
     frame_count = len(deduplicated_observations)
-    max_confidence = max(_coerce_float(track.get("track_max_confidence") or track.get("confidence")) for track in tracks)
+    raw_max_confidence = max(
+        _coerce_float((track.get("track_debug") or {}).get("raw_max_confidence") or track.get("track_max_confidence") or track.get("confidence"))
+        for track in tracks
+    )
     weighted_category = max(class_votes, key=class_votes.get, default=primary.get("category") or "unknown")
     observation_confidences = [_coerce_float(item.get("confidence")) for item in deduplicated_observations.values()]
+    class_confidence = _class_confidence_for_observations(list(deduplicated_observations.values()), weighted_category, raw_max_confidence)
     avg_confidence = (
         sum(observation_confidences) / len(observation_confidences)
         if observation_confidences else _coerce_float(primary.get("track_avg_confidence"))
@@ -5222,9 +5311,9 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         "track_id": ",".join(source_track_ids),
         "category": weighted_category,
         "material_name": weighted_category,
-        "confidence": round(max_confidence, 4),
+        "confidence": round(class_confidence, 4),
         "track_avg_confidence": round(avg_confidence, 4),
-        "track_max_confidence": round(max_confidence, 4),
+        "track_max_confidence": round(class_confidence, 4),
         "track_first_frame": first_frame,
         "track_last_frame": last_frame,
         "track_first_timestamp": round(first_timestamp, 3),
@@ -5243,12 +5332,13 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
             "frame_observations": sorted_observations,
             "accepted_track_fragments": _track_frame_fragments(sorted_observations),
             "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
+            "raw_max_confidence": round(raw_max_confidence, 4),
             "raw_track_ids": source_track_ids,
             "stabilized_track_path": sorted_scene_path,
             "representative_quality": _bbox_quality(representative.get("best_bbox_norm")),
             "appearance_fingerprints": _bounded_representative_fingerprints(appearance_fingerprints),
         },
-        **evaluate_material(weighted_category, max_confidence),
+        **evaluate_material(weighted_category, class_confidence),
     }
     return merged
 
@@ -5369,7 +5459,8 @@ def _persist_tracked_video_objects(
             )
         if selected_observation and annotated_video_metadata and annotated_video_metadata.get("annotated_video_status") == "ready":
             try:
-                extracted = _extract_annotated_video_object_preview(annotated_video_path, public_material, selected_observation)
+                canonical_observation = _canonical_annotated_observation(public_material, selected_observation)
+                extracted = _extract_annotated_video_object_preview(annotated_video_path, public_material, canonical_observation)
                 if extracted:
                     preview_bytes, preview_metadata = extracted
             except Exception as exc:
@@ -5413,7 +5504,9 @@ def _persist_tracked_video_objects(
             raise RuntimeError(f"Tracked-object preview unavailable for final physical cluster {stable_object_id}.")
         if not isinstance(public_material.get("track_debug"), dict):
             public_material["track_debug"] = {}
-        public_material["track_debug"]["annotated_frame_observation"] = selected_observation
+        canonical_observation = _canonical_annotated_observation(public_material, selected_observation) if selected_observation else None
+        public_material["track_debug"]["raw_annotated_frame_observation"] = selected_observation
+        public_material["track_debug"]["annotated_frame_observation"] = canonical_observation
         public_material["track_debug"]["preview_bbox"] = preview_metadata
         public_material["track_debug"]["preview_annotation_status"] = preview_metadata.get("format", "unavailable")
         public_material["result_type"] = "video_track_object"
@@ -5588,38 +5681,15 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             aggregator.observe(frame_index, timestamp, detections)
             if annotated_video_metadata.get("annotated_video_status") != "failed":
                 try:
-                    if annotated_writer is None:
-                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                        annotated_writer = cv2.VideoWriter(str(annotated_tmp_path), fourcc, fps, (width, height))
-                        writer_opened = bool(annotated_writer.isOpened())
-                        _video_processing_log(
-                            "writer_opened",
-                            scan_id=scan_id,
-                            writer_path=annotated_tmp_path,
-                            codec="mp4v",
-                            fps=fps,
-                            width=width,
-                            height=height,
-                            is_opened=writer_opened,
-                        )
-                        if not writer_opened:
-                            raise RuntimeError("OpenCV VideoWriter could not open annotated MP4 output")
-                        annotated_video_metadata["annotated_video_status"] = "processing"
-                    output_frame = _annotate_video_frame(frame, detections) if detections else frame
-                    output_frame = _normalize_video_frame(output_frame, width, height)
-                    annotated_writer.write(output_frame)
-                    annotated_frames_written += 1
+                    annotated_video_metadata["annotated_video_status"] = "processing"
                     _record_annotated_frame_observations(annotated_observations_by_track, detections, frame_index, timestamp, width, height)
                 except Exception as exc:
                     annotated_video_metadata.update({
                         "annotated_video_status": "failed",
                         "annotated_video_error": safe_error_message(exc),
                     })
-                    _video_processing_log("annotation_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                    _video_processing_log("annotation_observation_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
                     traceback.print_exc()
-                    if annotated_writer is not None:
-                        annotated_writer.release()
-                        annotated_writer = None
             now = time.monotonic()
             if now - last_checkpoint_at >= 8:
                 summary = _video_tracking_summary(aggregator.finalized)
@@ -5635,18 +5705,40 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             annotated_writer.release()
             annotated_writer = None
         _video_processing_log(
-            "annotation_completed",
+            "annotation_observations_collected",
             scan_id=scan_id,
             annotated_status=annotated_video_metadata.get("annotated_video_status"),
-            annotated_frames_written=annotated_frames_written,
-            intermediate_path=annotated_tmp_path,
-            intermediate_exists=Path(annotated_tmp_path).exists() if annotated_tmp_path else False,
-            intermediate_size=Path(annotated_tmp_path).stat().st_size if annotated_tmp_path and Path(annotated_tmp_path).exists() else 0,
+            observation_tracks=len(annotated_observations_by_track),
+            observation_count=sum(len(items) for items in annotated_observations_by_track.values()),
         )
-        if annotated_tmp_path and annotated_video_metadata.get("annotated_video_status") != "failed":
+        aggregator.finish(frame_index)
+        raw_tracks = aggregator.finalized
+        logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
+        canonical_objects, duplicate_report = reconcile_duplicate_tracked_objects(logical_objects, str(job["id"]))
+        summary = _video_tracking_summary(canonical_objects)
+        if summary["total_unique_objects"] != len(canonical_objects):
+            raise RuntimeError("Final video summary count does not match physical cluster count.")
+        if annotated_video_metadata.get("annotated_video_status") != "failed":
             try:
+                annotated_frames_written = _render_canonical_annotated_video(
+                    tmp_path,
+                    annotated_tmp_path,
+                    canonical_objects,
+                    annotated_observations_by_track,
+                    fps=fps,
+                    width=width,
+                    height=height,
+                )
                 if annotated_frames_written <= 0:
-                    raise RuntimeError("Annotated writer did not write any frames.")
+                    raise RuntimeError("Canonical annotated writer did not write any frames.")
+                _video_processing_log(
+                    "canonical_annotation_completed",
+                    scan_id=scan_id,
+                    annotated_frames_written=annotated_frames_written,
+                    intermediate_path=annotated_tmp_path,
+                    intermediate_exists=Path(annotated_tmp_path).exists() if annotated_tmp_path else False,
+                    intermediate_size=Path(annotated_tmp_path).stat().st_size if annotated_tmp_path and Path(annotated_tmp_path).exists() else 0,
+                )
                 _encode_browser_mp4(annotated_tmp_path, encoded_tmp_path)
                 probe = _ffprobe_mp4(encoded_tmp_path)
                 storage_path = f"annotated-videos/{job['id']}/result.mp4"
@@ -5670,15 +5762,8 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                     "annotated_video_status": "failed",
                     "annotated_video_error": safe_error_message(exc),
                 })
-                _video_processing_log("annotated_mp4_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
+                _video_processing_log("canonical_annotated_mp4_failed", scan_id=scan_id, error_type=type(exc).__name__, error=safe_error_message(exc))
                 traceback.print_exc()
-        aggregator.finish(frame_index)
-        raw_tracks = aggregator.finalized
-        logical_objects = merge_track_fragments(raw_tracks, str(job["id"]))
-        canonical_objects, duplicate_report = reconcile_duplicate_tracked_objects(logical_objects, str(job["id"]))
-        summary = _video_tracking_summary(canonical_objects)
-        if summary["total_unique_objects"] != len(canonical_objects):
-            raise RuntimeError("Final video summary count does not match physical cluster count.")
         scan_ids = _persist_tracked_video_objects(
             tracked_objects=canonical_objects,
             source_name=name,

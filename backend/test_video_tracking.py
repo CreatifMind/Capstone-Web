@@ -123,7 +123,7 @@ os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
 from PIL import Image
 
-from backend.main import VideoTrackAggregator, _duplicate_evidence, _process_video_drive_file, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
+from backend.main import VideoTrackAggregator, _canonical_annotation_frame_map, _duplicate_evidence, _merge_two_tracks, _process_video_drive_file, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
 from backend.deduplicate_tracked_video_results import build_report
 
 
@@ -914,6 +914,125 @@ class VideoTrackAggregationTests(unittest.TestCase):
 
         self.assertEqual(selected["source_frame_index"], 25)
         self.assertEqual(selected["category"], "cardboard")
+
+    def test_canonical_confidence_comes_from_winning_class(self):
+        aggregator = VideoTrackAggregator("upload-class-confidence", min_frames=1, lost_buffer=10)
+        observations = [
+            detection(2, "metal", 0.83, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.60, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.70, 0.1, 0.1, 0.2, 0.2),
+            detection(2, "plastic", 0.75, 0.1, 0.1, 0.2, 0.2),
+        ]
+        for frame, item in enumerate(observations):
+            aggregator.observe(frame, frame / 10, [item])
+        results = aggregator.finish(20)
+
+        self.assertEqual(results[0]["category"], "plastic")
+        self.assertEqual(results[0]["confidence"], 0.75)
+        self.assertEqual(results[0]["track_debug"]["raw_max_confidence"], 0.83)
+
+    def test_merged_canonical_confidence_comes_from_winning_class(self):
+        first = self._track("upload-object-0001", 2, "metal", confidence=0.83, first=0, last=0)
+        second = self._track("upload-object-0002", 7, "plastic", confidence=0.75, first=1, last=3, x=0.11)
+        second["track_debug"]["class_votes"] = {"plastic": 2.05}
+        for obs in second["track_debug"]["frame_observations"]:
+            obs["category"] = "plastic"
+        canonical = _merge_two_tracks(first, second)
+
+        self.assertEqual(canonical["category"], "plastic")
+        self.assertEqual(canonical["confidence"], 0.75)
+
+    def test_canonical_annotation_uses_final_class_and_preserves_raw_bbox(self):
+        material = {
+            "track_id": "2",
+            "source_track_ids": ["2"],
+            "category": "plastic",
+            "confidence": 0.75,
+            "track_debug": {"accepted_track_fragments": {"2": [{"first_frame": 102, "last_frame": 102}]}},
+        }
+        observations = {
+            "2": [{
+                "track_id": "2",
+                "category": "metal",
+                "confidence": 0.8346,
+                "source_frame_index": 102,
+                "annotated_frame_index": 102,
+                "box_xyxy": [188, 398, 426, 477],
+                "bbox": [0.4, 0.48, 0.92, 0.57],
+                "frame_width": 464,
+                "frame_height": 832,
+            }]
+        }
+
+        frame_map = _canonical_annotation_frame_map([material], observations)
+        rendered = frame_map[102][0]
+
+        self.assertEqual(rendered["category"], "plastic")
+        self.assertEqual(rendered["confidence"], 0.75)
+        self.assertEqual(rendered["track_id"], "2")
+        self.assertEqual(rendered["box_xyxy"], [188, 398, 426, 477])
+        self.assertEqual(observations["2"][0]["category"], "metal")
+        self.assertEqual(observations["2"][0]["confidence"], 0.8346)
+
+    def test_canonical_annotation_preserves_fragment_mapping(self):
+        material = {
+            "track_id": "12,19",
+            "source_track_ids": ["12", "19"],
+            "category": "cardboard",
+            "confidence": 0.89,
+            "track_debug": {
+                "accepted_track_fragments": {
+                    "12": [{"first_frame": 20, "last_frame": 35}],
+                    "19": [{"first_frame": 70, "last_frame": 80}],
+                }
+            },
+        }
+        observations = {
+            "12": [
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 30, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "12", "category": "metal", "confidence": 0.96, "source_frame_index": 60, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+            ],
+            "19": [
+                {"track_id": "19", "category": "metal", "confidence": 0.96, "source_frame_index": 75, "box_xyxy": [3, 3, 10, 10], "frame_width": 20, "frame_height": 20}
+            ],
+        }
+
+        frame_map = _canonical_annotation_frame_map([material], observations)
+
+        self.assertIn(30, frame_map)
+        self.assertIn(75, frame_map)
+        self.assertNotIn(60, frame_map)
+        self.assertEqual(frame_map[30][0]["category"], "cardboard")
+        self.assertEqual(frame_map[75][0]["category"], "cardboard")
+
+    def test_multi_class_track_uses_one_canonical_annotation_class(self):
+        material = {
+            "track_id": "68",
+            "source_track_ids": ["68"],
+            "category": "general_trash",
+            "confidence": 0.40,
+            "track_debug": {"accepted_track_fragments": {"68": [{"first_frame": 1, "last_frame": 3}]}},
+        }
+        observations = {
+            "68": [
+                {"track_id": "68", "category": "plastic", "confidence": 0.43, "source_frame_index": 1, "box_xyxy": [1, 1, 8, 8], "frame_width": 20, "frame_height": 20},
+                {"track_id": "68", "category": "general_trash", "confidence": 0.40, "source_frame_index": 2, "box_xyxy": [2, 2, 9, 9], "frame_width": 20, "frame_height": 20},
+            ],
+        }
+
+        frame_map = _canonical_annotation_frame_map([material], observations)
+
+        self.assertEqual({item["category"] for values in frame_map.values() for item in values}, {"general_trash"})
+        self.assertEqual(observations["68"][0]["category"], "plastic")
+
+    def test_render_canonical_video_does_not_call_model_tracking(self):
+        import inspect
+        import backend.main as main_module
+
+        source = inspect.getsource(main_module._render_canonical_annotated_video)
+
+        self.assertNotIn(".track(", source)
+        self.assertNotIn("get_model(", source)
 
     def test_merged_tracks_record_accepted_track_fragments(self):
         aggregator = VideoTrackAggregator("upload-fragments", min_frames=1, lost_buffer=2)
