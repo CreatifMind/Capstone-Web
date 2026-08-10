@@ -323,6 +323,10 @@ VIDEO_DUPLICATE_WEAK_FRAGMENT_MAX_GAP = max(1, int(os.getenv("VIDEO_DUPLICATE_WE
 VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP = max(1, int(os.getenv("VIDEO_DUPLICATE_APPEARANCE_FRAGMENT_MAX_GAP", "30")))
 VIDEO_TRACKER_CONFIG = os.getenv("VIDEO_TRACKER_CONFIG", "config/bytetrack_purityloop.yaml")
 VIDEO_TRACK_DEBUG_LOGS = os.getenv("VIDEO_TRACK_DEBUG_LOGS", "true").lower() != "false"
+VIDEO_SCENE_CUT_MEAN_DIFF = float(os.getenv("VIDEO_SCENE_CUT_MEAN_DIFF", "0.35"))
+VIDEO_SCENE_CUT_CHANGED_RATIO = float(os.getenv("VIDEO_SCENE_CUT_CHANGED_RATIO", "0.65"))
+VIDEO_SCENE_CUT_PIXEL_DIFF = float(os.getenv("VIDEO_SCENE_CUT_PIXEL_DIFF", "0.25"))
+VIDEO_SCENE_CUT_HIST_DISTANCE = float(os.getenv("VIDEO_SCENE_CUT_HIST_DISTANCE", "0.20"))
 VIDEO_PHYSICAL_RECONCILIATION_DEFAULTS = {
     "VIDEO_DUPLICATE_MAX_GAP": "Maximum frame gap considered for automatic fragment association. Higher reduces false splits but increases pair checks.",
     "VIDEO_DUPLICATE_MAX_OVERLAP_FRAMES": "Brief overlap allowed for likely old/new ByteTrack ID handovers.",
@@ -718,10 +722,84 @@ def attach_camera_motion_to_detections(detections: list[dict], motion: VideoCame
     return output
 
 
+def _video_track_key(segment_id: int, raw_track_id: Any) -> str:
+    raw = str(raw_track_id).strip()
+    return f"segment={int(segment_id)}|track={raw}"
+
+
+def namespace_video_track_detections(detections: list[dict], segment_id: int) -> list[dict]:
+    namespaced = []
+    for detection in detections:
+        enriched = dict(detection)
+        raw_track_id = enriched.get("track_id")
+        if raw_track_id is not None and str(raw_track_id) != "":
+            enriched["raw_track_id"] = str(raw_track_id)
+            enriched["track_id"] = _video_track_key(segment_id, raw_track_id)
+        enriched["track_segment_id"] = int(segment_id)
+        namespaced.append(enriched)
+    return namespaced
+
+
+def _scene_cut_signature(frame):
+    import cv2
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    resized = cv2.resize(gray, (64, 36), interpolation=cv2.INTER_AREA)
+    return resized
+
+
+def video_scene_cut_metrics(previous_signature, current_signature) -> dict:
+    import cv2
+
+    diff = cv2.absdiff(previous_signature, current_signature)
+    mean_diff = float(diff.mean()) / 255.0
+    changed_ratio = float((diff >= int(VIDEO_SCENE_CUT_PIXEL_DIFF * 255)).mean())
+    previous_hist = cv2.calcHist([previous_signature], [0], None, [32], [0, 256])
+    current_hist = cv2.calcHist([current_signature], [0], None, [32], [0, 256])
+    cv2.normalize(previous_hist, previous_hist)
+    cv2.normalize(current_hist, current_hist)
+    hist_distance = float(cv2.compareHist(previous_hist, current_hist, cv2.HISTCMP_BHATTACHARYYA))
+    return {
+        "mean_diff": round(mean_diff, 4),
+        "changed_ratio": round(changed_ratio, 4),
+        "hist_distance": round(hist_distance, 4),
+        "pixel_diff_threshold": VIDEO_SCENE_CUT_PIXEL_DIFF,
+    }
+
+
+def is_hard_video_scene_cut(previous_signature, current_signature) -> tuple[bool, dict]:
+    metrics = video_scene_cut_metrics(previous_signature, current_signature)
+    detected = (
+        (
+            metrics["mean_diff"] >= VIDEO_SCENE_CUT_MEAN_DIFF
+            and metrics["changed_ratio"] >= VIDEO_SCENE_CUT_CHANGED_RATIO
+        )
+        or (
+            metrics["hist_distance"] >= VIDEO_SCENE_CUT_HIST_DISTANCE
+            and metrics["mean_diff"] >= 0.06
+            and metrics["changed_ratio"] >= 0.10
+        )
+    )
+    return detected, metrics
+
+
+def reset_video_tracker_state(video_model: Any) -> int:
+    predictor = getattr(video_model, "predictor", None)
+    trackers = getattr(predictor, "trackers", None) if predictor is not None else None
+    reset_count = 0
+    for tracker in trackers or []:
+        reset = getattr(tracker, "reset", None)
+        if callable(reset):
+            reset()
+            reset_count += 1
+    return reset_count
+
+
 @dataclass
 class VideoTrackState:
     key: str
     raw_track_ids: set[str] = field(default_factory=set)
+    segment_ids: set[str] = field(default_factory=set)
     first_frame: int = 0
     last_frame: int = 0
     first_timestamp: float = 0.0
@@ -824,6 +902,9 @@ class VideoTrackAggregator:
         if raw_id:
             state.raw_track_ids.add(raw_id)
             self.raw_to_key[raw_id] = key
+        segment_id = detection.get("track_segment_id")
+        if segment_id is not None and str(segment_id) != "":
+            state.segment_ids.add(str(segment_id))
         state.last_frame = frame_index
         state.last_timestamp = timestamp
         state.class_votes[category] = state.class_votes.get(category, 0.0) + confidence
@@ -846,6 +927,8 @@ class VideoTrackAggregator:
             "frame": frame_index,
             "timestamp": round(timestamp, 3),
             "track_id": raw_id or key,
+            "track_segment_id": segment_id,
+            "raw_track_id": detection.get("raw_track_id"),
             "category": category,
             "confidence": round(confidence, 4),
             "bbox": box,
@@ -973,12 +1056,14 @@ class VideoTrackAggregator:
             heights.append(height)
             aspects.append(aspect)
         source_track_ids = sorted(state.raw_track_ids)
+        segment_ids = sorted(state.segment_ids)
         stable_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "-", state.key).strip("-") or "object"
         material = {
             "stable_object_id": f"{self.upload_id}-track-{stable_suffix}",
             "object_uid": f"{self.upload_id}-track-{stable_suffix}",
             "source_track_ids": source_track_ids,
             "track_id": ",".join(sorted(state.raw_track_ids)) or stable_suffix,
+            "track_segment_ids": segment_ids,
             "material_name": state.class_names.get(final_category, final_category),
             "category": final_category,
             "confidence": round(class_confidence, 4),
@@ -1016,6 +1101,7 @@ class VideoTrackAggregator:
                 "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
                 "raw_max_confidence": round(raw_max_confidence, 4),
                 "raw_track_ids": sorted(state.raw_track_ids),
+                "segment_ids": segment_ids,
                 "appearance_fingerprints": state.appearance_fingerprints,
                 "stabilized_track_path": state.scene_path,
                 "representative_frame_dimensions": state.best_frame_dimensions,
@@ -4811,12 +4897,33 @@ def _duplicate_canonical_sort_key(track: dict) -> tuple[int, int, float, float, 
     )
 
 
+def _track_segment_ids(track: dict) -> set[str]:
+    values: set[str] = set()
+    for source in (track.get("track_segment_ids"), (track.get("track_debug") or {}).get("segment_ids")):
+        if isinstance(source, (list, tuple, set)):
+            values.update(str(item) for item in source if item is not None and str(item) != "")
+        elif source is not None and str(source) != "":
+            values.add(str(source))
+    for track_id in track.get("source_track_ids") or []:
+        match = re.search(r"segment=(\d+)\|track=", str(track_id))
+        if match:
+            values.add(match.group(1))
+    return values
+
+
+def _same_video_segment(first: dict, second: dict) -> bool:
+    first_segments = _track_segment_ids(first)
+    second_segments = _track_segment_ids(second)
+    return not (first_segments and second_segments and first_segments.isdisjoint(second_segments))
+
+
 def _duplicate_evidence(first: dict, second: dict) -> dict:
     ordered = sorted(
         [first, second],
         key=lambda item: (int(_coerce_float(item.get("track_first_frame"))), _object_id(item)),
     )
     previous, current = ordered
+    same_segment = _same_video_segment(first, second)
     gap = 0 if _track_time_overlap(previous, current) else _track_temporal_gap(previous, current)
     overlap = _track_overlap_frames(previous, current)
     trajectory = _trajectory_distance(previous, current)
@@ -4914,7 +5021,9 @@ def _duplicate_evidence(first: dict, second: dict) -> dict:
     )
     partial_fragment_supported = near_full_bridge or clipped_class_bridge or clipped_appearance_bridge
     reject_reason = None
-    if simultaneous_low_iou_separate:
+    if not same_segment:
+        reject_reason = "different video segments"
+    elif simultaneous_low_iou_separate:
         reject_reason = f"simultaneous low-IoU boxes for {overlap} frames"
     elif stable_tracks_coexist and not strong_overlap_switch:
         reject_reason = f"two stable tracks coexist for {overlap} frames"
@@ -4950,6 +5059,7 @@ def _duplicate_evidence(first: dict, second: dict) -> dict:
     return {
         "object_ids": [str(first.get("stable_object_id") or first.get("object_uid")), str(second.get("stable_object_id") or second.get("object_uid"))],
         "source_track_ids": [first.get("source_track_ids"), second.get("source_track_ids")],
+        "segment_ids": [sorted(_track_segment_ids(first)), sorted(_track_segment_ids(second))],
         "categories": [first.get("category"), second.get("category")],
         "confidence_values": [first.get("track_max_confidence") or first.get("confidence"), second.get("track_max_confidence") or second.get("confidence")],
         "category_compatible": same_category or class_vote_similarity > 0,
@@ -5213,6 +5323,8 @@ def reconcile_duplicate_tracked_objects(logical_objects: list[dict], batch_id: s
 
 
 def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
+    if not _same_video_segment(first, second):
+        return False, "different video segments"
     if first.get("category") != second.get("category"):
         return False, "class mismatch"
     if _track_time_overlap(first, second):
@@ -5260,8 +5372,10 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     appearance_fingerprints = []
     class_votes: dict[str, float] = {}
     source_track_ids = []
+    segment_ids: set[str] = set()
     for track in tracks:
         source_track_ids.extend([str(item) for item in track.get("source_track_ids") or str(track.get("track_id") or "").split(",") if item])
+        segment_ids.update(_track_segment_ids(track))
         debug = track.get("track_debug") or {}
         merged_observations.extend(pl for pl in debug.get("frame_observations", []) if isinstance(pl, dict))
         merged_path.extend(pl for pl in track.get("track_path", []) if isinstance(pl, dict))
@@ -5309,6 +5423,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         "segmentation_mask": representative.get("segmentation_mask"),
         "source_track_ids": source_track_ids,
         "track_id": ",".join(source_track_ids),
+        "track_segment_ids": sorted(segment_ids),
         "category": weighted_category,
         "material_name": weighted_category,
         "confidence": round(class_confidence, 4),
@@ -5334,6 +5449,7 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
             "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
             "raw_max_confidence": round(raw_max_confidence, 4),
             "raw_track_ids": source_track_ids,
+            "segment_ids": sorted(segment_ids),
             "stabilized_track_path": sorted_scene_path,
             "representative_quality": _bbox_quality(representative.get("best_bbox_norm")),
             "appearance_fingerprints": _bounded_representative_fingerprints(appearance_fingerprints),
@@ -5675,6 +5791,9 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
         _video_debug("video_tracking_started", scan_id=scan_id, source_name=name, frame_total=frame_total, tracker=tracker_path, stride=1)
         _update_job(job["id"], database, total_count=None, result_summary={"mode": "tracked_video", "frame_total": frame_total})
         frame_index = 0
+        segment_id = 0
+        scene_cut_count = 0
+        previous_scene_signature = None
         pending_frame = first_frame
         while True:
             if pending_frame is None:
@@ -5686,10 +5805,33 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 pending_frame = None
             frame = _normalize_video_frame(frame, width, height)
             timestamp = frame_index / fps if fps else 0.0
+            current_scene_signature = _scene_cut_signature(frame)
+            scene_cut_detected = False
+            scene_cut_metrics = None
+            if previous_scene_signature is not None:
+                scene_cut_detected, scene_cut_metrics = is_hard_video_scene_cut(previous_scene_signature, current_scene_signature)
+            if scene_cut_detected:
+                previous_segment = segment_id
+                aggregator.flush_stale(frame_index, force=True)
+                segment_id += 1
+                scene_cut_count += 1
+                tracker_reset_count = reset_video_tracker_state(video_model)
+                camera_motion = VideoCameraMotionState(width, height)
+                _video_processing_log(
+                    "video_scene_cut_detected",
+                    job_id=scan_id,
+                    scan_id=scan_id,
+                    frame_index=frame_index,
+                    previous_segment=previous_segment,
+                    new_segment=segment_id,
+                    tracker_reset_count=tracker_reset_count,
+                    **(scene_cut_metrics or {}),
+                )
             motion_meta = camera_motion.observe(frame, frame_index)
-            results = video_model.track(frame, persist=True, tracker=tracker_path, verbose=False, device=MODEL_DEVICE)
+            results = video_model.track(frame, persist=not scene_cut_detected, tracker=tracker_path, verbose=False, device=MODEL_DEVICE)
             result = results[0] if results else None
             detections = _result_track_observations(result, frame, frame_index, timestamp) if result else []
+            detections = namespace_video_track_detections(detections, segment_id)
             detections = attach_camera_motion_to_detections(detections, camera_motion, motion_meta)
             aggregator.observe(frame_index, timestamp, detections)
             if annotated_video_metadata.get("annotated_video_status") != "failed":
@@ -5708,9 +5850,12 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
                 summary = _video_tracking_summary(aggregator.finalized)
                 summary["frame_detections"] = sum(len(track.get("track_debug", {}).get("frame_observations", [])) for track in aggregator.finalized)
                 summary["raw_track_count"] = len(aggregator.finalized) + len(aggregator.active)
+                summary["scene_cut_count"] = scene_cut_count
+                summary["video_segment_count"] = segment_id + 1
                 summary.update(annotated_video_metadata)
                 _update_job(job["id"], database, processed_count=summary["total_unique_objects"], scan_ids=scan_ids, result_summary=summary)
                 last_checkpoint_at = now
+            previous_scene_signature = current_scene_signature
             frame_index += 1
         capture.release()
         capture = None
@@ -5801,6 +5946,8 @@ def _process_video_drive_file(file_id: str, job: dict, principal: Principal | No
             "duplicate_groups_confirmed": len(duplicate_report.get("confirmed_groups") or []),
             "physical_reconciliation": duplicate_report,
             "camera_motion": camera_motion.summary(),
+            "scene_cut_count": scene_cut_count,
+            "video_segment_count": segment_id + 1,
             "filtered_tracks": max(0, len(raw_tracks) - len(canonical_objects)),
             "database_rows_written": len(scan_ids),
             **annotated_video_metadata,

@@ -123,7 +123,7 @@ os.environ["VIDEO_TRACK_DEBUG_LOGS"] = "false"
 
 from PIL import Image
 
-from backend.main import VideoTrackAggregator, _canonical_annotation_frame_map, _duplicate_evidence, _merge_two_tracks, _process_video_drive_file, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, merge_track_fragments, reconcile_duplicate_tracked_objects
+from backend.main import VideoTrackAggregator, _canonical_annotation_frame_map, _duplicate_evidence, _merge_two_tracks, _process_video_drive_file, _scene_cut_signature, _select_annotated_preview_observation, _video_tracking_summary, appearance_fingerprint_from_bytes, is_hard_video_scene_cut, merge_track_fragments, namespace_video_track_detections, reconcile_duplicate_tracked_objects, reset_video_tracker_state
 from backend.deduplicate_tracked_video_results import build_report
 
 
@@ -249,6 +249,18 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(merged[0]["object_uid"], "upload-10-object-0001")
         self.assertEqual(merged[0]["source_track_ids"], ["1", "7"])
 
+    def test_cross_segment_fragments_do_not_merge_logically(self):
+        first = VideoTrackAggregator("upload-segment-merge", min_frames=1)
+        first.observe(0, 0.0, namespace_video_track_detections([detection(1, "plastic", 0.9, 0.1, 0.1, 0.2, 0.2)], 0))
+        first.finish(1)
+        second = VideoTrackAggregator("upload-segment-merge", min_frames=1)
+        second.observe(2, 0.2, namespace_video_track_detections([detection(1, "plastic", 0.9, 0.1, 0.1, 0.2, 0.2)], 1))
+        second.finish(3)
+
+        merged = merge_track_fragments(first.finalized + second.finalized, "upload-segment-merge")
+
+        self.assertEqual(len(merged), 2)
+
     def test_separate_same_class_objects_do_not_merge(self):
         aggregator = VideoTrackAggregator("upload-11")
         for frame in range(3):
@@ -286,6 +298,62 @@ class VideoTrackAggregationTests(unittest.TestCase):
         aggregator.finish(7)
 
         self.assertEqual(len(aggregator.finalized), 1)
+
+    def test_reused_raw_track_id_across_segments_is_distinct(self):
+        aggregator = VideoTrackAggregator("upload-segments")
+        aggregator.observe(0, 0.0, namespace_video_track_detections([detection(1, "glass", 0.9)], 0))
+        aggregator.observe(1, 0.1, namespace_video_track_detections([detection(1, "glass", 0.9)], 0))
+        aggregator.observe(2, 0.2, namespace_video_track_detections([detection(1, "glass", 0.9)], 0))
+        aggregator.flush_stale(3, force=True)
+        aggregator.observe(3, 0.3, namespace_video_track_detections([detection(1, "textile", 0.9)], 1))
+        aggregator.observe(4, 0.4, namespace_video_track_detections([detection(1, "textile", 0.9)], 1))
+        aggregator.observe(5, 0.5, namespace_video_track_detections([detection(1, "textile", 0.9)], 1))
+        aggregator.finish(6)
+
+        self.assertEqual(len(aggregator.finalized), 2)
+        self.assertEqual([item["source_track_ids"] for item in aggregator.finalized], [["segment=0|track=1"], ["segment=1|track=1"]])
+
+    def test_hard_cut_flush_allows_same_raw_id_after_reset(self):
+        aggregator = VideoTrackAggregator("upload-cut", min_frames=1)
+        aggregator.observe(0, 0.0, namespace_video_track_detections([detection(1, "glass", 0.9)], 0))
+        flushed = aggregator.flush_stale(1, force=True)
+        aggregator.observe(1, 0.1, namespace_video_track_detections([detection(1, "paper", 0.9)], 1))
+        aggregator.finish(2)
+
+        self.assertEqual(len(flushed), 1)
+        self.assertEqual(len(aggregator.finalized), 2)
+        self.assertEqual(aggregator.finalized[1]["category"], "paper")
+
+    def test_tracker_reset_calls_existing_trackers(self):
+        calls = []
+        tracker = SimpleNamespace(reset=lambda: calls.append("reset"))
+        model = SimpleNamespace(predictor=SimpleNamespace(trackers=[tracker]))
+
+        self.assertEqual(reset_video_tracker_state(model), 1)
+        self.assertEqual(calls, ["reset"])
+
+    def test_hard_full_frame_change_detected(self):
+        import numpy as np
+
+        first = np.zeros((120, 160, 3), dtype=np.uint8)
+        second = np.full((120, 160, 3), 255, dtype=np.uint8)
+
+        detected, metrics = is_hard_video_scene_cut(_scene_cut_signature(first), _scene_cut_signature(second))
+
+        self.assertTrue(detected)
+        self.assertGreaterEqual(metrics["mean_diff"], 0.35)
+
+    def test_localized_object_motion_not_scene_cut(self):
+        import numpy as np
+
+        first = np.full((120, 160, 3), 128, dtype=np.uint8)
+        second = first.copy()
+        first[40:80, 20:60] = 255
+        second[40:80, 80:120] = 255
+
+        detected, _ = is_hard_video_scene_cut(_scene_cut_signature(first), _scene_cut_signature(second))
+
+        self.assertFalse(detected)
 
     def test_video_processing_does_not_persist_inside_frame_loop(self):
         with open("backend/main.py", "r", encoding="utf-8") as handle:
@@ -370,6 +438,31 @@ class VideoTrackAggregationTests(unittest.TestCase):
         self.assertEqual(len(canonical), 1)
         self.assertEqual(canonical[0]["source_track_ids"], ["1", "7"])
         self.assertEqual(report["output_count"], 1)
+
+    def test_no_cross_segment_physical_reconciliation(self):
+        first = self._track("upload-object-0001", "segment=0|track=1", first=0, last=2, x=0.10)
+        second = self._track("upload-object-0002", "segment=1|track=1", first=4, last=6, x=0.10)
+        first["track_segment_ids"] = ["0"]
+        second["track_segment_ids"] = ["1"]
+        first["track_debug"]["segment_ids"] = ["0"]
+        second["track_debug"]["segment_ids"] = ["1"]
+
+        canonical, report = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 2)
+        self.assertEqual(report["rejected_candidates"][0]["final_reason"], "different video segments")
+
+    def test_same_segment_reconciliation_unchanged(self):
+        first = self._track("upload-object-0001", "segment=0|track=1", first=0, last=2, x=0.10)
+        second = self._track("upload-object-0002", "segment=0|track=2", first=5, last=7, x=0.13)
+        first["track_segment_ids"] = ["0"]
+        second["track_segment_ids"] = ["0"]
+        first["track_debug"]["segment_ids"] = ["0"]
+        second["track_debug"]["segment_ids"] = ["0"]
+
+        canonical, _ = reconcile_duplicate_tracked_objects([first, second], "upload")
+
+        self.assertEqual(len(canonical), 1)
 
     def test_duplicate_reconciliation_merges_class_change_when_tracking_and_appearance_agree(self):
         first = self._track("upload-object-0001", 1, "plastic", first=0, last=2, x=0.10, appearance="item-a")
