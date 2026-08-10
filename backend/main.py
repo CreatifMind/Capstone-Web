@@ -795,6 +795,24 @@ def reset_video_tracker_state(video_model: Any) -> int:
     return reset_count
 
 
+def determine_canonical_category(
+    class_votes: dict[str, float],
+    class_max_conf: dict[str, float] | None = None,
+    fallback: str = "unknown"
+) -> str:
+    if not class_votes:
+        return fallback
+    class_max_conf = class_max_conf or {}
+    sorted_peaks = sorted(class_max_conf.items(), key=lambda item: item[1], reverse=True)
+    if sorted_peaks and sorted_peaks[0][1] >= 0.70:
+        top_category, top_peak = sorted_peaks[0]
+        second_peak = sorted_peaks[1][1] if len(sorted_peaks) > 1 else 0.0
+        if top_peak - second_peak >= 0.15:
+            return top_category
+
+    return max(class_votes, key=class_votes.get, default=fallback)
+
+
 @dataclass
 class VideoTrackState:
     key: str
@@ -1032,23 +1050,6 @@ class VideoTrackAggregator:
         if direction == "negative" and after >= before:
             return
         state.counted = True
-
-def determine_canonical_category(
-    class_votes: dict[str, float],
-    class_max_conf: dict[str, float] | None = None,
-    fallback: str = "unknown"
-) -> str:
-    if not class_votes:
-        return fallback
-    class_max_conf = class_max_conf or {}
-    sorted_peaks = sorted(class_max_conf.items(), key=lambda item: item[1], reverse=True)
-    if sorted_peaks and sorted_peaks[0][1] >= 0.70:
-        top_category, top_peak = sorted_peaks[0]
-        second_peak = sorted_peaks[1][1] if len(sorted_peaks) > 1 else 0.0
-        if top_peak - second_peak >= 0.15:
-            return top_category
-
-    return max(class_votes, key=class_votes.get, default=fallback)
 
 
     def _finalize(self, state: VideoTrackState) -> dict | None:
