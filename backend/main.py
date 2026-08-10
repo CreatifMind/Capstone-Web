@@ -4395,6 +4395,33 @@ def _mask_polygon(result, index: int) -> list | None:
     return polygon
 
 
+def _refine_detected_category(box, names: dict, frame=None, xyxy=None) -> tuple[int, str, float]:
+    class_id = int(box.cls[0])
+    confidence = float(box.conf[0])
+    material_name = str(names.get(class_id, f"class_{class_id}"))
+
+    if frame is not None and xyxy is not None and len(xyxy) == 4:
+        try:
+            x1, y1, x2, y2 = [int(v) for v in xyxy]
+            h, w = frame.shape[:2]
+            x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+            if x2 > x1 and y2 > y1:
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0:
+                    import cv2
+                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                    sat = float(hsv[:, :, 1].mean())
+                    val = float(hsv[:, :, 2].mean())
+                    is_metallic_hue = sat < 70 and val > 105
+                    box_aspect = (x2 - x1) / max(y2 - y1, 1)
+                    if class_id == 0 and is_metallic_hue and 0.3 <= box_aspect <= 3.5:
+                        return 3, "metal", max(confidence, 0.85)
+        except Exception:
+            pass
+
+    return class_id, material_name, confidence
+
+
 def _result_track_observations(result, frame, frame_index: int, timestamp: float) -> list[dict]:
     boxes = getattr(result, "boxes", None)
     if boxes is None:
@@ -4406,9 +4433,7 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
     frame_bytes = _encode_frame_jpeg(frame)
     for index, box in enumerate(boxes):
         xyxy = [float(value) for value in box.xyxy[0].tolist()]
-        confidence = float(box.conf[0])
-        class_id = int(box.cls[0])
-        material_name = str(names.get(class_id, f"class_{class_id}"))
+        class_id, material_name, confidence = _refine_detected_category(box, names, frame, xyxy)
         track_id = None
         if track_ids is not None:
             try:
