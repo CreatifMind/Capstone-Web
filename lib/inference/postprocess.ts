@@ -8,6 +8,10 @@ function clamp(value: number, maximum: number) {
   return Math.min(Math.max(value, 0), maximum);
 }
 
+export function decodeClassProbability(value: number) {
+  return Number.isFinite(value) ? clamp(value, 1) : 0;
+}
+
 export function restoreBox(centerX: number, centerY: number, width: number, height: number, letterbox: LetterboxInfo) {
   if (![centerX, centerY, width, height, letterbox.scale].every(Number.isFinite) || letterbox.scale <= 0) return null;
   const x1 = clamp(((centerX - (width / 2)) - letterbox.padX) / letterbox.scale, letterbox.originalWidth);
@@ -21,11 +25,9 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
   const candidates: Detection[] = [];
   for (let candidate = 0; candidate < CANDIDATE_COUNT; candidate += 1) {
     let classId = 0;
-    const rawVal0 = output[(4 * CANDIDATE_COUNT) + candidate];
-    let confidence = rawVal0 > 1.0 || rawVal0 < 0.0 ? 1 / (1 + Math.exp(-rawVal0)) : rawVal0;
+    let confidence = decodeClassProbability(output[(4 * CANDIDATE_COUNT) + candidate]);
     for (let classIndex = 1; classIndex < MODEL_CONFIG.classes.length; classIndex += 1) {
-      const rawVal = output[((4 + classIndex) * CANDIDATE_COUNT) + candidate];
-      const score = rawVal > 1.0 || rawVal < 0.0 ? 1 / (1 + Math.exp(-rawVal)) : rawVal;
+      const score = decodeClassProbability(output[((4 + classIndex) * CANDIDATE_COUNT) + candidate]);
       if (score > confidence) {
         confidence = score;
         classId = classIndex;
