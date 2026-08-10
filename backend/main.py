@@ -795,6 +795,131 @@ def reset_video_tracker_state(video_model: Any) -> int:
     return reset_count
 
 
+VIDEO_CLASS_EVIDENCE_TOP_K = 3
+VIDEO_CLASS_EVIDENCE_FULL_SUPPORT = 3
+VIDEO_CLASS_AMBIGUITY_ABSOLUTE_MARGIN = 0.08
+VIDEO_CLASS_AMBIGUITY_RELATIVE_MARGIN = 0.12
+
+
+def _observation_class(observation: dict) -> str:
+    return material_category(
+        observation.get("raw_class")
+        or observation.get("raw_class_name")
+        or observation.get("category")
+        or observation.get("material_name")
+    )
+
+
+def _observation_confidence(observation: dict) -> float:
+    value = observation.get("raw_confidence")
+    if value is None:
+        value = observation.get("confidence")
+    return max(0.0, min(1.0, _coerce_float(value)))
+
+
+def _temporal_observation_fragments(observations: list[dict]) -> list[list[dict]]:
+    by_track: dict[str, list[dict]] = {}
+    for observation in observations or []:
+        if not isinstance(observation, dict):
+            continue
+        track_id = str(observation.get("track_id") or observation.get("raw_track_id") or "synthetic")
+        by_track.setdefault(track_id, []).append(observation)
+
+    fragments: list[list[dict]] = []
+    for track_id in sorted(by_track):
+        current: list[dict] = []
+        previous_frame = None
+        for observation in sorted(by_track[track_id], key=lambda item: int(_coerce_float(item.get("frame")))):
+            frame = int(_coerce_float(observation.get("frame")))
+            if current and previous_frame is not None and frame > previous_frame + 1:
+                fragments.append(current)
+                current = []
+            current.append(observation)
+            previous_frame = frame
+        if current:
+            fragments.append(current)
+    return fragments
+
+
+def _class_evidence_from_observations(observations: list[dict], fallback: str = "unknown") -> dict:
+    class_scores: dict[str, float] = {}
+    class_counts: dict[str, int] = {}
+    class_max_conf: dict[str, float] = {}
+    fragment_scores = []
+
+    for fragment in _temporal_observation_fragments(observations):
+        per_class: dict[str, list[float]] = {}
+        for observation in fragment:
+            category = _observation_class(observation)
+            if not category or category == "unknown":
+                continue
+            confidence = _observation_confidence(observation)
+            per_class.setdefault(category, []).append(confidence)
+            class_counts[category] = class_counts.get(category, 0) + 1
+            class_max_conf[category] = max(class_max_conf.get(category, 0.0), confidence)
+
+        fragment_class_scores = {}
+        for category, values in per_class.items():
+            top_values = sorted(values, reverse=True)[:VIDEO_CLASS_EVIDENCE_TOP_K]
+            top_mean = sum(top_values) / len(top_values)
+            support = min(1.0, len(values) / VIDEO_CLASS_EVIDENCE_FULL_SUPPORT)
+            score = top_mean * support
+            class_scores[category] = class_scores.get(category, 0.0) + score
+            fragment_class_scores[category] = {
+                "count": len(values),
+                "top_k_mean": round(top_mean, 4),
+                "score": round(score, 4),
+            }
+
+        if fragment_class_scores:
+            frames = [int(_coerce_float(item.get("frame"))) for item in fragment]
+            fragment_scores.append({
+                "track_id": str(fragment[0].get("track_id") or fragment[0].get("raw_track_id") or "synthetic"),
+                "first_frame": min(frames),
+                "last_frame": max(frames),
+                "class_scores": fragment_class_scores,
+            })
+
+    if not class_scores:
+        return {
+            "winner": fallback,
+            "scores": {},
+            "counts": {},
+            "max_confidence": {},
+            "winner_score": 0.0,
+            "runner_up": None,
+            "runner_up_score": 0.0,
+            "margin": 0.0,
+            "class_ambiguous": True,
+            "fragment_scores": [],
+        }
+
+    ranked = sorted(
+        class_scores.items(),
+        key=lambda item: (item[1], class_max_conf.get(item[0], 0.0), item[0]),
+        reverse=True,
+    )
+    winner, winner_score = ranked[0]
+    runner_up, runner_up_score = ranked[1] if len(ranked) > 1 else (None, 0.0)
+    margin = winner_score - runner_up_score
+    ambiguous = bool(
+        runner_up
+        and margin < max(VIDEO_CLASS_AMBIGUITY_ABSOLUTE_MARGIN, winner_score * VIDEO_CLASS_AMBIGUITY_RELATIVE_MARGIN)
+    )
+    return {
+        "winner": winner,
+        "scores": {key: round(value, 4) for key, value in class_scores.items()},
+        "counts": class_counts,
+        "max_confidence": {key: round(value, 4) for key, value in class_max_conf.items()},
+        "winner_score": round(winner_score, 4),
+        "runner_up": runner_up,
+        "runner_up_score": round(runner_up_score, 4),
+        "margin": round(margin, 4),
+        "class_ambiguous": ambiguous,
+        "fragment_scores": fragment_scores,
+    }
+
+
 def determine_canonical_category(
     class_votes: dict[str, float],
     class_max_conf: dict[str, float] | None = None,
@@ -802,15 +927,11 @@ def determine_canonical_category(
 ) -> str:
     if not class_votes:
         return fallback
-    class_max_conf = class_max_conf or {}
-    sorted_peaks = sorted(class_max_conf.items(), key=lambda item: item[1], reverse=True)
-    if sorted_peaks and sorted_peaks[0][1] >= 0.70:
-        top_category, top_peak = sorted_peaks[0]
-        second_peak = sorted_peaks[1][1] if len(sorted_peaks) > 1 else 0.0
-        if top_peak - second_peak >= 0.15:
-            return top_category
-
-    return max(class_votes, key=class_votes.get, default=fallback)
+    return max(
+        class_votes,
+        key=lambda category: (class_votes.get(category, 0.0), (class_max_conf or {}).get(category, 0.0), category),
+        default=fallback,
+    )
 
 
 @dataclass
@@ -905,10 +1026,14 @@ class VideoTrackAggregator:
             _video_debug("track_observation_skipped_finalized", scan_id=self.upload_id, frame=frame_index, raw_track_id=raw_id)
             return
         category = material_category(detection.get("category") or detection.get("material_name"))
+        raw_category = material_category(detection.get("raw_class") or detection.get("raw_class_name") or category)
         box = [round(_coerce_float(value), 6) for value in detection.get("bbox") or []][:4]
+        if _bbox_quality(box).get("reason") == "bbox near full frame":
+            _video_debug("track_observation_skipped_near_full_frame", scan_id=self.upload_id, frame=frame_index, raw_track_id=raw_id)
+            return
         key = self._resolve_key(raw_id, category, box, frame_index)
         state = self.active.get(key)
-        confidence = max(0.0, min(1.0, _coerce_float(detection.get("confidence"))))
+        confidence = max(0.0, min(1.0, _coerce_float(detection.get("raw_confidence") if detection.get("raw_confidence") is not None else detection.get("confidence"))))
         if not state:
             state = VideoTrackState(
                 key=key,
@@ -949,6 +1074,10 @@ class VideoTrackAggregator:
             "track_id": raw_id or key,
             "track_segment_id": segment_id,
             "raw_track_id": detection.get("raw_track_id"),
+            "raw_class_id": detection.get("raw_class_id"),
+            "raw_class": raw_category,
+            "raw_class_name": detection.get("raw_class_name") or raw_category,
+            "raw_confidence": round(confidence, 4),
             "category": category,
             "confidence": round(confidence, 4),
             "bbox": box,
@@ -1012,10 +1141,20 @@ class VideoTrackAggregator:
         return key
 
     def _recover_key(self, category: str, box: list[float], frame_index: int) -> str | None:
+        if _bbox_quality(box).get("reason") == "bbox near full frame":
+            return None
         best_key = None
         best_score = 0.0
         cx, cy = _bbox_center(box)
         for key, state in self.active.items():
+            state_qualities = [_bbox_quality(item.get("bbox")) for item in state.observations if isinstance(item, dict)]
+            state_edge_fraction = (
+                sum(bool(item.get("touches_edge")) for item in state_qualities) / len(state_qualities)
+                if state_qualities else 0.0
+            )
+            state_best_quality = _bbox_quality((state.best_observation or {}).get("bbox"))
+            if state_best_quality.get("reason") == "bbox near full frame" or state_best_quality.get("touches_edge") or state_edge_fraction >= 0.5:
+                continue
             if frame_index - state.last_frame > self.lost_buffer:
                 continue
             previous_category = max(state.class_votes, key=state.class_votes.get, default="")
@@ -1057,7 +1196,8 @@ class VideoTrackAggregator:
         raw_max_confidence = max(state.confidences or [0.0])
         if frame_count < self.min_frames and raw_max_confidence < self.short_track_confidence:
             return None
-        final_category = determine_canonical_category(state.class_votes, state.class_max_conf, fallback="unknown")
+        class_evidence = _class_evidence_from_observations(state.observations, fallback="unknown")
+        final_category = class_evidence["winner"]
         class_confidence = _class_confidence_for_observations(state.observations, final_category, raw_max_confidence)
         avg_confidence = sum(state.confidences) / frame_count if frame_count else 0.0
         recyclable_status, contaminant_status = material_status(final_category)
@@ -1119,7 +1259,9 @@ class VideoTrackAggregator:
             "track_debug": {
                 "frame_observations": state.observations,
                 "accepted_track_fragments": _track_frame_fragments(state.observations),
-                "class_votes": {key: round(value, 4) for key, value in state.class_votes.items()},
+                "class_votes": class_evidence["scores"],
+                "class_evidence": class_evidence,
+                "class_ambiguous": class_evidence["class_ambiguous"],
                 "raw_max_confidence": round(raw_max_confidence, 4),
                 "raw_track_ids": sorted(state.raw_track_ids),
                 "segment_ids": segment_ids,
@@ -2790,9 +2932,9 @@ def _track_frame_fragments(observations: list[dict]) -> dict[str, list[dict]]:
 
 def _class_confidence_for_observations(observations: list[dict], category: str, fallback: float = 0.0) -> float:
     matching = [
-        max(0.0, min(1.0, _coerce_float(item.get("confidence"))))
+        _observation_confidence(item)
         for item in observations or []
-        if material_category(item.get("category") or item.get("material_name")) == category
+        if _observation_class(item) == category
     ]
     if matching:
         return max(matching)
@@ -4405,37 +4547,6 @@ def _refine_detected_category(box, names: dict, frame=None, xyxy=None) -> tuple[
     class_id = int(box.cls[0])
     confidence = float(box.conf[0])
     material_name = str(names.get(class_id, f"class_{class_id}"))
-
-    if frame is not None and xyxy is not None and len(xyxy) == 4:
-        try:
-            x1, y1, x2, y2 = [int(v) for v in xyxy]
-            h, w = frame.shape[:2]
-            x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
-            if x2 > x1 and y2 > y1:
-                crop = frame[y1:y2, x1:x2]
-                if crop.size > 0:
-                    import cv2
-                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                    sat = float(hsv[:, :, 1].mean())
-                    val = float(hsv[:, :, 2].mean())
-                    box_w = x2 - x1
-                    box_h = y2 - y1
-                    box_aspect = box_w / max(box_h, 1)
-
-                    # 1. Metallic Object (Watch, Metallic band, Can):
-                    if class_id == 0 and sat < 95 and val > 80 and 0.25 <= box_aspect <= 4.0:
-                        return 3, "metal", max(confidence, 0.86)
-
-                    # 2. Cylindrical Paper / Tissue Roll:
-                    if class_id == 0 and sat < 50 and val > 150 and 0.7 <= box_aspect <= 1.4:
-                        return 1, "paper", max(confidence, 0.82)
-
-                    # 3. Handheld Electronics / Gameboy Console:
-                    if class_id == 0 and val < 130 and 0.4 <= box_aspect <= 0.9:
-                        return 8, "general_trash", max(confidence, 0.80)
-        except Exception:
-            pass
-
     return class_id, material_name, confidence
 
 
@@ -4450,6 +4561,9 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
     frame_bytes = _encode_frame_jpeg(frame)
     for index, box in enumerate(boxes):
         xyxy = [float(value) for value in box.xyxy[0].tolist()]
+        raw_class_id = int(box.cls[0])
+        raw_confidence = float(box.conf[0])
+        raw_class_name = str(names.get(raw_class_id, f"class_{raw_class_id}"))
         class_id, material_name, confidence = _refine_detected_category(box, names, frame, xyxy)
         track_id = None
         if track_ids is not None:
@@ -4459,6 +4573,13 @@ def _result_track_observations(result, frame, frame_index: int, timestamp: float
                 track_id = None
         detections.append({
             "track_id": track_id,
+            "raw_class_id": raw_class_id,
+            "raw_class_name": raw_class_name,
+            "raw_class": material_category(raw_class_name),
+            "raw_confidence": raw_confidence,
+            "derived_class_id": class_id,
+            "derived_class_name": material_name,
+            "derived_confidence": confidence,
             "material_name": material_name,
             "category": material_category(material_name),
             "confidence": confidence,
@@ -4579,21 +4700,6 @@ def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | 
         cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (255, 255, 255), max(1, line_width - 1), cv2.LINE_AA)
     if has_mask:
         annotated = cv2.addWeighted(mask_layer, 0.28, annotated, 0.72, 0)
-    if footer_count is not None:
-        label = f"{footer_count} object{'s' if footer_count != 1 else ''} detected"
-        footer_height = max(26, round(height * 0.055))
-        footer_y = max(0, height - footer_height)
-        cv2.rectangle(annotated, (0, footer_y), (width, height), (4, 8, 6), -1)
-        cv2.putText(
-            annotated,
-            label,
-            (max(8, round(width * 0.025)), min(height - 8, footer_y + round(footer_height * 0.68))),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            max(0.45, min(0.9, min(width, height) / 850)),
-            (46, 204, 113),
-            max(1, round(line_width * 0.8)),
-            cv2.LINE_AA,
-        )
     return annotated
 
 
@@ -5106,6 +5212,24 @@ def _duplicate_evidence(first: dict, second: dict) -> dict:
         reject_reason = "size/aspect mismatch"
     elif overlap and not strong_overlap_switch and (distance > VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE or max(iou, overlap_iou_max) < VIDEO_DUPLICATE_OVERLAP_IOU):
         reject_reason = "overlap lacks strong spatial agreement"
+    elif (
+        not overlap
+        and partial_fragment_supported
+        and not appearance_positive
+        and distance > VIDEO_DUPLICATE_CENTER_DISTANCE * 3.5
+        and iou < VIDEO_DUPLICATE_IOU
+    ):
+        reject_reason = "fragment bridge lacks spatial continuity"
+    elif (
+        not overlap
+        and partial_fragment_supported
+        and not near_full_bridge
+        and not clipped_appearance_bridge
+        and not quality_handover
+        and distance > VIDEO_DUPLICATE_STRONG_CENTER_DISTANCE
+        and min(size_ratio, aspect_ratio) < VIDEO_DUPLICATE_SIZE_RATIO
+    ):
+        reject_reason = "partial fragment bridge lacks size support"
     elif not overlap and not partial_fragment_supported and distance > VIDEO_DUPLICATE_CENTER_DISTANCE and iou < VIDEO_DUPLICATE_IOU:
         reject_reason = "trajectory discontinuity"
     elif not same_category and class_vote_similarity <= 0 and not (
@@ -5231,6 +5355,10 @@ def _association_hard_blocker(evidence: dict) -> bool:
         or reason.startswith("simultaneous low-IoU boxes")
         or reason == "appearance differs"
         or reason == "overlap lacks strong spatial agreement"
+        or reason == "trajectory discontinuity"
+        or reason == "fragment bridge lacks spatial continuity"
+        or reason == "size/aspect mismatch"
+        or reason.startswith("temporal overlap")
     )
 
 
@@ -5407,6 +5535,14 @@ def _track_merge_score(first: dict, second: dict) -> tuple[bool, str]:
     )
     if distance > VIDEO_LOGICAL_MERGE_CENTER_DISTANCE:
         return False, f"centre distance {distance:.3f} exceeds {VIDEO_LOGICAL_MERGE_CENTER_DISTANCE}"
+    first_quality = _bbox_quality(first.get("best_bbox_norm"))
+    second_quality = _bbox_quality(second.get("best_bbox_norm"))
+    if first_quality.get("reason") == "bbox near full frame" or second_quality.get("reason") == "bbox near full frame":
+        return False, "near-full-frame fragment lacks logical merge evidence"
+    first_track_quality = _track_evidence_quality(first)
+    second_track_quality = _track_evidence_quality(second)
+    if first_track_quality.get("partial_or_broad") or second_track_quality.get("partial_or_broad"):
+        return False, "partial/broad fragment requires physical reconciliation"
     width_a, width_b = _coerce_float(previous.get("track_avg_width")), _coerce_float(current.get("track_avg_width"))
     height_a, height_b = _coerce_float(previous.get("track_avg_height")), _coerce_float(current.get("track_avg_height"))
     aspect_a, aspect_b = _coerce_float(previous.get("track_avg_aspect_ratio")), _coerce_float(current.get("track_avg_aspect_ratio"))
@@ -5435,7 +5571,6 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
     merged_path = []
     merged_scene_path = []
     appearance_fingerprints = []
-    class_votes: dict[str, float] = {}
     class_max_conf: dict[str, float] = {}
     source_track_ids = []
     segment_ids: set[str] = set()
@@ -5447,8 +5582,6 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         merged_path.extend(pl for pl in track.get("track_path", []) if isinstance(pl, dict))
         merged_scene_path.extend(pl for pl in debug.get("stabilized_track_path", []) if isinstance(pl, dict))
         appearance_fingerprints.extend(pl for pl in debug.get("appearance_fingerprints", []) if isinstance(pl, dict))
-        for category, value in (debug.get("class_votes") or {}).items():
-            class_votes[category] = class_votes.get(category, 0.0) + _coerce_float(value)
         for category, max_val in (debug.get("class_max_conf") or {}).items():
             class_max_conf[category] = max(class_max_conf.get(category, 0.0), _coerce_float(max_val))
 
@@ -5476,7 +5609,8 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         _coerce_float((track.get("track_debug") or {}).get("raw_max_confidence") or track.get("track_max_confidence") or track.get("confidence"))
         for track in tracks
     )
-    weighted_category = determine_canonical_category(class_votes, class_max_conf, fallback=primary.get("category") or "unknown")
+    class_evidence = _class_evidence_from_observations(sorted_observations, fallback=primary.get("category") or "unknown")
+    weighted_category = class_evidence["winner"]
     observation_confidences = [_coerce_float(item.get("confidence")) for item in deduplicated_observations.values()]
     class_confidence = _class_confidence_for_observations(list(deduplicated_observations.values()), weighted_category, raw_max_confidence)
     avg_confidence = (
@@ -5521,7 +5655,9 @@ def _merge_two_tracks(first: dict, second: dict) -> dict:
         "track_debug": {
             "frame_observations": sorted_observations,
             "accepted_track_fragments": _track_frame_fragments(sorted_observations),
-            "class_votes": {key: round(value, 4) for key, value in class_votes.items()},
+            "class_votes": class_evidence["scores"],
+            "class_evidence": class_evidence,
+            "class_ambiguous": class_evidence["class_ambiguous"],
             "raw_max_confidence": round(raw_max_confidence, 4),
             "raw_track_ids": source_track_ids,
             "segment_ids": sorted(segment_ids),
