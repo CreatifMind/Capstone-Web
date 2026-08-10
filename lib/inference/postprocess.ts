@@ -1,4 +1,4 @@
-import { MODEL_CONFIG } from "./model-config";
+import { CLASS_CONFIDENCE_THRESHOLDS, MODEL_CONFIG } from "./model-config";
 import { classAwareNms } from "./nms";
 import type { LetterboxInfo, Detection, PostprocessResult } from "./types";
 
@@ -29,7 +29,9 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
         classId = classIndex;
       }
     }
-    if (!Number.isFinite(confidence) || confidence < MODEL_CONFIG.confidenceThreshold) continue;
+    const className = MODEL_CONFIG.classes[classId];
+    const minThreshold = CLASS_CONFIDENCE_THRESHOLDS[className] ?? MODEL_CONFIG.confidenceThreshold;
+    if (!Number.isFinite(confidence) || confidence < minThreshold) continue;
 
     const centerX = output[candidate];
     const centerY = output[CANDIDATE_COUNT + candidate];
@@ -37,7 +39,17 @@ export function postprocessOutput(output: Float32Array, letterbox: LetterboxInfo
     const height = output[(3 * CANDIDATE_COUNT) + candidate];
     const box = restoreBox(centerX, centerY, width, height, letterbox);
     if (!box) continue;
-    candidates.push({ classId, className: MODEL_CONFIG.classes[classId], confidence, ...box });
+
+    const boxW = box.x2 - box.x1;
+    const boxH = box.y2 - box.y1;
+    const area = boxW * boxH;
+    const totalArea = letterbox.originalWidth * letterbox.originalHeight;
+    if (totalArea > 0 && area < totalArea * 0.012) continue;
+    if (boxW < 24 || boxH < 24) continue;
+    const aspect = Math.max(boxW / Math.max(boxH, 1), boxH / Math.max(boxW, 1));
+    if (aspect > 6.0) continue;
+
+    candidates.push({ classId, className, confidence, ...box });
   }
 
   const reviewDetections = classAwareNms(candidates, MODEL_CONFIG.nmsIouThreshold);
