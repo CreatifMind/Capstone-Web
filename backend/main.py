@@ -2934,12 +2934,17 @@ def _canonical_annotation_frame_map(
     frame_map: dict[int, list[dict]] = {}
     if not observations_by_track:
         return frame_map
+    seen_frame_tracks: set[tuple[int, str]] = set()
     for material in materials or []:
         for track_id in _track_id_values(material):
             for observation in observations_by_track.get(str(track_id), []):
                 frame = int(_coerce_float(observation.get("source_frame_index", observation.get("frame")), -1))
                 if frame < 0 or not _frame_matches_material_track(material, str(track_id), frame):
                     continue
+                key = (frame, str(track_id))
+                if key in seen_frame_tracks:
+                    continue
+                seen_frame_tracks.add(key)
                 canonical = _canonical_annotated_observation(material, observation)
                 frame_map.setdefault(frame, []).append(canonical)
     return frame_map
@@ -4556,8 +4561,11 @@ def _annotate_video_frame(frame, detections: list[dict], *, footer_count: int | 
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, line_width)
         confidence = _coerce_float(detection.get("confidence"))
         track_id = detection.get("track_id")
+        clean_id = str(track_id or "")
+        if "track=" in clean_id:
+            clean_id = clean_id.split("track=")[-1]
         hazard = " | HAZARD" if CATEGORY_CLASS_MAP.get(category) == "contaminant" else ""
-        label = f"{display_label(category)} | {confidence:.2f} | ID {track_id or '-'}{hazard}"
+        label = f"{display_label(category)} | {confidence:.2f} | ID #{clean_id or '-'}{hazard}"
         font = cv2.FONT_HERSHEY_SIMPLEX
         (label_width, label_height), baseline = cv2.getTextSize(label, font, font_scale, line_width)
         label_width = min(label_width + label_padding * 2, width)
