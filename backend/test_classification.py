@@ -14,7 +14,7 @@ class ClassificationTests(unittest.TestCase):
         glass = evaluate_material("glass", 0.95)
         battery = evaluate_material("battery", 0.98)
         self.assertEqual((glass["material_class"], glass["display_status"], glass["review_required"]), ("recyclable", "Confirmed Recyclable", False))
-        self.assertEqual((battery["material_class"], battery["display_status"], battery["review_required"], battery["disposal_route"]), ("contaminant", "Confirmed Contaminant", False, "Battery / E-Waste Collection"))
+        self.assertEqual((battery["material_class"], battery["display_status"], battery["review_required"], battery["disposal_route"]), ("contaminant", "Review Needed", True, "Manual Audit Queue"))
 
     def test_low_confidence_requires_review_regardless_of_class(self):
         self.assertTrue(evaluate_material("plastic", 0.3199)["review_required"])
@@ -24,11 +24,11 @@ class ClassificationTests(unittest.TestCase):
         self.assertFalse(evaluate_material("plastic", 0.32)["review_required"])
         self.assertTrue(evaluate_material("plastic", 0.3199)["review_required"])
 
-    def test_general_trash_uses_same_confidence_threshold(self):
+    def test_general_trash_requires_human_review(self):
         self.assertEqual(evaluate_material("general_trash", 0.31)["decision_status"], "review_needed")
-        self.assertEqual(evaluate_material("general_trash", 0.80)["decision_status"], "confirmed")
+        self.assertEqual(evaluate_material("general_trash", 0.80)["decision_status"], "review_needed")
 
-    def test_general_trash_status_uses_confidence_threshold(self):
+    def test_general_trash_status_routes_unverified_items_to_review(self):
         self.assertEqual(
             object_metrics_from_rows(
                 [{"id": "scan-1"}],
@@ -40,8 +40,8 @@ class ClassificationTests(unittest.TestCase):
             ),
             {
                 "total_objects": 2,
-                "confirmed_objects": 1,
-                "needs_review_objects": 1,
+                "confirmed_objects": 0,
+                "needs_review_objects": 2,
                 "rejected_objects": 0,
             },
         )
@@ -58,6 +58,10 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(
             determine_detection_status(0.8, True),
             {"review_status": "confirmed", "ai_status": "confirmed_contaminant"},
+        )
+        self.assertEqual(
+            determine_detection_status(0.98, True, "battery"),
+            {"review_status": "needs_review", "ai_status": "contaminant_alert_requires_review"},
         )
 
     def test_confidence_normalization_accepts_percentages_and_invalid_values(self):

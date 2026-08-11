@@ -163,12 +163,12 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         with self.assertRaisesRegex(HTTPException, "At least one verified detection"):
             main.validate_browser_detections([], 640, 480)
 
-    def test_machine_detected_battery_uses_confidence_threshold_and_empty_scans_require_review(self):
+    def test_machine_detected_battery_and_empty_scans_require_review(self):
         battery = main.validate_browser_detected_detections([
             detected(class_id=7, model_class_name="battery")
         ], 640, 480)
-        self.assertFalse(battery[0]["review_required"])
-        self.assertEqual(main.summarize(battery)["overall_status"], "accepted")
+        self.assertTrue(battery[0]["review_required"])
+        self.assertEqual(main.summarize(battery)["overall_status"], "review_required")
         self.assertEqual(main.summarize([])["overall_status"], "review_required")
 
     def test_browser_detected_confidence_boundaries_drive_hitl_not_validation(self):
@@ -281,14 +281,14 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         self.assertEqual(materials[0]["confidence"], main.BROWSER_CONFIDENCE_THRESHOLD)
         self.assertLess(main.BROWSER_CONFIDENCE_THRESHOLD, main.BROWSER_DECISION_CONFIDENCE_THRESHOLD)
 
-    def test_machine_detected_high_confidence_general_trash_is_confirmed(self):
+    def test_machine_detected_high_confidence_general_trash_requires_review(self):
         materials = main.validate_browser_detected_detections([
             detected(class_id=8, model_class_name="general_trash", confidence=0.98)
         ], 640, 480)
-        self.assertFalse(materials[0]["review_required"])
-        self.assertEqual(materials[0]["display_status"], "Confirmed Contaminant")
-        self.assertEqual(materials[0]["disposal_route"], "General-Waste Disposal")
-        self.assertEqual(main.summarize(materials)["overall_status"], "accepted")
+        self.assertTrue(materials[0]["review_required"])
+        self.assertEqual(materials[0]["display_status"], "Review Needed")
+        self.assertEqual(materials[0]["disposal_route"], "Manual Audit Queue")
+        self.assertEqual(main.summarize(materials)["overall_status"], "review_required")
 
     def test_backend_build_marker_is_exposed_for_deployment_verification(self):
         self.assertEqual(main.health()["backend_build_version"], main.BACKEND_BUILD_VERSION)

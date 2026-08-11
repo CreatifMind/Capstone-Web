@@ -48,9 +48,9 @@ assert.deepEqual(
 );
 assert.equal(plEvaluateMaterial({ category: "Glass", confidence: 0.95 }).displayStatus, "Confirmed Recyclable");
 const battery = plEvaluateMaterial({ category: "Battery", confidence: 0.98 });
-assert.equal(battery.displayStatus, "Confirmed Contaminant");
-assert.equal(battery.reviewRequired, false);
-assert.equal(battery.disposalRoute, "Battery / E-Waste Collection");
+assert.equal(battery.displayStatus, "Review Needed");
+assert.equal(battery.reviewRequired, true);
+assert.equal(battery.disposalRoute, "Manual Audit Queue");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.79 }).reviewRequired, false);
 assert.equal(plEvaluateMaterial({ category: "Textile", confidence: 0.55 }).reviewRequired, false);
 assert.equal(plEvaluateMaterial({ category: "Cardboard", confidence: 0.32 }).displayStatus, "Confirmed Recyclable");
@@ -60,14 +60,14 @@ assert.match(source, /} else if \(primaryDecision\.reviewRequired\) \{/);
 assert.doesNotMatch(source, /} else if \(reviewCount\) \{/);
 for (const confidence of [0.10, 0.31, 0.32, 0.75, 0.99]) {
   const trash = plEvaluateMaterial({ category: "General Trash", confidence });
-  assert.equal(trash.reviewRequired, confidence < 0.32);
-  assert.equal(trash.displayStatus, confidence < 0.32 ? "Review Needed" : "Confirmed Contaminant");
-  assert.equal(trash.disposalRoute, confidence < 0.32 ? "Manual Audit Queue" : "General-Waste Disposal");
+  assert.equal(trash.reviewRequired, true);
+  assert.equal(trash.displayStatus, "Review Needed");
+  assert.equal(trash.disposalRoute, "Manual Audit Queue");
 }
 assert.equal(plEvaluateMaterial({ category: "Food Organics", confidence: 0.88 }).displayStatus, "Confirmed Contaminant");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.72, review_decision: { chosen_category: "Battery", disposition: "contaminant" } }).displayStatus, "Confirmed Contaminant");
 assert.equal(plEvaluateMaterial({ category: "Plastic", confidence: 0.72, review_decision: { chosen_category: "Plastic", disposition: "recyclable", outcome: "rejected" } }).displayStatus, "Rejected");
-assert.equal(plScanToLedger({ id: "scan-1", created_at: "2026-07-14T00:00:00.000Z", source_name: "scan.jpg" }, { id: "material-1", category: "Battery", confidence: 0.99 }).status, "Confirmed Contaminant");
+assert.equal(plScanToLedger({ id: "scan-1", created_at: "2026-07-14T00:00:00.000Z", source_name: "scan.jpg" }, { id: "material-1", category: "Battery", confidence: 0.99 }).status, "Review Needed");
 assert.equal(plScanNeedsReview({ detected_materials: [
   { category: "Plastic", confidence: 0.95 },
   { category: "Food Organics", confidence: 0.88 },
@@ -87,13 +87,13 @@ const overviewScans = [
   { id: "missing-optional", created_at: "2026-07-14T11:00:00.000Z", detected_materials: [] },
 ];
 const overview = plGetAnalyticsSummary({ scans: overviewScans, days: 7, now: "2026-07-14T12:00:00.000Z" });
-assert.equal(overview.reviewCount, 2, "only low-confidence objects need review");
+assert.equal(overview.reviewCount, 4, "contaminant alerts and low-confidence objects need review");
 assert.equal(overview.allLowConfidenceCount, 2, "resolved low-confidence detections remain visible to the overview");
-assert.equal(overview.confirmedTodayCount, 6, "confirmed contaminants and completed reviews count as confirmed, not review");
-assert.equal(overview.highRiskCount, 1, "confirmed battery is high risk");
+assert.equal(overview.confirmedTodayCount, 4, "non-alert confirmed objects and completed reviews count as confirmed, not review");
+assert.equal(overview.highRiskCount, 0, "unreviewed battery alerts are not counted as confirmed high risk");
 assert.equal(overview.recoveryOpportunityCount, 3, "only confirmed recyclables with value are recovery opportunities");
 assert.equal(Number(overview.avgConfidence.toFixed(1)), 66.1, "average confidence uses stored material confidences");
-assert.equal(overview.confirmedScanCount, 6, "confirmed object count is material-based");
+assert.equal(overview.confirmedScanCount, 4, "confirmed object count is material-based");
 assert.equal(overview.trendRows.reduce((sum, row) => sum + row.value, 0), 9, "trend includes scans without optional preview/source fields");
 assert.equal(overview.lastUpload.id, "missing-optional");
 assert.equal(overview.lastUploadBatchCount, 1, "single uploads have a safe batch fallback");

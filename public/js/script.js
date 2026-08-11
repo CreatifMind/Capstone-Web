@@ -308,7 +308,8 @@ function plEvaluateMaterial(material, scan = {}) {
   const scanReviewStatus = plNormalizeStatus(scan?.review_status || scan?.overall_status);
   const verified = scanReviewStatus === "verified";
   const rejected = scanReviewStatus === "rejected" || (Boolean(decision) && reviewOutcome === "rejected");
-  const reviewRequired = !verified && !rejected && !decision && confidence < PL_CONFIRMATION_THRESHOLD;
+  const contaminantAlertRequired = category === "general_trash" || category === "battery";
+  const reviewRequired = !verified && !rejected && !decision && (contaminantAlertRequired || confidence < PL_CONFIRMATION_THRESHOLD);
   return {
     category,
     materialClass,

@@ -1653,6 +1653,7 @@ def export_display_status(scan: dict, material: dict, decision: dict | None) -> 
     material_class = (decision or {}).get("disposition") or material.get("material_class") or CATEGORY_CLASS_MAP.get(category, "unknown")
     final_status = derive_final_status(
         confidence=material.get("confidence") if material.get("confidence") is not None else scan.get("overall_confidence"),
+        category=category,
         decision=decision,
         scan=scan,
     )
@@ -2321,6 +2322,9 @@ def derive_final_status(*, confidence: Any, category: str = "", decision: dict |
         return "rejected"
     if decision_status == "confirmed" or scan_status in {"verified", "corrected"}:
         return "confirmed"
+    cat_key = material_category(category or (decision or {}).get("chosen_category") or "")
+    if cat_key in {"general_trash", "trash", "battery"}:
+        return "needs_review"
     try:
         numeric = float(confidence)
     except (TypeError, ValueError):
@@ -2354,7 +2358,7 @@ def determine_detection_status(confidence: float, is_contaminant: bool, category
     if derive_final_status(confidence=confidence, category=category) == "needs_review":
         return {
             "review_status": "needs_review",
-            "ai_status": "low_confidence_detection",
+            "ai_status": "contaminant_alert_requires_review" if material_category(category) in {"general_trash", "battery"} else "low_confidence_detection",
         }
     return {
         "review_status": "confirmed",
@@ -6571,7 +6575,7 @@ def analytics_timestamp(value: Any) -> datetime | None:
 
 
 def analytics_material_final_status(material: dict, decision: dict | None, scan: dict | None = None) -> str:
-    return derive_final_status(confidence=material.get("confidence"), decision=decision, scan=scan)
+    return derive_final_status(confidence=material.get("confidence"), category=material.get("category") or material.get("material_name"), decision=decision, scan=scan)
 
 
 def analytics_page_rows(database: SupabaseExecutor, table: str, principal: Principal, build_query: Callable[[Any], Any], page_size: int) -> list[dict]:
