@@ -308,8 +308,7 @@ function plEvaluateMaterial(material, scan = {}) {
   const scanReviewStatus = plNormalizeStatus(scan?.review_status || scan?.overall_status);
   const verified = scanReviewStatus === "verified";
   const rejected = scanReviewStatus === "rejected" || (Boolean(decision) && reviewOutcome === "rejected");
-  const isGeneralTrash = category === "general_trash";
-  const reviewRequired = !verified && !rejected && !decision && (isGeneralTrash || confidence < PL_CONFIRMATION_THRESHOLD);
+  const reviewRequired = !verified && !rejected && !decision && confidence < PL_CONFIRMATION_THRESHOLD;
   return {
     category,
     materialClass,
@@ -3687,7 +3686,7 @@ function initResultPage() {
         if (actionBadge) actionBadge.textContent = "Verified";
         const description = primaryDecision.materialClass === "contaminant" ? "This verified contaminant should be removed from the recyclable stream." : "This verified result is ready for the indicated sorting stream.";
         actionHtml = isReviewWorkspace ? `<div class="review-route-content"><span>Sorting destination</span><strong>${primaryDecision.disposalRoute || "Route by material stream"}</strong><p>${description}</p>${reviewStatusFooter(confirmedAiStatus)}</div>` : `<dl class="action-status-sheet"><div><dt>Status</dt><dd>${confirmedAiStatus}</dd></div><div><dt>Recommended route</dt><dd>${primaryDecision.disposalRoute || "Route by material stream"}</dd></div></dl>`;
-      } else if (reviewCount) {
+      } else if (primaryDecision.reviewRequired) {
         if (actionPanel) actionPanel.className = "mini-panel action-panel bbox-card route-review";
         if (actionBadge) actionBadge.textContent = "Awaiting human review";
         actionHtml = isReviewWorkspace ? `

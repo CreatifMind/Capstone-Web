@@ -2321,9 +2321,6 @@ def derive_final_status(*, confidence: Any, category: str = "", decision: dict |
         return "rejected"
     if decision_status == "confirmed" or scan_status in {"verified", "corrected"}:
         return "confirmed"
-    cat_key = material_category(category or (decision or {}).get("chosen_category") or "")
-    if cat_key in {"general_trash", "trash"}:
-        return "needs_review"
     try:
         numeric = float(confidence)
     except (TypeError, ValueError):
@@ -2357,7 +2354,7 @@ def determine_detection_status(confidence: float, is_contaminant: bool, category
     if derive_final_status(confidence=confidence, category=category) == "needs_review":
         return {
             "review_status": "needs_review",
-            "ai_status": "low_confidence_detection" if material_category(category) != "general_trash" else "general_trash_requires_review",
+            "ai_status": "low_confidence_detection",
         }
     return {
         "review_status": "confirmed",
@@ -3696,13 +3693,6 @@ def validate_browser_detected_detections(raw_detections: Any, image_width: int, 
             "bbox_height": round(((y2 - y1) / image_height) * 100, 4),
             **evaluate_material(category, confidence),
         }
-        if category == "battery":
-            material.update({
-                "review_required": True,
-                "decision_status": "review_needed",
-                "display_status": "Review Needed",
-                "disposal_route": "Manual Audit Queue",
-            })
         validated.append(material)
     return sorted(validated, key=lambda item: item["_detection_index"])
 

@@ -14808,6 +14808,12 @@ body.audit-review-modal-open { overflow: hidden; }
     padding: 0 !important;
   }
 
+  .dark-app .theme-control-app .theme-control-menu {
+    left: 0;
+    right: auto;
+    max-width: calc(100vw - 24px);
+  }
+
   .dark-app .topbar-right .user-badge,
   .dark-app .topbar-right .topbar-logout-btn {
     width: auto !important;

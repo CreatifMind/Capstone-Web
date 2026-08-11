@@ -24,11 +24,11 @@ class ClassificationTests(unittest.TestCase):
         self.assertFalse(evaluate_material("plastic", 0.32)["review_required"])
         self.assertTrue(evaluate_material("plastic", 0.3199)["review_required"])
 
-    def test_general_trash_requires_human_review(self):
+    def test_general_trash_uses_same_confidence_threshold(self):
         self.assertEqual(evaluate_material("general_trash", 0.31)["decision_status"], "review_needed")
-        self.assertEqual(evaluate_material("general_trash", 0.80)["decision_status"], "review_needed")
+        self.assertEqual(evaluate_material("general_trash", 0.80)["decision_status"], "confirmed")
 
-    def test_general_trash_status_routes_unverified_items_to_review(self):
+    def test_general_trash_status_uses_confidence_threshold(self):
         self.assertEqual(
             object_metrics_from_rows(
                 [{"id": "scan-1"}],
@@ -40,8 +40,8 @@ class ClassificationTests(unittest.TestCase):
             ),
             {
                 "total_objects": 2,
-                "confirmed_objects": 0,
-                "needs_review_objects": 2,
+                "confirmed_objects": 1,
+                "needs_review_objects": 1,
                 "rejected_objects": 0,
             },
         )

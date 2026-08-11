@@ -163,12 +163,12 @@ class BrowserVerifiedScanTests(unittest.TestCase):
         with self.assertRaisesRegex(HTTPException, "At least one verified detection"):
             main.validate_browser_detections([], 640, 480)
 
-    def test_machine_detected_battery_and_empty_scans_require_review(self):
+    def test_machine_detected_battery_uses_confidence_threshold_and_empty_scans_require_review(self):
         battery = main.validate_browser_detected_detections([
             detected(class_id=7, model_class_name="battery")
         ], 640, 480)
-        self.assertTrue(battery[0]["review_required"])
-        self.assertEqual(main.summarize(battery)["overall_status"], "review_required")
+        self.assertFalse(battery[0]["review_required"])
+        self.assertEqual(main.summarize(battery)["overall_status"], "accepted")
         self.assertEqual(main.summarize([])["overall_status"], "review_required")
 
     def test_browser_detected_confidence_boundaries_drive_hitl_not_validation(self):
