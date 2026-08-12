@@ -15055,6 +15055,15 @@ body[data-page="review"] .review-page-body {
 }
 
 @media (max-width: 1366px) {
+  body[data-page="review"] .topbar {
+    flex-wrap: wrap;
+  }
+
+  body[data-page="review"] .topbar-left {
+    flex: 1 1 420px;
+    min-width: 340px;
+  }
+
   body[data-page="review"] .topbar-title h1 {
     max-width: none !important;
     overflow: hidden;
@@ -15063,7 +15072,11 @@ body[data-page="review"] .review-page-body {
   }
 
   body[data-page="review"] .topbar-title p {
-    display: none;
+    display: block;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
