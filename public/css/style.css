@@ -14929,6 +14929,100 @@ body[data-page="review"] .review-page-body {
 }
 
 @media (max-width: 1180px) {
+  body[data-page="review"] .app-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-page="review"] #appSidebar:not(.mobile-open) {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    overflow: hidden !important;
+  }
+
+  body[data-page="review"] #appSidebar.mobile-open {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 9999 !important;
+    width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    min-width: min(var(--sidebar-width), calc(100vw - 40px)) !important;
+    height: 100dvh !important;
+    transform: none !important;
+  }
+
+  body[data-page="review"] .mobile-toggle {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+  }
+
+  body[data-page="review"] .topbar {
+    height: auto;
+    max-height: none;
+    min-height: var(--topbar-height);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+  }
+
+  body[data-page="review"] .topbar-left {
+    flex: 1 1 340px;
+  }
+
+  body[data-page="review"] .topbar-title {
+    min-width: 0;
+  }
+
+  body[data-page="review"] .topbar-title h1,
+  body[data-page="review"] .topbar-title p {
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-page="review"] .topbar-right[data-topbar-actions],
+  body[data-page="review"] .topbar-right:has(> [data-topbar-actions]) {
+    flex: 1 1 auto;
+    min-width: min(100%, 420px);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  body[data-page="review"] .topbar-right[data-topbar-variant="standard"] .date-pill {
+    display: none !important;
+  }
+
+  body[data-page="review"] .topbar-right[data-topbar-variant="standard"] .theme-control-trigger,
+  body[data-page="review"] .topbar-right[data-topbar-variant="standard"] .topbar-icon-btn,
+  body[data-page="review"] .topbar-right[data-topbar-variant="standard"] .user-badge,
+  body[data-page="review"] .topbar-right[data-topbar-variant="standard"] .topbar-logout-btn {
+    min-height: 40px;
+    height: 40px;
+  }
+
+  body[data-page="review"] .review-filter-toolbar {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.25fr) repeat(3, minmax(180px, 1fr));
+    align-items: stretch;
+  }
+
+  body[data-page="review"] .review-filter-control,
+  body[data-page="review"] .review-filter-search,
+  body[data-page="review"] .review-sort-controls {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  body[data-page="review"] .review-sort-controls {
+    grid-column: 3 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-left: 0;
+  }
+
   body[data-page="review"] .review-page-body {
     height: auto;
     max-height: none;
