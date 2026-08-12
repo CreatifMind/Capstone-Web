@@ -15054,6 +15054,19 @@ body[data-page="review"] .review-page-body {
   }
 }
 
+@media (max-width: 1366px) {
+  body[data-page="review"] .topbar-title h1 {
+    max-width: none !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+  }
+
+  body[data-page="review"] .topbar-title p {
+    display: none;
+  }
+}
+
 @media (min-width: 1181px) and (min-height: 821px) {
   body[data-page="review"] .review-history-list {
     max-height: min(58vh, 620px);
